@@ -1,0 +1,53 @@
+# =========================
+# ROOT LEVEL
+# =========================
+node_modules/
+.env
+.env.local
+.env.development
+.env.production
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# =========================
+# FRONTEND (Vite + React)
+# =========================
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+frontend/.env.development
+frontend/.env.production
+
+# Vite cache
+frontend/.vite/
+
+# =========================
+# BACKEND (Node + Express)
+# =========================
+backend/node_modules/
+backend/.env
+backend/.env.local
+
+# Optional build folder (if you ever add one)
+backend/dist/
+
+# =========================
+# IDE / Editor
+# =========================
+.vscode/
+.idea/
+
+# =========================
+# Docker
+# =========================
+postgres_data/

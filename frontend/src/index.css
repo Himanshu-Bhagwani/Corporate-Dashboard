@@ -1,0 +1,399 @@
+/* Reset and Base Styles */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+  line-height: 1.6;
+  font-weight: 400;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Remove the centering that was causing issues */
+#root {
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* Keep minimal global button styles */
+button {
+  font-family: inherit;
+}
+
+/* Accessibility */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Remove default list styles */
+ul, ol {
+  list-style: none;
+}
+
+/* Remove default form styles */
+input, textarea, select, button {
+  font-family: inherit;
+}
+
+/* Dark Mode Styles */
+.dark-mode {
+  --background: #0f172a;
+  --surface: #1e293b;
+  --surface-hover: #334155;
+  --text-primary: #f1f5f9;
+  --text-secondary: #cbd5e1;
+  --text-tertiary: #94a3b8;
+  --border-color: #334155;
+  --shadow: rgba(0, 0, 0, 0.5);
+}
+
+.dark-mode body {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  color: var(--text-primary);
+}
+
+.dark-mode .sidebar {
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.95));
+  border-right: 1px solid var(--border-color);
+}
+
+.dark-mode .sidebar-item {
+  color: var(--text-secondary);
+}
+
+.dark-mode .sidebar-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+.dark-mode .sidebar-item.active {
+  background: linear-gradient(90deg, rgba(79, 70, 229, 0.2), rgba(79, 70, 229, 0.1));
+  color: var(--primary-blue);
+}
+
+.dark-mode .main-content {
+  background: transparent;
+}
+
+.dark-mode .stat-card-new,
+.dark-mode .dashboard-section,
+.dark-mode .settings-section,
+.dark-mode .chart-container {
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.85)) !important;
+  border-color: var(--border-color);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.dark-mode .stat-card-new:hover,
+.dark-mode .dashboard-section:hover,
+.dark-mode .settings-section:hover,
+.dark-mode .chart-container:hover {
+  background: rgba(30, 41, 59, 0.98) !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+
+.dark-mode .stat-label-new,
+.dark-mode .chart-title,
+.dark-mode .section-title-simple,
+.dark-mode .view-title {
+  color: var(--text-primary);
+}
+
+.dark-mode .stat-value-new,
+.dark-mode .account-balance,
+.dark-mode .transaction-amount {
+  color: var(--text-primary);
+}
+
+.dark-mode .chart-subtitle,
+.dark-mode .section-description,
+.dark-mode .view-subtitle {
+  color: var(--text-secondary);
+}
+
+.dark-mode .transaction-item,
+.dark-mode .account-item {
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.7));
+  border-color: var(--border-color);
+}
+
+.dark-mode .transaction-item:hover,
+.dark-mode .account-item:hover {
+  background: rgba(30, 41, 59, 0.98);
+  box-shadow: -6px 0 0 0 var(--primary-orange), 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.dark-mode .transaction-name,
+.dark-mode .account-name {
+  color: var(--text-primary);
+}
+
+.dark-mode .transaction-category,
+.dark-mode .account-type,
+.dark-mode .transaction-date {
+  color: var(--text-tertiary);
+}
+
+.dark-mode .financial-health-section {
+  background: rgba(30, 41, 59, 0.85);
+  border-color: var(--border-color);
+}
+
+.dark-mode .indicator-card {
+  background: rgba(30, 41, 59, 0.5);
+}
+
+.dark-mode .indicator-card:hover {
+  background: rgba(30, 41, 59, 0.8);
+}
+
+.dark-mode .indicator-name,
+.dark-mode .indicator-text {
+  color: var(--text-primary);
+}
+
+.dark-mode .indicator-target {
+  color: var(--text-tertiary);
+}
+
+.dark-mode .health-title {
+  color: var(--text-primary);
+}
+
+.dark-mode .health-subtitle {
+  color: var(--text-secondary);
+}
+
+.dark-mode .score-label {
+  color: var(--text-secondary);
+}
+
+.dark-mode .score-bar {
+  background: var(--surface);
+}
+
+.dark-mode .recommendations-section {
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.1), rgba(147, 51, 234, 0.1));
+  border-color: rgba(79, 70, 229, 0.3);
+}
+
+.dark-mode .recommendations-list li {
+  color: var(--text-secondary);
+}
+
+.dark-mode .account-mode-card,
+.dark-mode .theme-option,
+.dark-mode .currency-option {
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.7));
+  border-color: var(--border-color);
+}
+
+.dark-mode .account-mode-card:hover,
+.dark-mode .theme-option:hover,
+.dark-mode .currency-option:hover {
+  background: rgba(30, 41, 59, 0.98);
+  border-color: rgba(79, 70, 229, 0.5);
+}
+
+.dark-mode .mode-title,
+.dark-mode .currency-code {
+  color: var(--text-primary);
+}
+
+.dark-mode .mode-description,
+.dark-mode .currency-name {
+  color: var(--text-secondary);
+}
+
+.dark-mode .ai-feature-card,
+.dark-mode .notification-item,
+.dark-mode .security-item {
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.7));
+  border-color: var(--border-color);
+}
+
+.dark-mode .ai-feature-title,
+.dark-mode .notification-title,
+.dark-mode .security-title {
+  color: var(--text-primary);
+}
+
+.dark-mode .ai-feature-description,
+.dark-mode .notification-description,
+.dark-mode .security-description {
+  color: var(--text-secondary);
+}
+
+.dark-mode .no-data-placeholder,
+.dark-mode .empty-chart-placeholder {
+  background: var(--surface);
+  color: var(--text-tertiary);
+}
+
+.dark-mode .btn-primary {
+  background: linear-gradient(135deg, var(--primary-blue), var(--deep-blue));
+  color: white;
+}
+
+.dark-mode .btn-secondary {
+  background: var(--surface);
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+
+.dark-mode input,
+.dark-mode select,
+.dark-mode textarea {
+  background: var(--surface);
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+
+.dark-mode input::placeholder,
+.dark-mode textarea::placeholder {
+  color: var(--text-tertiary);
+}
+
+.dark-mode .modal-box {
+  background: var(--surface);
+  border-color: var(--border-color);
+}
+
+.dark-mode .modal-header h2 {
+  color: var(--text-primary);
+}
+
+.dark-mode .modal-content p {
+  color: var(--text-secondary);
+}
+
+.dark-mode table {
+  background: transparent;
+}
+
+.dark-mode thead {
+  background: var(--surface);
+  border-bottom-color: var(--border-color);
+}
+
+.dark-mode th {
+  color: var(--text-secondary);
+}
+
+.dark-mode tbody tr {
+  border-bottom-color: var(--border-color);
+}
+
+.dark-mode tbody tr:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.dark-mode td {
+  color: var(--text-primary);
+}
+
+.dark-mode .search-bar {
+  background: var(--surface);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.dark-mode .embedded-header {
+  background: rgba(30, 41, 59, 0.95);
+  border-bottom-color: var(--border-color);
+}
+
+.dark-mode .search-input {
+  background: var(--surface);
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+
+.dark-mode .user-menu-button {
+  background: var(--surface);
+  border-color: var(--border-color);
+}
+
+/* Fix white cards in dark mode */
+.dark-mode .account-mode-card,
+.dark-mode .theme-option,
+.dark-mode .currency-option,
+.dark-mode .ai-feature-card,
+.dark-mode .notification-item,
+.dark-mode .security-item {
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.7)) !important;
+  border-color: var(--border-color) !important;
+}
+
+.dark-mode .account-mode-card:hover,
+.dark-mode .theme-option:hover,
+.dark-mode .currency-option:hover,
+.dark-mode .ai-feature-card:hover,
+.dark-mode .notification-item:hover,
+.dark-mode .security-item:hover {
+  background: rgba(30, 41, 59, 0.98) !important;
+  border-color: rgba(79, 70, 229, 0.5) !important;
+}
+
+.dark-mode .financial-health-section {
+  background: rgba(30, 41, 59, 0.85) !important;
+  border-color: var(--border-color);
+}
+
+.dark-mode .financial-health-section:hover {
+  background: rgba(30, 41, 59, 0.95) !important;
+}
+
+.dark-mode .indicator-card {
+  background: rgba(30, 41, 59, 0.5) !important;
+}
+
+.dark-mode .indicator-card:hover {
+  background: rgba(30, 41, 59, 0.8) !important;
+}
+
+.dark-mode .overall-score-container {
+  background: rgba(30, 41, 59, 0.5) !important;
+}
+
+.dark-mode .overall-score-container:hover {
+  background: rgba(30, 41, 59, 0.8) !important;
+}
+
+.dark-mode .recommendations-section {
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.15), rgba(147, 51, 234, 0.15)) !important;
+  border-color: rgba(79, 70, 229, 0.3);
+}
+
+.dark-mode .recommendations-section:hover {
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.2), rgba(147, 51, 234, 0.2)) !important;
+}
+
+.dark-mode .currency-dropdown {
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.7)) !important;
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+
+.dark-mode .currency-dropdown:hover {
+  background: rgba(30, 41, 59, 0.98) !important;
+}
+
+.dark-mode .currency-label {
+  color: var(--text-primary);
+}

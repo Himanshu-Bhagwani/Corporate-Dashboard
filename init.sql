@@ -1,0 +1,138 @@
+-- Users table for authentication
+CREATE TABLE IF NOT EXISTS users (
+  id SERIAL PRIMARY KEY,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  password_hash VARCHAR(255),
+  google_id VARCHAR(255) UNIQUE,
+  full_name VARCHAR(255),
+  avatar_url TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Companies table
+CREATE TABLE IF NOT EXISTS companies (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  industry VARCHAR(100),
+  tax_id VARCHAR(100),
+  address TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- User-Company relationship (many-to-many)
+CREATE TABLE IF NOT EXISTS user_companies (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+  role VARCHAR(50) DEFAULT 'member',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, company_id)
+);
+
+-- Accounts table (linked to companies)
+CREATE TABLE IF NOT EXISTS accounts (
+  id SERIAL PRIMARY KEY,
+  company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+  name VARCHAR(255) NOT NULL,
+  type VARCHAR(100) NOT NULL,
+  bank VARCHAR(255) NOT NULL,
+  account_number VARCHAR(100),
+  opening_balance NUMERIC DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Transactions table (linked to companies)
+CREATE TABLE IF NOT EXISTS transactions (
+  id SERIAL PRIMARY KEY,
+  company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+  name VARCHAR(255) NOT NULL,
+  type VARCHAR(50) NOT NULL,
+  category VARCHAR(100),
+  account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL,
+  amount NUMERIC NOT NULL,
+  date DATE NOT NULL,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Invoices table
+CREATE TABLE IF NOT EXISTS invoices (
+  id SERIAL PRIMARY KEY,
+  company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+  invoice_number VARCHAR(100) UNIQUE NOT NULL,
+  vendor_name VARCHAR(255),
+  client_name VARCHAR(255),
+  type VARCHAR(50) NOT NULL,
+  amount NUMERIC NOT NULL,
+  status VARCHAR(50) DEFAULT 'pending',
+  due_date DATE,
+  issue_date DATE NOT NULL,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Vendors table
+CREATE TABLE IF NOT EXISTS vendors (
+  id SERIAL PRIMARY KEY,
+  company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+  name VARCHAR(255) NOT NULL,
+  email VARCHAR(255),
+  phone VARCHAR(50),
+  address TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Compliance filings table
+CREATE TABLE IF NOT EXISTS compliance_filings (
+  id SERIAL PRIMARY KEY,
+  company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+  name VARCHAR(255) NOT NULL,
+  type VARCHAR(100),
+  due_date DATE NOT NULL,
+  status VARCHAR(50) DEFAULT 'pending',
+  filed_date DATE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Create indexes for better performance
+CREATE INDEX IF NOT EXISTS idx_transactions_company ON transactions(company_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
+CREATE INDEX IF NOT EXISTS idx_accounts_company ON accounts(company_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_company ON invoices(company_id);
+CREATE INDEX IF NOT EXISTS idx_vendors_company ON vendors(company_id);
+CREATE INDEX IF NOT EXISTS idx_user_companies_user ON user_companies(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_companies_company ON user_companies(company_id);
+CREATE INDEX IF NOT EXISTS idx_compliance_company ON compliance_filings(company_id);
+
+
+-- ============================================
+-- DEMO USER SETUP
+-- ============================================
+-- Email: demo@corporate.com
+-- Password: demo123
+-- ============================================
+
+-- Insert demo user (password hash for 'demo123' using bcrypt with 10 rounds)
+-- Note: This hash is pre-generated. In production, always hash passwords server-side.
+INSERT INTO users (email, password_hash, full_name, created_at) 
+VALUES (
+  'demo@corporate.com',
+  '$2b$10$YourActualBcryptHashWillBeGeneratedByTheBackend',
+  'Demo User',
+  NOW()
+) ON CONFLICT (email) DO NOTHING;
+
+-- Insert demo company
+INSERT INTO companies (name, industry, tax_id, address, created_at)
+VALUES (
+  'Acme Corp Pvt Ltd',
+  'Technology',
+  'TAX123456',
+  '123 Business Street, Tech City',
+  NOW()
+);
+
+-- Link demo user to demo company (will be created by seed script)
+-- This requires the backend to run the seed script after database initialization

@@ -1,0 +1,256 @@
+.compliance-tabs {
+  display: flex;
+  gap: 0.45rem;
+  margin-bottom: 1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+  padding: 0.4rem;
+  overflow-x: auto;
+}
+
+.compliance-tab-btn {
+  border: none;
+  background: transparent;
+  color: #4a5568;
+  font-size: 13px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.compliance-tab-btn.active {
+  color: #fff;
+  background: #1e3a8a;
+}
+
+.compliance-tone {
+  border: 1px solid #edf2f7;
+}
+
+.compliance-tone.danger {
+  background: #fff1f2;
+}
+
+.compliance-tone.soft-green {
+  background: #f0fdf4;
+}
+
+.compliance-tone.soft-yellow {
+  background: #fffbeb;
+}
+
+.compliance-tone.soft-blue {
+  background: #eff6ff;
+}
+
+.compliance-alerts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.compliance-alert-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid #fef3c7;
+  border-radius: 10px;
+  background: #fffbeb;
+  padding: 0.85rem 1rem;
+}
+
+.compliance-alert-title {
+  font-size: 14px;
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.compliance-alert-meta {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.status-pill.ok {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.status-pill.warn {
+  background: #fef9c3;
+  color: #854d0e;
+}
+
+.status-pill.danger {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.status-pill.neutral {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+.stats-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.compliance-note {
+  margin: 1rem;
+  border: 1px solid #dbeafe;
+  background: #eff6ff;
+  color: #1e3a8a;
+  border-radius: 10px;
+  padding: 0.85rem;
+  font-size: 13px;
+}
+
+.compliance-doc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.8rem;
+  padding-right: 1rem;
+}
+
+.doc-filters {
+  display: flex;
+  gap: 0.45rem;
+  padding: 0 1rem 1rem;
+  flex-wrap: wrap;
+}
+
+.doc-filter-btn {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 6px 12px;
+  background: #fff;
+  font-size: 12px;
+  color: #4a5568;
+  cursor: pointer;
+}
+
+.doc-filter-btn.active {
+  background: #1e3a8a;
+  color: #fff;
+  border-color: #1e3a8a;
+}
+
+.notice-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.notice-card.open {
+  background: #fffbeb;
+}
+
+.notice-card.responded {
+  background: #fefce8;
+}
+
+.notice-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.notice-meta {
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 0.2rem;
+}
+
+.notice-text {
+  margin-top: 0.35rem;
+  color: #1f2937;
+  font-size: 14px;
+}
+
+.calendar-nav {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.compliance-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.compliance-weekdays div {
+  text-align: center;
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.calendar-cell {
+  height: 72px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 8px;
+  font-size: 13px;
+  color: #334155;
+  background: #fff;
+}
+
+.calendar-cell.ok {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.calendar-cell.warn {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.calendar-cell.danger {
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+
+.calendar-legend {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+}
+
+.legend-pill {
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.legend-pill.ok {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.legend-pill.warn {
+  color: #854d0e;
+  background: #fef9c3;
+}
+
+.legend-pill.danger {
+  color: #991b1b;
+  background: #fee2e2;
+}

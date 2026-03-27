@@ -1,0 +1,75 @@
+COLOR PALLETTE
+
+🎨Primary Brand Colors (Base)
+
+* **Primary Orange:** `#FF914D`
+* **Primary Blue:** `#4169E1`
+
+
+| Purpose                                   | Color | Hex       |
+| ----------------------------------------- | ----- | --------- |
+| Light Orange (backgrounds, soft sections) | !     | `#FFE3D1` |
+| Soft Orange (cards, subtle highlights)    |       | `#FFC2A1` |
+| **Primary Orange**                        | 🔥    | `#FF914D` |
+| Deep Orange (hover / emphasis)            |       | `#E67634` |
+| Burnt Orange (icons, active states)       |       | `#C85D23` |
+
+| Purpose                            | Color | Hex       |
+| ---------------------------------- | ----- | --------- |
+| Ice Blue (backgrounds)             |       | `#EAF0FF` |
+| Soft Blue (cards, dividers)        |       | `#C7D4FF` |
+| **Primary Blue**                   | 💙    | `#4169E1` |
+| Deep Blue (hover, nav)             |       | `#2F4FC4` |
+| Navy Blue (footers, dark sections) |       | `#1F3A8A` |
+
+| Use                     | Hex       |
+| ----------------------- | --------- |
+| Pure White              | `#FFFFFF` |
+| Off White (background)  | `#F8F9FC` |
+| Light Grey (borders)    | `#E5E7EB` |
+| Medium Grey (body text) | `#6B7280` |
+| Dark Grey (headings)    | `#1F2937` |
+
+Primary CTA:        #FF914D
+CTA Hover:          #E67634
+
+Links / Accents:    #4169E1
+Link Hover:         #2F4FC4
+
+Section BG (Light): #F8F9FC / #EAF0FF
+Cards:              #FFFFFF
+Footer BG:          #1F3A8A
+Text Primary:       #1F2937
+Text Secondary:     #6B7280
+
+
+
+
+POSTGRE SQL PASSWORD
+
+SODApostGREjainpassSQL00
+
+
+PS C:\Users\manas\Desktop\Dashboard> psql -U postgres
+Password for user postgres:
+
+psql (18.2)
+WARNING: Console code page (437) differs from Windows code page (1252)
+         8-bit characters might not work correctly. See psql reference
+         page "Notes for Windows users" for details.
+Type "help" for help.
+
+postgres=# CREATE DATABASE dashboard_db;
+CREATE DATABASE
+postgres=# CREATE USER dashboard_user WITH PASSWORD 'dashboard123';
+CREATE ROLE
+postgres=# GRANT ALL PRIVILEGES ON DATABASE dashboard_db TO dashboard_user;
+GRANT
+postgres=# \c dashboard_db
+You are now connected to database "dashboard_db" as user "postgres".
+dashboard_db=# GRANT ALL ON SCHEMA public TO dashboard_user;
+GRANT
+dashboard_db=# ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO dashboard_user;
+ALTER DEFAULT PRIVILEGES
+dashboard_db=# \q
+

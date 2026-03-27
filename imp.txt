@@ -1,0 +1,1864 @@
+okay lets move forward, do not implement anything yet but i do have some questions, i have provided you the entire jsx and css files for dashboard.....since these files are getting too big and everything, is it possible to make separate jsx and css files based on these 4 sidebar options, as we will need to make a lot of changes and add more sidebar options but also all these need to completely connected to one another as everything will be connected to one another and there will be a lot of backend work as well so for now, dont implement anything but tell me, is it possible to divide these into separate jsx and css files for all 4 of these sidebar options like a jsx and css file for dashboard, a jsx and css file for transactions, for analytics and accounts as well??
+dashboard jsx and css
+
+
+okay yeah great please help me do all this separation and yeah make sure that all the current design and functionality and everything stays the same and everything is as connected as possible for scalability and future additions and increased complexity and also backend integration so yeah please help me do this step by step....
+
+
+Perfect! Let's do this step-by-step. I'll help you refactor everything while maintaining all current functionality and design.
+
+## Step 1: Create the New Folder Structure
+
+First, create these new folders and files in your `src/components/` directory:
+
+```
+src/
+├── components/
+│   ├── layout/
+│   │   ├── Sidebar/
+│   │   │   ├── Sidebar.jsx
+│   │   │   └── Sidebar.css
+│   │   └── MainLayout/
+│   │       ├── MainLayout.jsx
+│   │       └── MainLayout.css
+│   │
+│   ├── views/
+│   │   ├── DashboardView/
+│   │   │   ├── DashboardView.jsx
+│   │   │   └── DashboardView.css
+│   │   ├── TransactionsView/
+│   │   │   ├── TransactionsView.jsx
+│   │   │   └── TransactionsView.css
+│   │   ├── AnalyticsView/
+│   │   │   ├── AnalyticsView.jsx
+│   │   │   └── AnalyticsView.css
+│   │   └── AccountsView/
+│   │       ├── AccountsView.jsx
+│   │       └── AccountsView.css
+│   │
+│   ├── shared/
+│   │   ├── AddTransactionModal/
+│   │   │   ├── AddTransactionModal.jsx
+│   │   │   └── AddTransactionModal.css
+│   │   └── (we'll add more shared components later)
+│   │
+├── styles/
+│   ├── variables.css
+│   ├── globals.css
+│   └── shared.css
+│
+└── data/
+    └── mockData.js
+```
+
+---
+
+## Step 2: Extract CSS Variables
+
+Create `src/styles/variables.css`:
+
+```css
+/* CSS Variables - Brand Color Palette */
+:root {
+  /* Primary Brand Colors */
+  --primary-orange: #FF914D;
+  --primary-blue: #4169E1;
+  
+  /* Orange Family */
+  --light-orange: #FFE3D1;
+  --soft-orange: #FFC2A1;
+  --deep-orange: #E67634;
+  --burnt-orange: #C85D23;
+  
+  /* Blue Family */
+  --ice-blue: #EAF0FF;
+  --soft-blue: #C7D4FF;
+  --deep-blue: #2F4FC4;
+  --navy-blue: #1F3A8A;
+  
+  /* Supporting Colors */
+  --soft-teal: #10b981;
+  --soft-amber: #f59e0b;
+  --light-green: #d1fae5;
+  --light-red: #fee2e2;
+  --pastel-purple: #f3e8ff;
+  --soft-purple: #9333ea;
+  
+  /* Neutrals */
+  --pure-white: #FFFFFF;
+  --off-white: #F8F9FC;
+  --light-grey: #E5E7EB;
+  --medium-grey: #6B7280;
+  --dark-grey: #1F2937;
+  --darker-grey: #111827;
+  
+  /* Semantic Colors */
+  --success: #10b981;
+  --warning: #f59e0b;
+  --error: #ef4444;
+  
+  /* Glassmorphism Effects */
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.3);
+  --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+  
+  /* Layout */
+  --sidebar-width: 280px;
+  
+  /* Shadows & Effects */
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  
+  /* Gradients */
+  --gradient-bg: #edf2ff;
+  --gradient-orange: linear-gradient(135deg, var(--primary-orange), var(--deep-orange));
+  --gradient-blue: linear-gradient(135deg, var(--primary-blue), var(--deep-blue));
+}
+```
+
+---
+
+## Step 3: Create Global Styles
+
+Create `src/styles/globals.css`:
+
+```css
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+  background: linear-gradient(135deg, #e8f0fe 0%, #f0f4ff 25%, #f8f9fc 50%, #eef2ff 75%, #e8f0fe 100%);
+  background-attachment: fixed;
+  color: var(--dark-grey);
+  line-height: 1.6;
+  overflow-x: hidden;
+}
+
+/* App Wrapper */
+.app-wrapper {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+}
+
+/* Main Content Area */
+.main-content {
+  margin-left: var(--sidebar-width);
+  flex: 1;
+  padding: 2rem 2.5rem;
+  max-width: calc(100% - var(--sidebar-width));
+  width: 100%;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.8;
+  }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .main-content {
+    margin-left: 0;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 768px) {
+  .main-content {
+    padding: 1.25rem;
+  }
+}
+```
+
+---
+
+## Step 4: Create Shared Component Styles
+
+Create `src/styles/shared.css`:
+
+```css
+/* Buttons */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--gradient-orange);
+  color: var(--pure-white);
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+  box-shadow: var(--shadow-md);
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-primary::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s;
+}
+
+.btn-primary:hover::before {
+  width: 300px;
+  height: 300px;
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--glass-bg);
+  backdrop-filter: blur(10px);
+  color: var(--medium-grey);
+  border: 1px solid var(--glass-border);
+  padding: 0.75rem 1.5rem;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-secondary:hover {
+  border-color: var(--primary-blue);
+  color: var(--primary-blue);
+  background: rgba(65, 105, 225, 0.05);
+}
+
+.link-button {
+  background: none;
+  border: none;
+  color: var(--primary-blue);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.5rem 0.75rem;
+  transition: all 0.3s ease;
+  position: relative;
+  border-radius: 8px;
+}
+
+.link-button::after {
+  content: '→';
+  margin-left: 0.5rem;
+  display: inline-block;
+  transition: transform 0.3s ease;
+}
+
+.link-button:hover {
+  background: rgba(65, 105, 225, 0.1);
+  color: var(--deep-blue);
+}
+
+.link-button:hover::after {
+  transform: translateX(4px);
+}
+
+/* View Headers */
+.view-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 2rem;
+  gap: 2rem;
+}
+
+.view-title {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--dark-grey);
+  margin-bottom: 0.25rem;
+}
+
+.view-subtitle {
+  color: var(--medium-grey);
+  font-size: 1rem;
+  font-weight: 400;
+}
+
+/* Section Headers */
+.section-header-simple {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.section-title-simple {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--dark-grey);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .view-title {
+    font-size: 1.5rem;
+  }
+  
+  .view-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .btn-primary,
+  .btn-secondary {
+    width: 100%;
+    justify-content: center;
+  }
+}
+```
+
+---
+
+## Step 5: Extract Mock Data
+
+Create `src/data/mockData.js`:
+
+```javascript
+export const mockTransactions = [
+  { id: 1, name: 'Grocery Shopping', category: 'Food & Dining', account: 'Chase Checking', date: '2026-01-12', amount: -125.50, type: 'expense' },
+  { id: 2, name: 'Salary Deposit', category: 'Income', account: 'Chase Checking', date: '2026-01-10', amount: 4500.00, type: 'income' },
+  { id: 3, name: 'Netflix Subscription', category: 'Entertainment', account: 'Credit Card', date: '2026-01-09', amount: -15.99, type: 'expense' },
+  { id: 4, name: 'Freelance Project', category: 'Income', account: 'Chase Checking', date: '2026-01-08', amount: 850.00, type: 'income' },
+];
+
+export const mockAccounts = [
+  { id: 1, name: 'Chase Checking', type: 'Checking', bank: 'Chase Bank', accountNumber: '****1234', balance: 8450.23, connected: true, lastSync: '2 hours ago' },
+  { id: 2, name: 'Savings Account', type: 'Savings', bank: 'Chase Bank', accountNumber: '****5678', balance: 15890.00, connected: true, lastSync: '2 hours ago' },
+  { id: 3, name: 'Chase Freedom Credit Card', type: 'Credit', bank: 'Chase Bank', accountNumber: '****9012', balance: -1234.56, connected: true, lastSync: '2 hours ago' },
+];
+
+export const mockStats = {
+  totalIncome: 12450,
+  totalExpenses: 8234,
+  savings: 15890,
+  investments: 32145,
+  netTotal: 4978.63,
+  totalBalance: 56486.01,
+  totalDebt: 1234.56,
+  connectedAccounts: 4
+};
+```
+
+---
+
+## Step 6: Create Sidebar Component
+
+Create `src/components/layout/Sidebar/Sidebar.jsx`:
+
+```jsx
+import React from 'react';
+import './Sidebar.css';
+import { LayoutDashboard, Receipt, BarChart3, CreditCard } from 'lucide-react';
+
+const Sidebar = ({ activeView, setActiveView, stats }) => {
+  return (
+    <aside className="sidebar">
+      <div className="sidebar-header">
+        <h1 className="app-logo">FinanceTrack</h1>
+        <p className="app-tagline">Smart Money Management</p>
+      </div>
+      
+      <nav className="sidebar-nav">
+        <button 
+          className={`nav-button ${activeView === 'dashboard' ? 'active' : ''}`}
+          onClick={() => setActiveView('dashboard')}
+        >
+          <LayoutDashboard size={20} />
+          <span>Dashboard</span>
+        </button>
+        <button 
+          className={`nav-button ${activeView === 'transactions' ? 'active' : ''}`}
+          onClick={() => setActiveView('transactions')}
+        >
+          <Receipt size={20} />
+          <span>Transactions</span>
+        </button>
+        <button 
+          className={`nav-button ${activeView === 'analytics' ? 'active' : ''}`}
+          onClick={() => setActiveView('analytics')}
+        >
+          <BarChart3 size={20} />
+          <span>Analytics</span>
+        </button>
+        <button 
+          className={`nav-button ${activeView === 'accounts' ? 'active' : ''}`}
+          onClick={() => setActiveView('accounts')}
+        >
+          <CreditCard size={20} />
+          <span>Accounts</span>
+        </button>
+      </nav>
+
+      <div className="sidebar-footer">
+        <div className="total-balance-card">
+          <div className="balance-label">Total Balance</div>
+          <div className="balance-value">${stats.totalBalance.toLocaleString()}</div>
+          <div className="balance-change">+2.5% from last month</div>
+        </div>
+      </div>
+    </aside>
+  );
+};
+
+export default Sidebar;
+```
+
+Create `src/components/layout/Sidebar/Sidebar.css`:
+
+```css
+.sidebar {
+  width: var(--sidebar-width);
+  background: linear-gradient(180deg, #1a1f2e 0%, #151923 100%);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 100;
+  padding: 2rem 1.5rem;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.3);
+}
+
+.sidebar-header {
+  margin-bottom: 3rem;
+}
+
+.app-logo {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: white;
+  margin-bottom: 0.25rem;
+}
+
+.app-tagline {
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.6);
+  font-weight: 500;
+}
+
+.sidebar-nav {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.nav-button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 0.875rem 1rem;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.95rem;
+  font-weight: 500;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  text-align: left;
+  position: relative;
+  overflow: hidden;
+}
+
+.nav-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: #FF914D;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  border-radius: 12px;
+}
+
+.nav-button:hover {
+  transform: translateX(4px);
+  color: #FF914D;
+}
+
+.nav-button:hover::before {
+  opacity: 0.1;
+}
+
+.nav-button.active {
+  background: rgba(255, 145, 77, 0.15);
+  color: #FF914D;
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+}
+
+.nav-button svg {
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.nav-button span {
+  position: relative;
+  z-index: 1;
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  padding-top: 1.5rem;
+}
+
+.total-balance-card {
+  background: linear-gradient(135deg, #FF914D 0%, #E67634 100%);
+  padding: 1.5rem;
+  border-radius: 16px;
+  color: var(--pure-white);
+  box-shadow: var(--shadow-lg);
+  position: relative;
+  overflow: hidden;
+}
+
+.total-balance-card::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  right: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
+  animation: pulse 4s ease-in-out infinite;
+}
+
+.balance-label {
+  font-size: 0.875rem;
+  opacity: 0.95;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  position: relative;
+  z-index: 1;
+}
+
+.balance-value {
+  font-size: 1.875rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  position: relative;
+  z-index: 1;
+}
+
+.balance-change {
+  font-size: 0.8rem;
+  opacity: 0.95;
+  font-weight: 500;
+  position: relative;
+  z-index: 1;
+}
+
+@media (max-width: 1024px) {
+  .sidebar {
+    transform: translateX(-100%);
+  }
+}
+```
+
+This is Step 6. **Should I continue with Steps 7-12?** (Creating the individual view components)
+
+
+yes please continue and also give me the entire file structure as well that what it should look like and also try and finish the whole thing in these 7-12 steps as this is the last message and i will then have to wait for a few hours so either try to finish in these steps or give me some prompt as well at the end for claude itself so i can resume from where you leave it
+
+
+Perfect! Let me complete everything in these remaining steps. I'll give you the complete refactored code and a continuation prompt.
+
+## Complete File Structure
+
+```
+frontend/
+├── src/
+│   ├── components/
+│   │   ├── layout/
+│   │   │   ├── Sidebar/
+│   │   │   │   ├── Sidebar.jsx 
+│   │   │   │   └── Sidebar.css 
+│   │   │   └── MainLayout/
+│   │   │       ├── MainLayout.jsx
+│   │   │       └── MainLayout.css
+│   │   │
+│   │   ├── views/
+│   │   │   ├── DashboardView/
+│   │   │   │   ├── DashboardView.jsx
+│   │   │   │   └── DashboardView.css
+│   │   │   ├── TransactionsView/
+│   │   │   │   ├── TransactionsView.jsx
+│   │   │   │   └── TransactionsView.css
+│   │   │   ├── AnalyticsView/
+│   │   │   │   ├── AnalyticsView.jsx
+│   │   │   │   └── AnalyticsView.css
+│   │   │   └── AccountsView/
+│   │   │       ├── AccountsView.jsx
+│   │   │       └── AccountsView.css
+│   │   │
+│   │   └── shared/
+│   │       └── AddTransactionModal/
+│   │           ├── AddTransactionModal.jsx
+│   │           └── AddTransactionModal.css
+│   │
+│   ├── styles/
+│   │   ├── variables.css 
+│   │   ├── globals.css 
+│   │   └── shared.css 
+│   │
+│   ├── data/
+│   │   └── mockData.js 
+│   │
+│   └── App.jsx (updated)
+```
+
+---
+
+## Step 7: Create MainLayout Component
+
+**src/components/layout/MainLayout/MainLayout.jsx:**
+
+```jsx
+import React, { useState } from 'react';
+import './MainLayout.css';
+import Sidebar from '../Sidebar/Sidebar';
+import DashboardView from '../../views/DashboardView/DashboardView';
+import TransactionsView from '../../views/TransactionsView/TransactionsView';
+import AnalyticsView from '../../views/AnalyticsView/AnalyticsView';
+import AccountsView from '../../views/AccountsView/AccountsView';
+import AddTransactionModal from '../../shared/AddTransactionModal/AddTransactionModal';
+import { mockTransactions, mockAccounts, mockStats } from '../../../data/mockData';
+
+const MainLayout = () => {
+  const [activeView, setActiveView] = useState('dashboard');
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [transactions, setTransactions] = useState(mockTransactions);
+  const [accounts] = useState(mockAccounts);
+  const [stats] = useState(mockStats);
+
+  const handleAddTransaction = (newTransaction) => {
+    setTransactions([newTransaction, ...transactions]);
+    setShowAddModal(false);
+  };
+
+  return (
+    <div className="app-wrapper">
+      <Sidebar 
+        activeView={activeView} 
+        setActiveView={setActiveView}
+        stats={stats}
+      />
+      
+      <main className="main-content">
+        {activeView === 'dashboard' && (
+          <DashboardView 
+            transactions={transactions}
+            accounts={accounts}
+            stats={stats}
+            setActiveView={setActiveView}
+          />
+        )}
+        {activeView === 'transactions' && (
+          <TransactionsView 
+            transactions={transactions}
+            stats={stats}
+            setShowAddModal={setShowAddModal}
+          />
+        )}
+        {activeView === 'analytics' && (
+          <AnalyticsView stats={stats} />
+        )}
+        {activeView === 'accounts' && (
+          <AccountsView accounts={accounts} stats={stats} />
+        )}
+      </main>
+
+      {showAddModal && (
+        <AddTransactionModal
+          onClose={() => setShowAddModal(false)}
+          onSubmit={handleAddTransaction}
+          accounts={accounts}
+        />
+      )}
+    </div>
+  );
+};
+
+export default MainLayout;
+```
+
+**src/components/layout/MainLayout/MainLayout.css:**
+
+```css
+/* This file can remain empty as styles are in globals.css */
+/* Add any MainLayout-specific styles here if needed in future */
+```
+
+---
+
+## Step 8: Create DashboardView
+
+**src/components/views/DashboardView/DashboardView.jsx:**
+
+```jsx
+import React from 'react';
+import './DashboardView.css';
+import { TrendingUp, TrendingDown, PieChart, CreditCard } from 'lucide-react';
+
+const DashboardView = ({ transactions, accounts, stats, setActiveView }) => {
+  return (
+    <>
+      <div className="view-header">
+        <div>
+          <h1 className="view-title">Dashboard</h1>
+          <p className="view-subtitle">Welcome back! Here's your financial overview</p>
+        </div>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="stats-grid-4">
+        <div className="stat-card-new">
+          <div className="stat-icon-wrapper green">
+            <TrendingUp size={20} />
+          </div>
+          <div className="stat-content-new">
+            <div className="stat-header-row">
+              <span className="stat-label-new">Total Income</span>
+              <span className="stat-change positive">+12.5%</span>
+            </div>
+            <div className="stat-value-new">${stats.totalIncome.toLocaleString()}</div>
+          </div>
+        </div>
+
+        <div className="stat-card-new">
+          <div className="stat-icon-wrapper red">
+            <TrendingDown size={20} />
+          </div>
+          <div className="stat-content-new">
+            <div className="stat-header-row">
+              <span className="stat-label-new">Total Expenses</span>
+              <span className="stat-change negative">-3.2%</span>
+            </div>
+            <div className="stat-value-new">${stats.totalExpenses.toLocaleString()}</div>
+          </div>
+        </div>
+
+        <div className="stat-card-new">
+          <div className="stat-icon-wrapper blue">
+            <PieChart size={20} />
+          </div>
+          <div className="stat-content-new">
+            <div className="stat-header-row">
+              <span className="stat-label-new">Savings</span>
+              <span className="stat-change positive">+8.1%</span>
+            </div>
+            <div className="stat-value-new">${stats.savings.toLocaleString()}</div>
+          </div>
+        </div>
+
+        <div className="stat-card-new">
+          <div className="stat-icon-wrapper purple">
+            <TrendingUp size={20} />
+          </div>
+          <div className="stat-content-new">
+            <div className="stat-header-row">
+              <span className="stat-label-new">Investments</span>
+              <span className="stat-change positive">+15.3%</span>
+            </div>
+            <div className="stat-value-new">${stats.investments.toLocaleString()}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content Grid */}
+      <div className="dashboard-grid">
+        {/* Recent Transactions */}
+        <div className="dashboard-section">
+          <div className="section-header-simple">
+            <h2 className="section-title-simple">Recent Transactions</h2>
+            <button className="link-button" onClick={() => setActiveView('transactions')}>View All</button>
+          </div>
+          
+          <div className="transactions-list">
+            {transactions.slice(0, 4).map(transaction => (
+              <div key={transaction.id} className="transaction-item">
+                <div className="transaction-icon-wrapper">
+                  {transaction.type === 'income' ? (
+                    <TrendingUp size={20} className="icon-green" />
+                  ) : (
+                    <TrendingDown size={20} className="icon-red" />
+                  )}
+                </div>
+                <div className="transaction-details">
+                  <div className="transaction-name">{transaction.name}</div>
+                  <div className="transaction-category">{transaction.category}</div>
+                </div>
+                <div className="transaction-right">
+                  <div className={`transaction-amount ${transaction.type === 'income' ? 'positive' : 'negative'}`}>
+                    {transaction.type === 'income' ? '+' : '-'}${Math.abs(transaction.amount).toFixed(2)}
+                  </div>
+                  <div className="transaction-date">{transaction.date}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Accounts */}
+        <div className="dashboard-section">
+          <div className="section-header-simple">
+            <h2 className="section-title-simple">Accounts</h2>
+          </div>
+          
+          <div className="accounts-list">
+            {accounts.slice(0, 3).map(account => (
+              <div key={account.id} className="account-item">
+                <div className="account-icon-wrapper">
+                  <CreditCard size={20} />
+                </div>
+                <div className="account-details">
+                  <div className="account-name">{account.name}</div>
+                  <div className="account-type">{account.type}</div>
+                </div>
+                <div className="account-balance">${Math.abs(account.balance).toLocaleString()}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+};
+
+export default DashboardView;
+```
+
+**src/components/views/DashboardView/DashboardView.css:**
+
+```css
+/* Stats Grid */
+.stats-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+/* Stat Cards */
+.stat-card-new {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  padding: 1.5rem;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  display: flex;
+  gap: 1rem;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.stat-card-new:hover {
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 8px 5px #ffc8a5, 0 0 0 1px #ffc8a5;
+  transform: translateY(-6px) scale(1.02);
+  border-color: var(--primary-orange);
+}
+
+.stat-icon-wrapper {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.stat-card-new:hover .stat-icon-wrapper {
+  transform: scale(1.15) rotate(5deg);
+}
+
+.stat-icon-wrapper.green {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(16, 185, 129, 0.05));
+  color: var(--success);
+}
+
+.stat-icon-wrapper.red {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(239, 68, 68, 0.05));
+  color: var(--error);
+}
+
+.stat-icon-wrapper.blue {
+  background: linear-gradient(135deg, rgba(65, 105, 225, 0.2), rgba(65, 105, 225, 0.05));
+  color: var(--primary-blue);
+}
+
+.stat-icon-wrapper.purple {
+  background: linear-gradient(135deg, rgba(147, 51, 234, 0.2), rgba(147, 51, 234, 0.05));
+  color: var(--soft-purple);
+}
+
+.stat-content-new {
+  flex: 1;
+}
+
+.stat-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.stat-label-new {
+  font-size: 0.875rem;
+  color: var(--medium-grey);
+  font-weight: 500;
+}
+
+.stat-change {
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+}
+
+.stat-change.positive {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--success);
+}
+
+.stat-change.negative {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--error);
+}
+
+.stat-value-new {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--dark-grey);
+}
+
+/* Dashboard Grid */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.dashboard-section {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  padding: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: all 0.3s ease;
+}
+
+.dashboard-section:hover {
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.1);
+  border-color: rgba(65, 105, 225, 0.3);
+  transform: translateY(-2px);
+}
+
+/* Transactions List */
+.transactions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.transaction-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  transition: all 0.3s ease;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+.transaction-item:hover {
+  background: rgba(255, 255, 255, 0.95);
+  transform: translateX(8px);
+  border-color: rgba(65, 105, 225, 0.25);
+  box-shadow: -4px 0 0 0 var(--primary-orange), 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.transaction-icon-wrapper {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--pure-white);
+  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.transaction-item:hover .transaction-icon-wrapper {
+  transform: scale(1.2) rotate(-5deg);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.icon-green {
+  color: var(--success);
+}
+
+.icon-red {
+  color: var(--error);
+}
+
+.transaction-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.transaction-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--dark-grey);
+  margin-bottom: 0.25rem;
+}
+
+.transaction-category {
+  font-size: 0.8rem;
+  color: var(--medium-grey);
+}
+
+.transaction-right {
+  text-align: right;
+}
+
+.transaction-amount {
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+
+.transaction-amount.positive {
+  color: var(--success);
+}
+
+.transaction-amount.negative {
+  color: var(--dark-grey);
+}
+
+.transaction-date {
+  font-size: 0.8rem;
+  color: var(--medium-grey);
+}
+
+/* Accounts List */
+.accounts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.account-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  transition: all 0.3s ease;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+.account-item:hover {
+  background: rgba(255, 255, 255, 0.95);
+  transform: translateX(8px);
+  border-color: rgba(65, 105, 225, 0.25);
+  box-shadow: -4px 0 0 0 var(--primary-blue), 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.account-icon-wrapper {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--ice-blue);
+  color: var(--primary-blue);
+  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.account-item:hover .account-icon-wrapper {
+  transform: scale(1.2) rotate(5deg);
+  background: rgba(65, 105, 225, 0.2);
+  box-shadow: 0 4px 12px rgba(65, 105, 225, 0.2);
+}
+
+.account-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.account-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--dark-grey);
+  margin-bottom: 0.25rem;
+}
+
+.account-type {
+  font-size: 0.8rem;
+  color: var(--medium-grey);
+}
+
+.account-balance {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--dark-grey);
+}
+
+/* Responsive */
+@media (max-width: 1400px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1024px) {
+  .stats-grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .stats-grid-4 {
+    grid-template-columns: 1fr;
+  }
+}
+
+Perfect! I can see you've already started the refactoring. Let me continue from Step 9 and complete the remaining view components.
+
+---
+
+## Step 9: Create TransactionsView Component
+
+**src/components/views/TransactionsView/TransactionsView.jsx:**
+
+```jsx
+import React, { useState } from 'react';
+import './TransactionsView.css';
+import { TrendingUp, TrendingDown, Calendar, Search, PlusCircle } from 'lucide-react';
+
+const TransactionsView = ({ transactions, stats, setShowAddModal }) => {
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredTransactions = transactions.filter(t => 
+    t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    t.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    t.account.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  return (
+    <>
+      <div className="view-header">
+        <div>
+          <h1 className="view-title">Transactions</h1>
+          <p className="view-subtitle">Track and manage your income and expenses</p>
+        </div>
+        <button className="btn-primary" onClick={() => setShowAddModal(true)}>
+          <PlusCircle size={20} />
+          Add Transaction
+        </button>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="stats-grid-3">
+        <div className="stat-card-simple">
+          <div className="stat-icon-wrapper-small green">
+            <TrendingUp size={18} />
+          </div>
+          <div className="stat-content-simple">
+            <div className="stat-label-simple">Total Income</div>
+            <div className="stat-value-simple green">${stats.totalIncome.toLocaleString()}</div>
+          </div>
+        </div>
+
+        <div className="stat-card-simple">
+          <div className="stat-icon-wrapper-small red">
+            <TrendingDown size={18} />
+          </div>
+          <div className="stat-content-simple">
+            <div className="stat-label-simple">Total Expenses</div>
+            <div className="stat-value-simple red">${stats.totalExpenses.toLocaleString()}</div>
+          </div>
+        </div>
+
+        <div className="stat-card-simple">
+          <div className="stat-icon-wrapper-small blue">
+            <Calendar size={18} />
+          </div>
+          <div className="stat-content-simple">
+            <div className="stat-label-simple">Net Total</div>
+            <div className="stat-value-simple green">${stats.netTotal.toLocaleString()}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="filters-bar">
+        <div className="search-input-wrapper">
+          <Search size={18} />
+          <input 
+            type="text" 
+            placeholder="Search transactions..." 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+        <select className="filter-select">
+          <option>All Types</option>
+          <option>Income</option>
+          <option>Expense</option>
+        </select>
+        <select className="filter-select">
+          <option>All Time</option>
+          <option>This Month</option>
+          <option>Last Month</option>
+        </select>
+        <div className="transaction-count">{filteredTransactions.length} transactions</div>
+      </div>
+
+      {/* Transactions Table */}
+      <div className="table-container">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>TRANSACTION</th>
+              <th>CATEGORY</th>
+              <th>ACCOUNT</th>
+              <th>DATE</th>
+              <th className="align-right">AMOUNT</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredTransactions.map(transaction => (
+              <tr key={transaction.id}>
+                <td>
+                  <div className="table-cell-with-icon">
+                    <div className={`table-icon ${transaction.type === 'income' ? 'green' : 'red'}`}>
+                      {transaction.type === 'income' ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
+                    </div>
+                    <span className="table-main-text">{transaction.name}</span>
+                  </div>
+                </td>
+                <td><span className="table-secondary-text">{transaction.category}</span></td>
+                <td><span className="table-secondary-text">{transaction.account}</span></td>
+                <td><span className="table-secondary-text">{transaction.date}</span></td>
+                <td className="align-right">
+                  <span className={`table-amount ${transaction.type === 'income' ? 'positive' : 'negative'}`}>
+                    {transaction.type === 'income' ? '+' : ''}${transaction.amount.toFixed(2)}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+};
+
+export default TransactionsView;
+```
+
+**src/components/views/TransactionsView/TransactionsView.css:**
+
+```css
+/* Transactions View Specific Styles */
+.stats-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.stat-card-simple {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px);
+  padding: 1.5rem;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  display: flex;
+  gap: 1rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: all 0.3s ease;
+}
+
+.stat-card-simple:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  transform: translateY(-2px);
+}
+
+.stat-icon-wrapper-small {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.stat-icon-wrapper-small.green {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(16, 185, 129, 0.05));
+  color: var(--success);
+}
+
+.stat-icon-wrapper-small.red {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(239, 68, 68, 0.05));
+  color: var(--error);
+}
+
+.stat-icon-wrapper-small.blue {
+  background: linear-gradient(135deg, rgba(65, 105, 225, 0.2), rgba(65, 105, 225, 0.05));
+  color: var(--primary-blue);
+}
+
+.stat-content-simple {
+  flex: 1;
+}
+
+.stat-label-simple {
+  font-size: 0.875rem;
+  color: var(--medium-grey);
+  margin-bottom: 0.25rem;
+  font-weight: 500;
+}
+
+.stat-value-simple {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--dark-grey);
+  margin-bottom: 0.25rem;
+}
+
+.stat-value-simple.green {
+  color: var(--success);
+}
+
+.stat-value-simple.red {
+  color: var(--error);
+}
+
+/* Filters Bar */
+.filters-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.search-input-wrapper {
+  flex: 1;
+  min-width: 300px;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px);
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  transition: all 0.3s ease;
+}
+
+.search-input-wrapper:focus-within {
+  border-color: var(--primary-blue);
+  box-shadow: 0 0 0 3px rgba(65, 105, 225, 0.1);
+}
+
+.search-input-wrapper svg {
+  color: var(--medium-grey);
+  flex-shrink: 0;
+}
+
+.search-input-wrapper input {
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 0.95rem;
+  color: var(--dark-grey);
+  width: 100%;
+  font-family: inherit;
+}
+
+.search-input-wrapper input::placeholder {
+  color: var(--medium-grey);
+}
+
+.filter-select {
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 12px;
+  font-size: 0.95rem;
+  color: var(--dark-grey);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px);
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.filter-select:hover {
+  border-color: var(--primary-blue);
+}
+
+.filter-select:focus {
+  outline: none;
+  border-color: var(--primary-blue);
+  box-shadow: 0 0 0 3px rgba(65, 105, 225, 0.1);
+}
+
+.transaction-count {
+  font-size: 0.875rem;
+  color: var(--medium-grey);
+  font-weight: 500;
+  margin-left: auto;
+}
+
+/* Table Styles */
+.table-container {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-table thead {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.data-table th {
+  padding: 1rem 1.25rem;
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--medium-grey);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid rgba(229, 231, 235, 0.5);
+}
+
+.data-table th.align-right {
+  text-align: right;
+}
+
+.data-table tbody tr {
+  border-bottom: 1px solid rgba(229, 231, 235, 0.5);
+  transition: all 0.2s ease;
+}
+
+.data-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.data-table tbody tr:last-child {
+  border-bottom: none;
+}
+
+.data-table td {
+  padding: 1rem 1.25rem;
+}
+
+.data-table td.align-right {
+  text-align: right;
+}
+
+.table-cell-with-icon {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.table-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.3s ease;
+}
+
+.data-table tbody tr:hover .table-icon {
+  transform: scale(1.1);
+}
+
+.table-icon.green {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(16, 185, 129, 0.05));
+  color: var(--success);
+}
+
+.table-icon.red {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(239, 68, 68, 0.05));
+  color: var(--error);
+}
+
+.table-main-text {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--dark-grey);
+}
+
+.table-secondary-text {
+  font-size: 0.95rem;
+  color: var(--medium-grey);
+}
+
+.table-amount {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.table-amount.positive {
+  color: var(--success);
+}
+
+.table-amount.negative {
+  color: var(--dark-grey);
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .stats-grid-3 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .stats-grid-3 {
+    grid-template-columns: 1fr;
+  }
+  
+  .filters-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .search-input-wrapper {
+    min-width: auto;
+  }
+  
+  .transaction-count {
+    margin-left: 0;
+  }
+  
+  .table-container {
+    overflow-x: auto;
+  }
+  
+  .data-table {
+    min-width: 700px;
+  }
+}
+```
+
+---
+
+## Step 10: Create AnalyticsView Component
+
+**src/components/views/AnalyticsView/AnalyticsView.jsx:**
+
+```jsx
+import React from 'react';
+import './AnalyticsView.css';
+import { TrendingUp, TrendingDown, PieChart, Calendar } from 'lucide-react';
+
+const AnalyticsView = ({ stats }) => {
+  return (
+    <>
+      <div className="view-header">
+        <div>
+          <h1 className="view-title">Analytics</h1>
+          <p className="view-subtitle">Visualize your financial patterns and trends</p>
+        </div>
+        <div className="time-filter">
+          <Calendar size={18} />
+          <select className="filter-select">
+            <option>Last 6 Months</option>
+            <option>Last Month</option>
+            <option>This Year</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="stats-grid-4">
+        <div className="stat-card-analytics">
+          <div className="stat-icon-wrapper-small green">
+            <TrendingUp size={18} />
+          </div>
+          <div className="stat-content-analytics">
+            <div className="stat-label-analytics">Avg Income</div>
+            <div className="stat-value-analytics">$5214</div>
+            <div className="stat-sublabel">per month</div>
+          </div>
+        </div>
+
+        <div className="stat-card-analytics">
+          <div className="stat-icon-wrapper-small red">
+            <TrendingDown size={18} />
+          </div>
+          <div className="stat-content-analytics">
+            <div className="stat-label-analytics">Avg Expenses</div>
+            <div className="stat-value-analytics">$3929</div>
+            <div className="stat-sublabel">per month</div>
+          </div>
+        </div>
+
+        <div className="stat-card-analytics">
+          <div className="stat-icon-wrapper-small blue">
+            <PieChart size={18} />
+          </div>
+          <div className="stat-content-analytics">
+            <div className="stat-label-analytics">Savings Rate</div>
+            <div className="stat-value-analytics">24.7%</div>
+            <div className="stat-sublabel">of income</div>
+          </div>
+        </div>
+
+        <div className="stat-card-analytics">
+          <div className="stat-icon-wrapper-small purple">
+            <TrendingUp size={18} />
+          </div>
+          <div className="stat-content-analytics">
+            <div className="stat-label-analytics">Net Worth</div>
+            <div className="stat-value-analytics">$24,567</div>
+            <div className="stat-sublabel positive">+12.3% growth</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Charts Grid */}
+      <div className="charts-grid">
+        {/* Income vs Expenses Chart */}
+        <div className="chart-section-large">
+          <div className="chart-header">
+            <h3 className="chart-title">Income vs Expenses</h3>
+          </div>
+          <div className="chart-placeholder">
+            <div className="chart-legend">
+              <div className="legend-item-chart">
+                <span className="legend-dot red"></span>
+                <span>Expenses</span>
+              </div>
+              <div className="legend-item-chart">
+                <span className="legend-dot green"></span>
+                <span>Income</span>
+              </div>
+            </div>
+            <div className="line-chart-placeholder">
+              <svg viewBox="0 0 600 200" className="line-chart-svg">
+                <polyline
+                  points="0,80 100,60 200,70 300,55 400,45 500,40 600,50"
+                  fill="none"
+                  stroke="#10b981"
+                  strokeWidth="3"
+                />
+                <polyline
+                  points="0,120 100,130 200,115 300,125 400,110 500,120 600,115"
+                  fill="none"
+                  stroke="#ef4444"
+                  strokeWidth="3"
+                />
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        {/* Spending by Category */}
+        <div className="chart-section-small">
+          <div className="chart-header">
+            <h3 className="chart-title">Spending by Category</h3>
+          </div>
+          <div className="pie-chart-container">
+            <svg viewBox="0 0 200 200" className="pie-chart-svg">
+              <circle cx="100" cy="100" r="80" fill="#3b82f6" stroke="white" strokeWidth="2" />
+              <circle cx="100" cy="100" r="80" fill="#8b5cf6" stroke="white" strokeWidth="2"
+                strokeDasharray="150 502" strokeDashoffset="0" transform="rotate(-90 100 100)" />
+              <circle cx="100" cy="100" r="80" fill="#ec4899" stroke="white" strokeWidth="2"
+                strokeDasharray="55 502" strokeDashoffset="-150" transform="rotate(-90 100 100)" />
+              <circle cx="100" cy="100" r="80" fill="#f59e0b" stroke="white" strokeWidth="2"
+                strokeDasharray="40 502" strokeDashoffset="-205" transform="rotate(-90 100 100)" />
+              <circle cx="100" cy="100" r="80" fill="#10b981" stroke="white" strokeWidth="2"
+                strokeDasharray="105 502" strokeDashoffset="-245" transform="rotate(-90 100 100)" />
+              <circle cx="100" cy="100" r="80" fill="#ef4444" stroke="white" strokeWidth="2"
+                strokeDasharray="50 502" strokeDashoffset="-350" transform="rotate(-90 100 100)" />
+              <circle cx="100" cy="100" r="80" fill="#6b7280" stroke="white" strokeWidth="2"
+                strokeDasharray="25 502" strokeDashoffset="-400" transform="rotate(-90 100 100)" />
+            </svg>
+            <div className="pie-chart-labels">
+              <div className="pie-label"><span className="pie-dot" style={{background: '#3b82f6'}}></span>Food & Dining 30%</div>
+              <div className="pie-label"><span className="pie-dot" style={{background: '#8b5cf6'}}></span>Transportation 16%</div>
+              <div className="pie-label"><span className="pie-dot" style={{background: '#ec4899'}}></span>Entertainment 11%</div>
+              <div className="pie-label"><span className="pie-dot" style={{background: '#f59e0b'}}></span>Utilities 8%</div>
+              <div className="pie-label"><span className="pie-dot" style={{background: '#10b981'}}></span>Shopping 21%</div>
+              <div className="pie-label"><span className="pie-dot" style={{background: '#ef4444'}}></span>Health 10%</div>
+              <div className="pie-label"><span className="pie-dot" style={{background: '#6b7280'}}></span>Other 5%</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Monthly Savings Trend */}
+        <div className="chart-section-medium">
+          <div className="chart-header">
+            <h3 className="chart-title">Monthly Savings Trend</h3>
+          </div>
+          <div className="bar-chart-simple">
+            {['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan'].map((month, i) => {
+              const heights = [70, 85, 75, 75, 60, 85, 75];
+              return (
+                <div key={month} className="bar-wrapper">
+                  <div className="bar-blue" style={{height: `${heights[i]}%`}}></div>
+                  <div className="bar-label">{month}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Daily Spending Pattern */}
+        <div className="chart-section-medium">
+          <div className="chart-header">
+            <h3 className="chart-title">Daily Spending Pattern</h3>
+          </div>
+          <div className="bar-chart-simple">
+            {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, i) => {
+              const heights = [45, 35, 65, 50, 70, 90, 55];
+              return (
+                <div key={day} className="bar-wrapper">
+                  <div className="bar-purple" style={{height: `${heights[i]}%`}}></div>
+                  <div className="bar-label">{day}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Financial Insights */}
+      <div className="insights-section-full">
+        <h3 className="section-title-simple">Financial Insights</h3>
+        <div className="insights-grid-full">
+          <div className="insight-card-full green">
+            <div className="insight-icon-full">
+              <TrendingUp size={24} />
+            </div>
+            <div className="insight-content-full">
+              <h4 className="insight-title">Positive Trend</h4>
+              <p className="insight-text">Your savings rate has increased by 8% compared to last period. Keep up the good work!</p>
+            </div>
+          </div>
+
+          <div className="insight-card-full yellow">
+            <div className="insight-icon-full">
+              <TrendingDown size={24} />
+            </div>
+            <div className="insight-content-full">
+              <h4 className="insight-title">Spending Alert</h4>
+              <p className="insight-text">Food & Dining spending is 25% higher than your average. Consider reducing dining out.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+};
+
+export default AnalyticsView;
+```
+
+**src/components/views/AnalyticsView/AnalyticsView.css:** - I'll continue in the next response due to length limits.

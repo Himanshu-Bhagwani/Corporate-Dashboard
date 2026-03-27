@@ -1,0 +1,430 @@
+import React, { useState, useMemo } from 'react';
+import './InvoicesView.css';
+import EmbeddedHeader from '../../layout/EmbeddedHeader/EmbeddedHeader';
+import { FileText, PlusCircle, Eye, Pencil, ArrowUpDown, X, DollarSign, CheckCircle, Clock, AlertTriangle } from 'lucide-react';
+
+const InvoicesView = ({
+  invoices,
+  loading,
+  onCreateInvoice,
+  onUpdateInvoice,
+  setActiveView,
+}) => {
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState(null);
+  const [sortField, setSortField] = useState('due_date');
+  const [sortDir, setSortDir] = useState('desc');
+
+  // --- Stats ---
+  const stats = useMemo(() => {
+    const total = invoices.reduce((s, i) => s + parseFloat(i.amount || 0), 0);
+    const paid = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + parseFloat(i.amount || 0), 0);
+    const pending = invoices.filter(i => i.status === 'pending').reduce((s, i) => s + parseFloat(i.amount || 0), 0);
+    const overdue = invoices.filter(i => i.status === 'overdue').reduce((s, i) => s + parseFloat(i.amount || 0), 0);
+    return { total, paid, pending, overdue };
+  }, [invoices]);
+
+  // --- Sorting: paid invoices always at bottom ---
+  const sortedInvoices = useMemo(() => {
+    const copy = [...invoices];
+    copy.sort((a, b) => {
+      if (a.status === 'paid' && b.status !== 'paid') return 1;
+      if (a.status !== 'paid' && b.status === 'paid') return -1;
+
+      let valA, valB;
+      if (sortField === 'amount') {
+        valA = parseFloat(a.amount);
+        valB = parseFloat(b.amount);
+      } else if (sortField === 'invoice_number') {
+        valA = a.invoice_number;
+        valB = b.invoice_number;
+      } else if (sortField === 'client_name') {
+        valA = (a.client_name || '').toLowerCase();
+        valB = (b.client_name || '').toLowerCase();
+      } else if (sortField === 'issue_date') {
+        valA = a.issue_date || '';
+        valB = b.issue_date || '';
+      } else {
+        valA = a.due_date || '';
+        valB = b.due_date || '';
+      }
+      if (valA < valB) return sortDir === 'asc' ? -1 : 1;
+      if (valA > valB) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return copy;
+  }, [invoices, sortField, sortDir]);
+
+  const toggleSort = (field) => {
+    if (sortField === field) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDir('desc');
+    }
+  };
+
+  const formatDate = (d) => {
+    if (!d) return '-';
+    const [y, m, day] = d.split('-');
+    return `${day} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(m)-1]} ${y}`;
+  };
+
+  const formatAmount = (amt) => {
+    return '₹' + parseFloat(amt).toLocaleString('en-IN');
+  };
+
+  const statusBadge = (status) => {
+    const cls = status === 'paid' ? 'badge-paid' :
+                status === 'pending' ? 'badge-pending' :
+                'badge-overdue';
+    return <span className={`invoice-status-badge ${cls}`}>{status.charAt(0).toUpperCase() + status.slice(1)}</span>;
+  };
+
+  // --- Create Invoice Modal ---
+  const CreateInvoiceModal = () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const [form, setForm] = useState({
+      client_name: '',
+      amount: '',
+      issue_date: today,
+      due_date: '',
+      notes: '',
+    });
+    const [error, setError] = useState('');
+    const [submitting, setSubmitting] = useState(false);
+
+    const handleSubmit = async () => {
+      if (!form.client_name.trim()) return setError('Client Name is required.');
+      if (!form.amount || parseFloat(form.amount) <= 0) return setError('Valid amount is required.');
+      if (!form.issue_date) return setError('Issue date is required.');
+      if (!form.due_date) return setError('Due date is required.');
+
+      setSubmitting(true);
+      setError('');
+      try {
+        await onCreateInvoice({
+          client_name: form.client_name.trim(),
+          amount: parseFloat(form.amount),
+          issue_date: form.issue_date,
+          due_date: form.due_date,
+          notes: form.notes.trim() || null,
+          type: 'receivable',
+        });
+        setShowCreateModal(false);
+      } catch (err) {
+        setError('Failed to create invoice.');
+      } finally {
+        setSubmitting(false);
+      }
+    };
+
+    return (
+      <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
+        <div className="invoice-modal" onClick={e => e.stopPropagation()}>
+          <div className="invoice-modal-header">
+            <h2>Create New Invoice</h2>
+            <button className="invoice-modal-close" onClick={() => setShowCreateModal(false)}><X size={20} /></button>
+          </div>
+          <div className="invoice-modal-body">
+            {error && <div className="invoice-modal-error">{error}</div>}
+            <div className="invoice-form-group">
+              <label>Client Name <span className="req">*</span></label>
+              <input type="text" value={form.client_name} onChange={e => setForm({...form, client_name: e.target.value})} placeholder="Enter client name" />
+            </div>
+            <div className="invoice-form-group">
+              <label>Amount (₹) <span className="req">*</span></label>
+              <input type="number" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} placeholder="0.00" min="0" step="0.01" />
+            </div>
+            <div className="invoice-form-group">
+              <label>Issue Date <span className="req">*</span></label>
+              <input type="date" value={form.issue_date} onChange={e => setForm({...form, issue_date: e.target.value})} />
+            </div>
+            <div className="invoice-form-group">
+              <label>Due Date <span className="req">*</span></label>
+              <input type="date" value={form.due_date} onChange={e => setForm({...form, due_date: e.target.value})} />
+            </div>
+            <div className="invoice-form-group">
+              <label>Notes</label>
+              <textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} placeholder="Add notes or description..." rows="3" />
+            </div>
+          </div>
+          <div className="invoice-modal-footer">
+            <button className="btn-cancel" onClick={() => setShowCreateModal(false)}>Cancel</button>
+            <button className="btn-create" onClick={handleSubmit} disabled={submitting}>
+              {submitting ? 'Creating...' : 'Create Invoice'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // --- Edit Invoice Modal ---
+  const EditInvoiceModal = () => {
+    const inv = selectedInvoice;
+    const [form, setForm] = useState({
+      client_name: inv?.client_name || '',
+      amount: inv?.amount || '',
+      issue_date: inv?.issue_date || '',
+      due_date: inv?.due_date || '',
+      notes: inv?.notes || '',
+      status: inv?.status || 'pending',
+    });
+    const [error, setError] = useState('');
+    const [submitting, setSubmitting] = useState(false);
+
+    const handleSubmit = async () => {
+      if (!form.client_name.trim()) return setError('Client Name is required.');
+      if (!form.amount || parseFloat(form.amount) <= 0) return setError('Valid amount is required.');
+      if (!form.issue_date) return setError('Issue date is required.');
+      if (!form.due_date) return setError('Due date is required.');
+
+      setSubmitting(true);
+      setError('');
+      try {
+        await onUpdateInvoice(inv.id, {
+          client_name: form.client_name.trim(),
+          amount: parseFloat(form.amount),
+          issue_date: form.issue_date,
+          due_date: form.due_date,
+          notes: form.notes.trim() || null,
+          status: form.status,
+        });
+        setShowEditModal(false);
+        setSelectedInvoice(null);
+      } catch (err) {
+        setError('Failed to update invoice.');
+      } finally {
+        setSubmitting(false);
+      }
+    };
+
+    return (
+      <div className="modal-overlay" onClick={() => { setShowEditModal(false); setSelectedInvoice(null); }}>
+        <div className="invoice-modal" onClick={e => e.stopPropagation()}>
+          <div className="invoice-modal-header">
+            <h2>Edit Invoice</h2>
+            <button className="invoice-modal-close" onClick={() => { setShowEditModal(false); setSelectedInvoice(null); }}><X size={20} /></button>
+          </div>
+          <div className="invoice-modal-body">
+            {error && <div className="invoice-modal-error">{error}</div>}
+            <div className="invoice-form-group">
+              <label>Client Name <span className="req">*</span></label>
+              <input type="text" value={form.client_name} onChange={e => setForm({...form, client_name: e.target.value})} />
+            </div>
+            <div className="invoice-form-group">
+              <label>Amount (₹) <span className="req">*</span></label>
+              <input type="number" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} min="0" step="0.01" />
+            </div>
+            <div className="invoice-form-group">
+              <label>Issue Date <span className="req">*</span></label>
+              <input type="date" value={form.issue_date} onChange={e => setForm({...form, issue_date: e.target.value})} />
+            </div>
+            <div className="invoice-form-group">
+              <label>Due Date <span className="req">*</span></label>
+              <input type="date" value={form.due_date} onChange={e => setForm({...form, due_date: e.target.value})} />
+            </div>
+            <div className="invoice-form-group">
+              <label>Status</label>
+              <select value={form.status} onChange={e => setForm({...form, status: e.target.value})}>
+                <option value="pending">Pending</option>
+                <option value="paid">Paid</option>
+                <option value="overdue">Overdue</option>
+              </select>
+            </div>
+            <div className="invoice-form-group">
+              <label>Notes</label>
+              <textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} placeholder="Add notes or description..." rows="3" />
+            </div>
+          </div>
+          <div className="invoice-modal-footer">
+            <button className="btn-cancel" onClick={() => { setShowEditModal(false); setSelectedInvoice(null); }}>Cancel</button>
+            <button className="btn-create" onClick={handleSubmit} disabled={submitting}>
+              {submitting ? 'Updating...' : 'Update Invoice'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // --- View Invoice Modal ---
+  const ViewInvoiceModal = () => {
+    const inv = selectedInvoice;
+    return (
+      <div className="modal-overlay" onClick={() => { setShowViewModal(false); setSelectedInvoice(null); }}>
+        <div className="invoice-modal" onClick={e => e.stopPropagation()}>
+          <div className="invoice-modal-header">
+            <h2>Invoice Details — {inv?.invoice_number}</h2>
+            <button className="invoice-modal-close" onClick={() => { setShowViewModal(false); setSelectedInvoice(null); }}><X size={20} /></button>
+          </div>
+          <div className="invoice-modal-body">
+            <div className="invoice-detail-row">
+              <span className="detail-label">Client</span>
+              <span className="detail-value">{inv?.client_name}</span>
+            </div>
+            <div className="invoice-detail-row">
+              <span className="detail-label">Amount</span>
+              <span className="detail-value">{formatAmount(inv?.amount)}</span>
+            </div>
+            <div className="invoice-detail-row">
+              <span className="detail-label">Issue Date</span>
+              <span className="detail-value">{formatDate(inv?.issue_date)}</span>
+            </div>
+            <div className="invoice-detail-row">
+              <span className="detail-label">Due Date</span>
+              <span className="detail-value">{formatDate(inv?.due_date)}</span>
+            </div>
+            <div className="invoice-detail-row">
+              <span className="detail-label">Status</span>
+              <span className="detail-value">{statusBadge(inv?.status)}</span>
+            </div>
+            {inv?.notes && (
+              <div className="invoice-detail-row">
+                <span className="detail-label">Notes</span>
+                <span className="detail-value">{inv.notes}</span>
+              </div>
+            )}
+          </div>
+          <div className="invoice-modal-footer">
+            <button className="btn-cancel" onClick={() => { setShowViewModal(false); setSelectedInvoice(null); }}>Close</button>
+            <button className="btn-create" onClick={() => {
+              setShowViewModal(false);
+              setShowEditModal(true);
+            }}>Edit Invoice</button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <>
+      <EmbeddedHeader />
+      <div className="view-header">
+        <div>
+          <h1 className="view-title">Invoices</h1>
+          <p className="view-subtitle">Create and manage client invoices</p>
+        </div>
+        <button className="btn-primary btn-add-short" onClick={() => setShowCreateModal(true)}>
+          <PlusCircle size={18} />
+          Create Invoice
+        </button>
+      </div>
+
+      {/* Stats Cards — same design as Transactions stats */}
+      <div className="stats-grid-4">
+        <div className="stat-card-simple">
+          <div className="stat-icon-wrapper-small blue"><DollarSign size={18} /></div>
+          <div className="stat-content-simple">
+            <div className="stat-label-simple">Total Invoiced</div>
+            <div className="stat-value-simple">{formatAmount(stats.total)}</div>
+          </div>
+        </div>
+        <div className="stat-card-simple">
+          <div className="stat-icon-wrapper-small green"><CheckCircle size={18} /></div>
+          <div className="stat-content-simple">
+            <div className="stat-label-simple">Paid</div>
+            <div className="stat-value-simple green">{formatAmount(stats.paid)}</div>
+          </div>
+        </div>
+        <div className="stat-card-simple">
+          <div className="stat-icon-wrapper-small orange"><Clock size={18} /></div>
+          <div className="stat-content-simple">
+            <div className="stat-label-simple">Pending</div>
+            <div className="stat-value-simple orange">{formatAmount(stats.pending)}</div>
+          </div>
+        </div>
+        <div className="stat-card-simple">
+          <div className="stat-icon-wrapper-small red"><AlertTriangle size={18} /></div>
+          <div className="stat-content-simple">
+            <div className="stat-label-simple">Overdue</div>
+            <div className="stat-value-simple red">{formatAmount(stats.overdue)}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Loading State */}
+      {loading && <div className="state-message">Loading invoices...</div>}
+
+      {/* Invoices Table */}
+      {!loading && (
+        <div className="table-container">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th onClick={() => toggleSort('invoice_number')} style={{ cursor: 'pointer' }}>
+                  INVOICE # <ArrowUpDown size={12} style={{ verticalAlign: 'middle', marginLeft: 4, opacity: 0.5 }} />
+                </th>
+                <th onClick={() => toggleSort('client_name')} style={{ cursor: 'pointer' }}>
+                  CLIENT NAME <ArrowUpDown size={12} style={{ verticalAlign: 'middle', marginLeft: 4, opacity: 0.5 }} />
+                </th>
+                <th onClick={() => toggleSort('amount')} style={{ cursor: 'pointer' }}>
+                  AMOUNT <ArrowUpDown size={12} style={{ verticalAlign: 'middle', marginLeft: 4, opacity: 0.5 }} />
+                </th>
+                <th onClick={() => toggleSort('issue_date')} style={{ cursor: 'pointer' }}>
+                  ISSUE DATE <ArrowUpDown size={12} style={{ verticalAlign: 'middle', marginLeft: 4, opacity: 0.5 }} />
+                </th>
+                <th onClick={() => toggleSort('due_date')} style={{ cursor: 'pointer' }}>
+                  DUE DATE <ArrowUpDown size={12} style={{ verticalAlign: 'middle', marginLeft: 4, opacity: 0.5 }} />
+                </th>
+                <th>STATUS</th>
+                <th>ACTIONS</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedInvoices.length === 0 ? (
+                <tr>
+                  <td colSpan="7" className="empty-table-message">
+                    No invoices found. Create one to get started!
+                  </td>
+                </tr>
+              ) : (
+                sortedInvoices.map(invoice => (
+                  <tr key={invoice.id} className={invoice.status === 'paid' ? 'row-paid' : ''}>
+                    <td><span className="table-main-text" style={{ fontWeight: 600 }}>{invoice.invoice_number}</span></td>
+                    <td><span className="table-secondary-text" style={{ color: '#4F46E5', fontWeight: 500 }}>{invoice.client_name}</span></td>
+                    <td><span className="table-main-text" style={{ fontWeight: 600 }}>{formatAmount(invoice.amount)}</span></td>
+                    <td><span className="table-secondary-text">{formatDate(invoice.issue_date)}</span></td>
+                    <td><span className="table-secondary-text">{formatDate(invoice.due_date)}</span></td>
+                    <td>{statusBadge(invoice.status)}</td>
+                    <td>
+                      <div className="action-buttons">
+                        <button
+                          className="action-btn edit"
+                          title="View"
+                          onClick={() => { setSelectedInvoice(invoice); setShowViewModal(true); }}
+                        >
+                          <Eye size={16} />
+                        </button>
+                        <button
+                          className="action-btn edit"
+                          title="Edit"
+                          onClick={() => { setSelectedInvoice(invoice); setShowEditModal(true); }}
+                        >
+                          <Pencil size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+          <div className="invoice-table-footer">
+            Showing {sortedInvoices.length} invoice{sortedInvoices.length !== 1 ? 's' : ''}
+          </div>
+        </div>
+      )}
+
+      {showCreateModal && <CreateInvoiceModal />}
+      {showEditModal && selectedInvoice && <EditInvoiceModal />}
+      {showViewModal && selectedInvoice && <ViewInvoiceModal />}
+    </>
+  );
+};
+
+export default InvoicesView;
