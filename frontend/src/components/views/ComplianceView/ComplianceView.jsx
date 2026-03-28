@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import EmbeddedHeader from '../../layout/EmbeddedHeader/EmbeddedHeader';
+import ComplianceDashboard from '../../Compliance/ComplianceDashboard';
 import './ComplianceView.css';
 
 const TABS = ['overview', 'gst', 'incomeTax', 'roc', 'payroll', 'documents', 'notices', 'calendar'];
@@ -28,10 +29,28 @@ const statusClass = (status) => {
   return 'warn';
 };
 
-const ComplianceView = ({ compliance = [], invoices = [], onMarkFiled }) => {
+const ComplianceView = ({ compliance = [], invoices = [], onMarkFiled, onRunAIAudit, backendScore }) => {
   const [activeTab, setActiveTab] = useState('overview');
   const [calendarCursor, setCalendarCursor] = useState(new Date());
   const [documentCategory, setDocumentCategory] = useState('All');
+  
+  const [aiReport, setAiReport] = useState(null);
+  const [isAuditing, setIsAuditing] = useState(false);
+
+  const handleRunAudit = async () => {
+    if (!onRunAIAudit) return;
+    setIsAuditing(true);
+    try {
+      const res = await onRunAIAudit();
+      setAiReport(res.strategyHtml || '<p>Audit completed but no strategy returned.</p>');
+    } catch (err) {
+      console.error(err);
+      setAiReport('<p style="color:#ef4444;">Failed to generate AI Audit. Ensure the Ollama backend is running.</p>');
+    } finally {
+      setIsAuditing(false);
+    }
+  };
+
   const [documents, setDocuments] = useState([
     { id: 1, name: 'GST Registration Certificate', category: 'GST', uploadDate: '2025-04-01', expiryDate: '', size: '245 KB' },
     { id: 2, name: 'PAN Card', category: 'Income Tax', uploadDate: '2025-04-01', expiryDate: '', size: '180 KB' },
@@ -132,7 +151,9 @@ const ComplianceView = ({ compliance = [], invoices = [], onMarkFiled }) => {
     const filed = processedRiskAlerts.filter((d) => d.status === 'Filed').length;
     const pending = processedRiskAlerts.filter((d) => d.status === 'Pending').length;
     const overdue = processedRiskAlerts.filter((d) => d.status === 'Overdue').length;
-    const score = total > 0 ? Math.round((filed / total) * 100) : 0;
+    // Score reflects what's visible on screen: penalize overdue heavily, pending moderately
+    let score = 100 - (15 * overdue) - (3 * pending);
+    if (score < 0) score = 0;
     const upcoming30 = processedRiskAlerts.filter((d) => d.status === 'Pending').filter((d) => {
       const due = d.dueDate ? new Date(d.dueDate) : null;
       if (!due) return false;
@@ -280,6 +301,50 @@ const ComplianceView = ({ compliance = [], invoices = [], onMarkFiled }) => {
             );
           })}
         </div>
+      </div>
+
+      {/* AI Risk Coach Card */}
+      <div className="dashboard-section" style={{ marginTop: '2rem', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1.5rem', background: 'linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'linear-gradient(135deg, #6366f1, #4f46e5)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', flexShrink: 0 }}>
+              🪄
+            </div>
+            <div>
+              <h4 style={{ fontSize: '16px', fontWeight: 700, color: '#1a202c', margin: 0 }}>AI Risk & Compliance Coach</h4>
+              <p style={{ fontSize: '13px', color: '#718096', margin: '2px 0 0 0' }}>Get a personalized, real-time remediation strategy based on your filing history.</p>
+            </div>
+          </div>
+          <button 
+            onClick={handleRunAudit}
+            disabled={isAuditing}
+            style={{
+              padding: '10px 24px',
+              borderRadius: '8px',
+              border: 'none',
+              background: isAuditing ? '#94a3b8' : 'linear-gradient(135deg, #6366f1, #4f46e5)',
+              color: '#fff',
+              fontSize: '14px',
+              fontWeight: 600,
+              cursor: isAuditing ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              whiteSpace: 'nowrap',
+              boxShadow: '0 2px 8px rgba(99, 102, 241, 0.3)',
+              transition: 'all 0.2s ease',
+            }}
+          >
+            {isAuditing ? '⏳ Analyzing...' : '🛡️ Run Compliance Audit'}
+          </button>
+        </div>
+        
+        {aiReport && (
+          <div 
+            style={{ padding: '1.25rem', background: '#fff', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '14px', lineHeight: '1.7', color: '#334155', marginTop: '1.25rem', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}
+            dangerouslySetInnerHTML={{ __html: aiReport }}
+          />
+        )}
       </div>
 
       <div className="table-container" style={{ marginTop: '2rem' }}>

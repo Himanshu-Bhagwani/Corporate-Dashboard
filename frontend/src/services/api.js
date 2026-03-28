@@ -201,3 +201,39 @@ export const complianceAPI = {
     return response.json();
   },
 };
+
+export const aiAPI = {
+  categorize: async (transactionIds, companyId) => {
+    const response = await fetch(`${BASE_URL}/ai/categorize`, {
+      method: 'POST',
+      headers: getHeaders(companyId),
+      body: JSON.stringify({ transactionIds }),
+    });
+    if (!response.ok) throw new Error('Failed to run AI categorization');
+    return response.json();
+  },
+  complianceReview: async (companyId) => {
+    const response = await fetch(`${BASE_URL}/ai/compliance-review`, {
+      method: 'POST',
+      headers: getHeaders(companyId)
+    });
+    if (!response.ok) throw new Error('Failed to run AI compliance review');
+    return response.json();
+  },
+  parseOCR: async (file, companyId) => {
+    const formData = new FormData();
+    formData.append('invoice', file);
+
+    // Browser must set the boundary header automatically for multipart parsing
+    const headers = getHeaders(companyId);
+    delete headers['Content-Type'];
+
+    const response = await fetch(`${BASE_URL}/ai/ocr-invoice`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+    if (!response.ok) throw new Error('Failed to run AI OCR extraction');
+    return response.json();
+  }
+};

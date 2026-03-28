@@ -238,17 +238,33 @@ const uploadCSV = async (req, res) => {
       stream
         .pipe(csvParser())
         .on('data', (row) => {
-          // Map CSV columns — flexible column name matching
-          const name = row.Name || row.Description || row.name || row.description || 'Unnamed';
-          const amountRaw = parseFloat(row.Amount || row.amount || 0);
-          const type = (row.Type || row.type || (amountRaw >= 0 ? 'income' : 'expense')).toLowerCase();
-          const category = row.Category || row.category || 'Misc';
-          const date = row.Date || row.date || new Date().toISOString().slice(0, 10);
-          const notes = row.Notes || row.notes || '';
+          // Normalize column headers
+          const getVal = (keys) => {
+            const matchedKey = Object.keys(row).find(k => keys.includes(k.trim().toLowerCase()));
+            return matchedKey ? row[matchedKey] : undefined;
+          };
+
+          const name = getVal(['name', 'description', 'particulars', 'title']) || 'Unnamed';
+          const amountRaw = parseFloat(getVal(['amount', 'value', 'total', 'price']) || 0);
+          const typeInput = (getVal(['type', 'transactiontype', 'category']) || '').toLowerCase().trim();
+
+          let parsedType = 'expense';
+          if (['income', 'credit', 'deposit', 'cr', 'in', 'sale'].includes(typeInput)) {
+            parsedType = 'income';
+          } else if (['expense', 'debit', 'withdrawal', 'dr', 'out', 'purchase'].includes(typeInput)) {
+            parsedType = 'expense';
+          } else {
+            // Fallback to value sign
+            parsedType = amountRaw >= 0 ? 'income' : 'expense';
+          }
+
+          const category = getVal(['category', 'group']) || 'Misc';
+          const date = getVal(['date', 'time', 'created']) || new Date().toISOString().slice(0, 10);
+          const notes = getVal(['notes', 'memo', 'reference']) || '';
 
           results.push({
             name,
-            type: type === 'income' ? 'income' : 'expense',
+            type: parsedType,
             category,
             amount: Math.abs(amountRaw),
             date,

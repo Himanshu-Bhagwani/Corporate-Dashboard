@@ -16,11 +16,12 @@
 
 1. Run: docker-compose up --build
 
-2. Wait 1-2 minutes for services to start
-   Look for this message in logs:
+2. Wait 2-3 minutes for all services to start
+   Look for these messages in logs:
    "✅ Demo setup completed successfully!"
+   "llama runner started in X seconds" (Ollama AI model)
 
-3. Open: http://localhost:3000
+3. Open: http://localhost:3001
 
 4. Login with credentials above
 
@@ -37,6 +38,23 @@
 ✓ Global Search Functionality
 ✓ Multi-company Support
 ✓ Secure Authentication
+
+── AI-Powered Features (Local Ollama - llama3.2:1b) ──────────
+
+✓ 🪄 AI Auto-Categorization (Transactions → Smart Categories)
+✓ 🛡️ AI Compliance & Tax Optimizer (Risk Audit Coach)
+✓ 📊 AI Executive Narrative in PDF/Excel Reports (Toggle)
+✓ 📸 Receipt & Invoice OCR Scanner (Tesseract.js + Ollama)
+
+
+╔══════════════════════════════════════════════════════════════╗
+║                    SERVICE PORTS                             ║
+╚══════════════════════════════════════════════════════════════╝
+
+Frontend (Nginx):   http://localhost:3001
+Backend (Express):  http://localhost:5001
+Database (Postgres): localhost:5434
+Ollama LLM:         http://localhost:11434
 
 
 ╔══════════════════════════════════════════════════════════════╗
@@ -64,6 +82,13 @@ Problem: Login doesn't work
 Solution: 1. Wait 30 seconds after "docker-compose up"
           2. Check logs: docker-compose logs backend
           3. Look for: "✅ Demo setup completed successfully!"
+
+Problem: AI features show "Failed" / timeout
+Solution: 1. Ensure Ollama container is running:
+             docker-compose logs soda_ollama
+          2. Look for: "llama runner started"
+          3. The model (~1.3 GB) needs to download on first run
+          4. Ensure Docker has at least 4 GB RAM allocated
 
 Problem: Still not working
 Solution: Fresh start:

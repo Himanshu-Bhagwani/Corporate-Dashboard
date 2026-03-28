@@ -132,11 +132,18 @@ const DashboardView = ({
 
   // === REVENUE VS EXPENSES CHART — computed from transactions prop ===
   const revenueExpensesData = useMemo(() => {
+    let anchorDate = new Date();
+    if (transactions.length > 0) {
+      const validDates = transactions.map(t => t.date).filter(Boolean).sort();
+      if (validDates.length > 0) {
+        anchorDate = new Date(validDates[validDates.length - 1]);
+      }
+    }
+
     const monthlyData = {};
-    const now = new Date();
     // Initialize months
     for (let i = revenueTimeframe - 1; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const d = new Date(anchorDate.getFullYear(), anchorDate.getMonth() - i, 1);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       const label = d.toLocaleString('default', { month: 'short', year: '2-digit' });
       monthlyData[key] = { name: label, revenue: 0, expenses: 0 };
@@ -165,10 +172,17 @@ const DashboardView = ({
 
   // === CASH FLOW — computed from transactions prop ===
   const cashFlowData = useMemo(() => {
+    let anchorDate = new Date();
+    if (transactions.length > 0) {
+      const validDates = transactions.map(t => t.date).filter(Boolean).sort();
+      if (validDates.length > 0) {
+        anchorDate = new Date(validDates[validDates.length - 1]);
+      }
+    }
+
     const monthlyData = {};
-    const now = new Date();
     for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const d = new Date(anchorDate.getFullYear(), anchorDate.getMonth() - i, 1);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       const label = d.toLocaleString('default', { month: 'short' });
       monthlyData[key] = { name: label, inflow: 0, outflow: 0, net: 0 };
