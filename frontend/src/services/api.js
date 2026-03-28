@@ -212,10 +212,11 @@ export const aiAPI = {
     if (!response.ok) throw new Error('Failed to run AI categorization');
     return response.json();
   },
-  complianceReview: async (companyId) => {
+  complianceReview: async (companyId, visibleScore, pendingCount, overdueCount) => {
     const response = await fetch(`${BASE_URL}/ai/compliance-review`, {
       method: 'POST',
-      headers: getHeaders(companyId)
+      headers: getHeaders(companyId),
+      body: JSON.stringify({ visibleScore, pendingCount, overdueCount })
     });
     if (!response.ok) throw new Error('Failed to run AI compliance review');
     return response.json();

@@ -81,7 +81,10 @@ const complianceReview = async (req, res) => {
     const companyId = req.headers['x-company-id'];
     if (!companyId) return res.status(400).json({ error: 'Company ID required' });
 
-    // Fetch compliance records
+    // Use the score visible on the frontend (passed from the overview tab)
+    const { visibleScore, pendingCount, overdueCount } = req.body || {};
+
+    // Fetch compliance records from DB for context
     const eventsQuery = await pool.query(
       `SELECT title, type, TO_CHAR(due_date, 'YYYY-MM-DD') as due_date, status, payment_status 
        FROM compliance_events 
@@ -91,18 +94,24 @@ const complianceReview = async (req, res) => {
     );
     const events = eventsQuery.rows;
 
-    const scoreQuery = await pool.query(
-      `SELECT score FROM compliance_scores WHERE company_id = $1`,
-      [companyId]
-    );
-    const score = scoreQuery.rows.length > 0 ? scoreQuery.rows[0].score : 'N/A';
+    // Use the frontend-visible score; fallback to DB if not provided
+    let score = visibleScore;
+    if (score == null) {
+      const scoreQuery = await pool.query(
+        `SELECT score FROM compliance_scores WHERE company_id = $1`,
+        [companyId]
+      );
+      score = scoreQuery.rows.length > 0 ? scoreQuery.rows[0].score : 'N/A';
+    }
 
     const systemPrompt = `You are an expert Corporate Compliance & Tax Coach. You analyze a company's recent filing history and output actionable advice to improve their Risk Score.
 Your output must be formatted as raw HTML (e.g. <h3>, <p>, <ul>, <li>). Do NOT use Markdown. Do NOT include \`\`\`html code blocks. Keep it concise (max 3 short paragraphs or bullets).`;
 
     const prompt = `Here is the company's data:
 Current Compliance Score: ${score}/100
-Recent Filings: 
+Pending Filings: ${pendingCount != null ? pendingCount : 'unknown'}
+Overdue Filings: ${overdueCount != null ? overdueCount : 'unknown'}
+Recent Filings from Database: 
 ${JSON.stringify(events, null, 2)}
 
 Please provide a short HTML formatted risk analysis and 3-step action plan to optimize compliance.`;

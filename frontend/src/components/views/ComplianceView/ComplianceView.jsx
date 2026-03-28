@@ -41,7 +41,7 @@ const ComplianceView = ({ compliance = [], invoices = [], onMarkFiled, onRunAIAu
     if (!onRunAIAudit) return;
     setIsAuditing(true);
     try {
-      const res = await onRunAIAudit();
+      const res = await onRunAIAudit(overviewStats.score, overviewStats.pending, overviewStats.overdue);
       setAiReport(res.strategyHtml || '<p>Audit completed but no strategy returned.</p>');
     } catch (err) {
       console.error(err);

@@ -239,9 +239,9 @@ const MainLayout = () => {
     }
   };
 
-  const handleRunAIAudit = async () => {
+  const handleRunAIAudit = async (visibleScore, pendingCount, overdueCount) => {
     try {
-      const result = await aiAPI.complianceReview(currentCompany.id);
+      const result = await aiAPI.complianceReview(currentCompany.id, visibleScore, pendingCount, overdueCount);
       return result;
     } catch (err) {
       console.error('AI Compliance Review Failed:', err);
