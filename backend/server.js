@@ -11,6 +11,8 @@ const searchRoutes = require('./routes/search');
 const dashboardRoutes = require('./routes/dashboard');
 const invoiceRoutes = require('./routes/invoices');
 const complianceRoutes = require('./routes/compliance');
+const reportsRoutes = require('./routes/reports');
+const aiRoutes = require('./routes/ai');
 const app = express();
 
 // Middleware
@@ -45,6 +47,8 @@ app.use('/api/search', searchRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/compliance', complianceRoutes);
+app.use('/api/reports', reportsRoutes);
+app.use('/api/ai', aiRoutes);
 app.get('/', (req, res) => {
   res.send('Backend is running');
 });

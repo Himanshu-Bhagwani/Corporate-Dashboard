@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import './InvoicesView.css';
 import EmbeddedHeader from '../../layout/EmbeddedHeader/EmbeddedHeader';
-import { FileText, PlusCircle, Eye, Pencil, ArrowUpDown, X, DollarSign, CheckCircle, Clock, AlertTriangle } from 'lucide-react';
+import { FileText, PlusCircle, Eye, Pencil, ArrowUpDown, X, DollarSign, CheckCircle, Clock, AlertTriangle, Upload } from 'lucide-react';
 
 const InvoicesView = ({
   invoices,
@@ -9,6 +9,7 @@ const InvoicesView = ({
   onCreateInvoice,
   onUpdateInvoice,
   setActiveView,
+  onParseOCR,
 }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -95,6 +96,32 @@ const InvoicesView = ({
     });
     const [error, setError] = useState('');
     const [submitting, setSubmitting] = useState(false);
+    
+    const [isScanning, setIsScanning] = useState(false);
+    const [scanError, setScanError] = useState('');
+
+    const handleFileScan = async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      if (!file.type.startsWith('image/')) return setScanError('Please upload a valid image file (JPG, PNG).');
+      
+      setIsScanning(true);
+      setScanError('');
+      try {
+        const extracted = await onParseOCR(file);
+        setForm(prev => ({
+          ...prev,
+          client_name: extracted.payee || prev.client_name,
+          amount: extracted.amount || prev.amount,
+          issue_date: extracted.date || prev.issue_date,
+          notes: extracted.description || prev.notes,
+        }));
+      } catch (err) {
+        setScanError('Failed to parse invoice. Ensure Ollama is running.');
+      } finally {
+        setIsScanning(false);
+      }
+    };
 
     const handleSubmit = async () => {
       if (!form.client_name.trim()) return setError('Client Name is required.');
@@ -129,7 +156,20 @@ const InvoicesView = ({
             <button className="invoice-modal-close" onClick={() => setShowCreateModal(false)}><X size={20} /></button>
           </div>
           <div className="invoice-modal-body">
+            {scanError && <div className="invoice-modal-error">{scanError}</div>}
             {error && <div className="invoice-modal-error">{error}</div>}
+            
+            <div style={{ marginBottom: '1.5rem', padding: '1.25rem', background: 'linear-gradient(to right, #f8fafc, #ffffff)', border: '1px dashed #cbd5e1', borderRadius: '8px', textAlign: 'center' }}>
+              <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', cursor: isScanning ? 'not-allowed' : 'pointer', opacity: isScanning ? 0.6 : 1 }}>
+                <Upload size={24} color="#6366f1" />
+                <span style={{ fontWeight: 600, color: '#334155' }}>
+                  {isScanning ? '🤖 AI is analyzing your receipt...' : '🪄 Auto-fill with AI (Upload Image)'}
+                </span>
+                <span style={{ fontSize: '12px', color: '#64748b' }}>Supports Image Receipts (JPG, PNG)</span>
+                <input type="file" accept="image/*" onChange={handleFileScan} style={{ display: 'none' }} disabled={isScanning} />
+              </label>
+            </div>
+
             <div className="invoice-form-group">
               <label>Client Name <span className="req">*</span></label>
               <input type="text" value={form.client_name} onChange={e => setForm({...form, client_name: e.target.value})} placeholder="Enter client name" />

@@ -13,7 +13,11 @@ import CashFlowView from '../../views/CashFlowView/CashFlowView';
 import ComplianceView from '../../views/ComplianceView/ComplianceView';
 import AddTransactionModal from '../../shared/AddTransactionModal/AddTransactionModal';
 import CreateCompanyModal from '../../company/CreateCompanyModal';
-import { transactionsAPI, accountsAPI, dashboardAPI, invoicesAPI, complianceAPI } from '../../../services/api';
+import { 
+  transactionsAPI, accountsAPI, dashboardAPI, 
+  invoicesAPI, complianceAPI, aiAPI 
+} from '../../../services/api';
+import { getComplianceScore } from '../../../services/complianceService';
 import { useAuth } from '../../../context/AuthContext';
 
 const MainLayout = () => {
@@ -146,17 +150,21 @@ const MainLayout = () => {
   };
 
   // --- Fetch Dashboard Data ---
+  const [complianceScore, setComplianceScore] = useState(null);
+
   const fetchDashboardData = async () => {
     if (!currentCompany) return;
     try {
-      const [summary, invData, compData] = await Promise.all([
+      const [summary, invData, compData, scoreData] = await Promise.all([
         dashboardAPI.getSummary(currentCompany.id),
         invoicesAPI.getAll(currentCompany.id),
         complianceAPI.getAll(currentCompany.id),
+        getComplianceScore(currentCompany.id),
       ]);
       setDashboardSummary(summary);
       setInvoices(invData);
       setCompliance(compData);
+      setComplianceScore(scoreData.score);
     } catch (err) {
       console.error('Failed to load dashboard data:', err);
     }
@@ -215,6 +223,38 @@ const MainLayout = () => {
       fetchDashboardData(); // Dashboard updates with new data
     } catch (err) {
       console.error('Failed to upload CSV:', err);
+      throw err;
+    }
+  };
+
+  const handleAICategorize = async (transactionIds) => {
+    try {
+      const result = await aiAPI.categorize(transactionIds, currentCompany.id);
+      fetchTransactions();
+      fetchDashboardData();
+      return result;
+    } catch (err) {
+      console.error('AI Categorization Failed:', err);
+      throw err;
+    }
+  };
+
+  const handleRunAIAudit = async (visibleScore, pendingCount, overdueCount) => {
+    try {
+      const result = await aiAPI.complianceReview(currentCompany.id, visibleScore, pendingCount, overdueCount);
+      return result;
+    } catch (err) {
+      console.error('AI Compliance Review Failed:', err);
+      throw err;
+    }
+  };
+
+  const handleParseOCR = async (file) => {
+    try {
+      const result = await aiAPI.parseOCR(file, currentCompany.id);
+      return result;
+    } catch (err) {
+      console.error('AI OCR Parsing Failed:', err);
       throw err;
     }
   };
@@ -384,6 +424,7 @@ const MainLayout = () => {
               onUpdate={handleUpdateTransaction}
               onDelete={handleDeleteTransaction}
               onUploadCSV={handleUploadCSV}
+              onAICategorize={handleAICategorize}
               navigateTarget={navigateTarget}
               accounts={accounts}
             />
@@ -411,6 +452,7 @@ const MainLayout = () => {
               onCreateInvoice={handleCreateInvoice}
               onUpdateInvoice={handleUpdateInvoice}
               setActiveView={setActiveView}
+              onParseOCR={handleParseOCR}
             />
           )}
           {activeView === 'cashflow' && (
@@ -424,6 +466,8 @@ const MainLayout = () => {
               compliance={compliance}
               invoices={invoices}
               onMarkFiled={handleMarkFiled}
+              onRunAIAudit={handleRunAIAudit}
+              backendScore={complianceScore}
             />
           )}
         </main>

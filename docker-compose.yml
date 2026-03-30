@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: dashboard_user
       POSTGRES_PASSWORD: dashboard123
     ports:
-      - "5433:5433"
+      - "5434:5433"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -22,7 +22,7 @@ services:
     build: ./backend
     restart: always
     ports:
-      - "5000:5000"
+      - "5001:5000"
     environment:
       DB_USER: dashboard_user
       DB_HOST: db
@@ -42,5 +42,27 @@ services:
     depends_on:
       - backend
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: soda_ollama
+    restart: always
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+  ollama-pull:
+    image: curlimages/curl:latest
+    container_name: soda_ollama_pull
+    command: >
+      sh -c "echo 'Waiting for Ollama API...' && 
+             while ! curl -s http://ollama:11434/api/tags >/dev/null; do sleep 2; done && 
+             echo 'Pulling llama3.2:1b model...' && 
+             curl -X POST http://ollama:11434/api/pull -d '{\"name\": \"llama3.2:1b\"}' && 
+             echo 'Model ready!'"
+    depends_on:
+      - ollama
+
 volumes:
   postgres_data:
+  ollama_data:

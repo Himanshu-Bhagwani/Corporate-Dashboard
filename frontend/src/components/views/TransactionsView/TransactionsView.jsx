@@ -43,6 +43,7 @@ const TransactionsView = ({
   onUpdate,
   onDelete,
   onUploadCSV,
+  onAICategorize,
   navigateTarget,
   accounts = [],
 }) => {
@@ -55,6 +56,7 @@ const TransactionsView = ({
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadStatus, setUploadStatus] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [isCategorizing, setIsCategorizing] = useState(false);
   const fileInputRef = useRef(null);
 
   // --- Inline Edit Handlers ---
@@ -162,6 +164,28 @@ const TransactionsView = ({
     }
   };
 
+  const handleAutoCategorize = async () => {
+    // Collect all 'Misc' or uncategorized transactions
+    const uncategorizedIds = transactions
+      .filter(t => !t.category || t.category === 'Misc' || t.category === 'All Categories')
+      .map(t => t.id);
+
+    if (uncategorizedIds.length === 0) {
+      alert("No uncategorized/Misc transactions found.");
+      return;
+    }
+
+    setIsCategorizing(true);
+    try {
+      const res = await onAICategorize(uncategorizedIds);
+      alert(res.message + ` (${res.updated} updated)`);
+    } catch (err) {
+      alert("Failed to run AI Categorization. Is Ollama running?");
+    } finally {
+      setIsCategorizing(false);
+    }
+  };
+
   // Debounce server search
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -212,6 +236,17 @@ const TransactionsView = ({
           <p className="view-subtitle">Track and manage your corporate income and expenses</p>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <button
+            className="btn-primary btn-add-short"
+            onClick={handleAutoCategorize}
+            disabled={isCategorizing}
+            style={{
+              background: 'linear-gradient(135deg, #a855f7, #7e22ce)',
+              display: 'flex', alignItems: 'center', gap: '6px', opacity: isCategorizing ? 0.7 : 1
+            }}
+          >
+            {isCategorizing ? '🪄 Thinking...' : '🪄 AI Auto-Categorize'}
+          </button>
           <button
             className="btn-primary btn-add-short"
             onClick={() => setShowUploadModal(true)}
@@ -347,7 +382,6 @@ const TransactionsView = ({
           <table className="data-table">
             <thead>
               <tr>
-                <th className="empty-head"></th>
                 <th>TRANSACTION</th>
                 <th>CATEGORY</th>
                 <th>ACCOUNT</th>

@@ -38,16 +38,34 @@ backend/node_modules/
 backend/.env
 backend/.env.local
 
-# Optional build folder (if you ever add one)
+# Optional build folder
 backend/dist/
+
+# Uploaded files (OCR temp)
+backend/uploads/
 
 # =========================
 # IDE / Editor
 # =========================
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
 
 # =========================
 # Docker
 # =========================
 postgres_data/
+
+# =========================
+# Ollama / AI Model Data
+# =========================
+ollama_data/
+*.gguf
+
+# =========================
+# Misc
+# =========================
+.gemini/
+*.DS_Store
