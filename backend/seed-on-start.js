@@ -184,15 +184,15 @@ async function seedCompanyData(companyId) {
   
   // Insert demo compliance filings
   const filings = [
-    ['GST Filing - March 2026', 'GST', '2026-04-20', 'pending'],
-    ['TDS Return - Q4 FY26', 'TDS', '2026-04-30', 'pending'],
-    ['Advance Tax - Q1 FY27', 'Advance Tax', '2026-06-15', 'pending'],
-    ['GST Filing - February 2026', 'GST', '2026-03-20', 'filed'],
+    ['GST Filing - March 2026', 'GST', '2026-04-20', 'PENDING'],
+    ['TDS Return - Q4 FY26', 'TDS', '2026-04-30', 'PENDING'],
+    ['Advance Tax - Q1 FY27', 'INCOME_TAX', '2026-06-15', 'PENDING'],
+    ['GST Filing - February 2026', 'GST', '2026-03-20', 'FILED'],
   ];
   
   for (const filing of filings) {
     await pool.query(
-      `INSERT INTO compliance_filings (company_id, name, type, due_date, status, created_at)
+      `INSERT INTO compliance_events (company_id, title, type, due_date, status, created_at)
        VALUES ($1, $2, $3, $4, $5, NOW())`,
       [companyId, ...filing]
     );

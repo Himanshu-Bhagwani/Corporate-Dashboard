@@ -54,12 +54,14 @@ services:
   ollama-pull:
     image: curlimages/curl:latest
     container_name: soda_ollama_pull
-    command: >
-      sh -c "echo 'Waiting for Ollama API...' && 
-             while ! curl -s http://ollama:11434/api/tags >/dev/null; do sleep 2; done && 
-             echo 'Pulling llama3.2:1b model...' && 
-             curl -X POST http://ollama:11434/api/pull -d '{\"name\": \"llama3.2:1b\"}' && 
-             echo 'Model ready!'"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Waiting for Ollama API..."
+        while ! curl -s http://ollama:11434/api/tags >/dev/null; do sleep 2; done
+        echo "Pulling llama3.2:1b model..."
+        curl -X POST http://ollama:11434/api/pull -d '{"name": "llama3.2:1b"}'
+        echo "Model ready!"
     depends_on:
       - ollama
 

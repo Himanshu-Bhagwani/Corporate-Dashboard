@@ -18,7 +18,8 @@ const CORPORATE_CATEGORIES = [
   'Insurance',
   'Travel',
   'Training',
-  'Maintenance',
+  'Maintainance',
+  'Office supplies',
   'Misc',
 ];
 
@@ -57,6 +58,7 @@ const TransactionsView = ({
   const [uploadStatus, setUploadStatus] = useState('');
   const [uploading, setUploading] = useState(false);
   const [isCategorizing, setIsCategorizing] = useState(false);
+  const [showAllTransactions, setShowAllTransactions] = useState(false);
   const fileInputRef = useRef(null);
 
   // --- Inline Edit Handlers ---
@@ -131,12 +133,14 @@ const TransactionsView = ({
 
   const monthName = calendarMonth.toLocaleString('default', { month: 'long', year: 'numeric' });
 
-  // --- Client side search within already-fetched transactions ---
   const filteredTransactions = transactions.filter(t =>
     t.name?.toLowerCase().includes(localSearch.toLowerCase()) ||
     t.category?.toLowerCase().includes(localSearch.toLowerCase()) ||
     t.account?.toLowerCase().includes(localSearch.toLowerCase())
   );
+  const displayedTransactions = showAllTransactions 
+    ? filteredTransactions 
+    : filteredTransactions.slice(0, 25);
 
   // --- CSV Upload ---
   const handleFileSelect = (e) => {
@@ -391,14 +395,14 @@ const TransactionsView = ({
               </tr>
             </thead>
             <tbody>
-              {filteredTransactions.length === 0 ? (
+              {displayedTransactions.length === 0 ? (
                 <tr>
                   <td colSpan="7" className="empty-table-message">
                     No transactions found. Add one to get started!
                   </td>
                 </tr>
               ) : (
-                filteredTransactions.map(transaction => (
+                displayedTransactions.map(transaction => (
                   <tr key={transaction.id} id={`transaction-row-${transaction.id}`}>
                     {editingId === transaction.id ? (
                       <>
@@ -494,6 +498,20 @@ const TransactionsView = ({
               )}
             </tbody>
           </table>
+        </div>
+      )}
+      {!loading && !error && filteredTransactions.length > 25 && !showAllTransactions && (
+        <div style={{ textAlign: 'center', marginTop: '1.5rem', marginBottom: '2.5rem' }}>
+          <button 
+            onClick={() => setShowAllTransactions(true)} 
+            style={{ 
+              background: 'none', border: 'none', color: '#3b82f6', 
+              fontSize: '15px', fontWeight: 'bold', cursor: 'pointer',
+              textDecoration: 'none', padding: '0.5rem 1rem'
+            }}
+          >
+            view all transactions
+          </button>
         </div>
       )}
 

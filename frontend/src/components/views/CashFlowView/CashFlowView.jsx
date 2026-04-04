@@ -61,6 +61,7 @@ const CashFlowView = ({ transactions = [], invoices = [] }) => {
   const [fromMonth, setFromMonth] = useState(defaultFrom);
   const [toMonth, setToMonth] = useState(defaultTo);
   const [openingBalance, setOpeningBalance] = useState(3000000);
+  const [showAllSummary, setShowAllSummary] = useState(false);
 
   const normalizedFrom = fromMonth || defaultFrom;
   const normalizedTo = toMonth || defaultTo;
@@ -120,6 +121,8 @@ const CashFlowView = ({ transactions = [], invoices = [] }) => {
     return { inflow, outflow, net, closing };
   }, [monthlySummary, openingBalance]);
 
+  const displayedSummary = showAllSummary ? monthlySummary : monthlySummary.slice(-6);
+
   return (
     <>
       <EmbeddedHeader />
@@ -133,33 +136,23 @@ const CashFlowView = ({ transactions = [], invoices = [] }) => {
       <div className="cashflow-controls">
         <div className="cashflow-control-group">
           <label>From Month</label>
-          <div className="cashflow-month-grid">
-            {allMonths.map((m) => (
-              <button
-                key={m}
-                type="button"
-                className={`cashflow-month-cell ${m === normalizedFrom ? 'selected' : ''}`}
-                onClick={() => setFromMonth(m)}
-              >
-                {formatMonthLabel(m)}
-              </button>
-            ))}
-          </div>
+          <input
+            type="month"
+            className="filter-select"
+            value={normalizedFrom}
+            onChange={(e) => setFromMonth(e.target.value)}
+            style={{ minWidth: 'auto', padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', cursor: 'pointer' }}
+          />
         </div>
         <div className="cashflow-control-group">
           <label>To Month</label>
-          <div className="cashflow-month-grid">
-            {allMonths.map((m) => (
-              <button
-                key={m}
-                type="button"
-                className={`cashflow-month-cell ${m === normalizedTo ? 'selected' : ''}`}
-                onClick={() => setToMonth(m)}
-              >
-                {formatMonthLabel(m)}
-              </button>
-            ))}
-          </div>
+          <input
+            type="month"
+            className="filter-select"
+            value={normalizedTo}
+            onChange={(e) => setToMonth(e.target.value)}
+            style={{ minWidth: 'auto', padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', cursor: 'pointer' }}
+          />
         </div>
       </div>
 
@@ -190,7 +183,21 @@ const CashFlowView = ({ transactions = [], invoices = [] }) => {
       </div>
 
       <div className="table-container">
-        <div className="cashflow-table-title">Monthly Summary</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <div className="cashflow-table-title" style={{ margin: 0 }}>Monthly Summary</div>
+          {monthlySummary.length > 6 && !showAllSummary && (
+            <button 
+              onClick={() => setShowAllSummary(true)} 
+              style={{ 
+                background: 'none', border: 'none', color: '#3b82f6', 
+                fontSize: '14px', fontWeight: 'bold', cursor: 'pointer',
+                padding: '0'
+              }}
+            >
+              See all
+            </button>
+          )}
+        </div>
         <table className="data-table">
           <thead>
             <tr>
@@ -202,7 +209,7 @@ const CashFlowView = ({ transactions = [], invoices = [] }) => {
             </tr>
           </thead>
           <tbody>
-            {monthlySummary.map((row) => (
+            {displayedSummary.map((row) => (
               <tr key={row.monthKey}>
                 <td><span className="table-main-text">{row.monthLabel}</span></td>
                 <td className="align-right"><span className="table-amount positive">+{formatCompactINR(row.inflow)}</span></td>

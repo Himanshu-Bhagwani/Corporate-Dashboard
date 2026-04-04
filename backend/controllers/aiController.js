@@ -5,7 +5,7 @@ const Tesseract = require('tesseract.js');
 const CORPORATE_CATEGORIES = [
   'Sales', 'Consulting', 'Salaries', 'Marketing', 'Software', 'Rent', 'Tax',
   'Shares', 'Professional Fees', 'Utilities', 'Misc', 'Insurance', 'Travel',
-  'Training', 'Maintenance', 'Office Supplies'
+  'Training', 'Maintainance', 'Office supplies'
 ];
 
 const categorizeTransactions = async (req, res) => {
@@ -29,6 +29,7 @@ const categorizeTransactions = async (req, res) => {
 
     // Prepare prompt
     const systemPrompt = `You are a corporate financial AI assistant. Your ONLY job is to categorize bank transactions into exactly one of the provided predefined categories.
+Focus specifically on intelligently categorizing expenses into the correct expense category based on context.
 You must respond ONLY with a valid JSON array of objects. Do not include markdown formatting or extra text.
 
 Allowed Categories: ${CORPORATE_CATEGORIES.join(', ')}`;

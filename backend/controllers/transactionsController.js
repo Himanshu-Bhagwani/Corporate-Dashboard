@@ -2,6 +2,7 @@ const { pool } = require('../config/db');
 const multer = require('multer');
 const csvParser = require('csv-parser');
 const { Readable } = require('stream');
+const { generateResponse } = require('../services/aiService');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
@@ -263,6 +264,7 @@ const uploadCSV = async (req, res) => {
           const notes = getVal(['notes', 'memo', 'reference']) || '';
 
           results.push({
+            id: 'temp_' + results.length,
             name,
             type: parsedType,
             category,
@@ -277,6 +279,61 @@ const uploadCSV = async (req, res) => {
 
     if (results.length === 0) {
       return res.status(400).json({ error: 'No valid rows found in CSV' });
+    }
+
+    // Smart categorization via AI
+    const EXPENSE_CATEGORIES = [
+      'Salaries', 'Marketing', 'Software', 'Rent', 'Tax', 'Professional Fees', 
+      'Utilities', 'Insurance', 'Travel', 'Training', 'Maintainance', 'Office supplies', 'Misc'
+    ];
+
+    try {
+      console.log('[CSV Upload] Smart categorizing expenses using Ollama...');
+      const systemPrompt = `You are a corporate financial AI assistant. Your ONLY job is to categorize bank transactions.
+If the transaction is an expense, categorize its "name" and "notes" into EXACTLY ONE of these categories: ${EXPENSE_CATEGORIES.join(', ')}.
+If it is income, use 'Sales', 'Consulting', 'Shares', or 'Misc'.
+You must respond ONLY with a valid JSON array of objects with keys "id" and "category". Do not include markdown formatting or extra text.`;
+
+      const promptData = results.map(r => ({ id: r.id, name: r.name, notes: r.notes, type: r.type, original_category: r.category }));
+      const prompt = `Categorize the following transactions. For each, output JSON with "id" and "category".\nTransactions:\n${JSON.stringify(promptData, null, 2)}`;
+      
+      const aiResponseRaw = await generateResponse(prompt, systemPrompt, true);
+      let aiCategories = [];
+      try {
+        aiCategories = JSON.parse(aiResponseRaw);
+        if (!Array.isArray(aiCategories) && aiCategories.transactions) {
+          aiCategories = aiCategories.transactions;
+        }
+      } catch (parseErr) {
+        console.error('[CSV Upload] Failed to parse JSON response:', aiResponseRaw);
+      }
+
+      // Map categories back to results, capitalizing first letter
+      const capitalize = (s) => typeof s === 'string' && s.length > 0 ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+      
+      const catMap = {};
+      (Array.isArray(aiCategories) ? aiCategories : []).forEach(item => {
+        if (item.id && item.category) catMap[item.id] = capitalize(item.category);
+      });
+
+      results.forEach(txn => {
+        let aiCat = catMap[txn.id];
+        if (aiCat) {
+          // Normalize to accepted list if expense
+          if (txn.type === 'expense' && !EXPENSE_CATEGORIES.includes(aiCat)) {
+            aiCat = 'Misc';
+          }
+          txn.category = aiCat;
+        } else {
+          txn.category = capitalize(txn.category) || 'Misc';
+        }
+      });
+    } catch(err) {
+      console.error('[CSV Upload] AI Categorization failed, falling back to basic capitalization.', err);
+      const capitalize = (s) => typeof s === 'string' && s.length > 0 ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+      results.forEach(txn => {
+        txn.category = capitalize(txn.category) || 'Misc';
+      });
     }
 
     // Bulk insert
