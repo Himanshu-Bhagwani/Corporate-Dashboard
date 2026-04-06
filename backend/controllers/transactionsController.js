@@ -4,7 +4,10 @@ const csvParser = require('csv-parser');
 const { Readable } = require('stream');
 const { generateResponse } = require('../services/aiService');
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+const upload = multer({ 
+  storage: multer.memoryStorage(), 
+  limits: { fileSize: 20 * 1024 * 1024 } 
+});
 
 // GET all transactions with account name joined from accounts table
 const getTransactions = async (req, res) => {
@@ -111,7 +114,6 @@ const bulkCreateTransactions = async (req, res) => {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      
       const createdTransactions = [];
       for (const txn of transactions) {
         const result = await client.query(

@@ -11,6 +11,27 @@ const getHeaders = (companyId) => {
   return headers;
 };
 
+// Defensive helper to parse JSON and handle HTML/Text error pages (like Nginx 413)
+async function handleResponse(response) {
+  const contentType = response.headers.get('content-type');
+  let data;
+  
+  if (contentType && contentType.includes('application/json')) {
+    data = await response.json();
+  } else {
+    // Non-JSON (HTML/Text) - Likely Nginx error page or server crash
+    const text = await response.text();
+    const match = text.match(/<title>(.*?)<\/title>/i);
+    const errorMsg = match ? match[1] : `Server Error (${response.status})`;
+    throw new Error(errorMsg);
+  }
+
+  if (!response.ok) {
+    throw new Error(data.error || `Error ${response.status}: ${response.statusText}`);
+  }
+  return data;
+}
+
 export const transactionsAPI = {
 
   // Fetch all transactions, optionally filtered
@@ -26,8 +47,7 @@ export const transactionsAPI = {
     const response = await fetch(`${BASE_URL}/transactions?${params.toString()}`, {
       headers: getHeaders(companyId)
     });
-    if (!response.ok) throw new Error('Failed to fetch transactions');
-    return response.json();
+    return handleResponse(response);
   },
 
   // Create a new transaction
@@ -37,8 +57,7 @@ export const transactionsAPI = {
       headers: getHeaders(companyId),
       body: JSON.stringify(transaction),
     });
-    if (!response.ok) throw new Error('Failed to create transaction');
-    return response.json();
+    return handleResponse(response);
   },
 
   // Bulk create transactions (for CSV/PDF upload)
@@ -48,8 +67,7 @@ export const transactionsAPI = {
       headers: getHeaders(companyId),
       body: JSON.stringify({ transactions }),
     });
-    if (!response.ok) throw new Error('Failed to create transactions');
-    return response.json();
+    return handleResponse(response);
   },
 
   // Upload CSV file
@@ -64,8 +82,22 @@ export const transactionsAPI = {
       },
       body: formData,
     });
-    if (!response.ok) throw new Error('Failed to upload CSV');
-    return response.json();
+    return handleResponse(response);
+  },
+
+  // Upload PDF Statement (Deterministic Parser)
+  uploadPDF: async (file, companyId) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await fetch(`${BASE_URL}/transactions/upload-statement`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        'x-company-id': companyId,
+      },
+      body: formData,
+    });
+    return handleResponse(response);
   },
 
   // Update an existing transaction by id
@@ -75,8 +107,7 @@ export const transactionsAPI = {
       headers: getHeaders(companyId),
       body: JSON.stringify(transaction),
     });
-    if (!response.ok) throw new Error('Failed to update transaction');
-    return response.json();
+    return handleResponse(response);
   },
 
   // Delete a transaction by id
@@ -85,8 +116,7 @@ export const transactionsAPI = {
       method: 'DELETE',
       headers: getHeaders(companyId),
     });
-    if (!response.ok) throw new Error('Failed to delete transaction');
-    return response.json();
+    return handleResponse(response);
   },
 
   // Get analytics data
@@ -94,8 +124,7 @@ export const transactionsAPI = {
     const response = await fetch(`${BASE_URL}/transactions/analytics`, {
       headers: getHeaders(companyId)
     });
-    if (!response.ok) throw new Error('Failed to fetch analytics');
-    return response.json();
+    return handleResponse(response);
   },
 };
 
@@ -106,8 +135,7 @@ export const accountsAPI = {
     const response = await fetch(`${BASE_URL}/accounts`, {
       headers: getHeaders(companyId)
     });
-    if (!response.ok) throw new Error('Failed to fetch accounts');
-    return response.json();
+    return handleResponse(response);
   },
 
   // Create a new account
@@ -117,8 +145,7 @@ export const accountsAPI = {
       headers: getHeaders(companyId),
       body: JSON.stringify(account),
     });
-    if (!response.ok) throw new Error('Failed to create account');
-    return response.json();
+    return handleResponse(response);
   },
 
   // Update an existing account by id
@@ -128,8 +155,7 @@ export const accountsAPI = {
       headers: getHeaders(companyId),
       body: JSON.stringify(account),
     });
-    if (!response.ok) throw new Error('Failed to update account');
-    return response.json();
+    return handleResponse(response);
   },
 
   // Delete an account by id
@@ -138,8 +164,7 @@ export const accountsAPI = {
       method: 'DELETE',
       headers: getHeaders(companyId),
     });
-    if (!response.ok) throw new Error('Failed to delete account');
-    return response.json();
+    return handleResponse(response);
   },
 };
 
@@ -148,8 +173,7 @@ export const dashboardAPI = {
     const response = await fetch(`${BASE_URL}/dashboard/summary`, {
       headers: getHeaders(companyId)
     });
-    if (!response.ok) throw new Error('Failed to fetch dashboard summary');
-    return response.json();
+    return handleResponse(response);
   },
 };
 
@@ -158,8 +182,7 @@ export const invoicesAPI = {
     const response = await fetch(`${BASE_URL}/invoices`, {
       headers: getHeaders(companyId)
     });
-    if (!response.ok) throw new Error('Failed to fetch invoices');
-    return response.json();
+    return handleResponse(response);
   },
 
   create: async (invoice, companyId) => {
@@ -168,8 +191,7 @@ export const invoicesAPI = {
       headers: getHeaders(companyId),
       body: JSON.stringify(invoice),
     });
-    if (!response.ok) throw new Error('Failed to create invoice');
-    return response.json();
+    return handleResponse(response);
   },
 
   update: async (id, invoice, companyId) => {
@@ -178,8 +200,7 @@ export const invoicesAPI = {
       headers: getHeaders(companyId),
       body: JSON.stringify(invoice),
     });
-    if (!response.ok) throw new Error('Failed to update invoice');
-    return response.json();
+    return handleResponse(response);
   },
 };
 
@@ -188,8 +209,7 @@ export const complianceAPI = {
     const response = await fetch(`${BASE_URL}/compliance`, {
       headers: getHeaders(companyId)
     });
-    if (!response.ok) throw new Error('Failed to fetch compliance filings');
-    return response.json();
+    return handleResponse(response);
   },
 
   markFiled: async (id, companyId) => {
@@ -197,29 +217,18 @@ export const complianceAPI = {
       method: 'PUT',
       headers: getHeaders(companyId),
     });
-    if (!response.ok) throw new Error('Failed to mark filing');
-    return response.json();
+    return handleResponse(response);
   },
 };
 
 export const aiAPI = {
-  categorize: async (transactionIds, companyId) => {
-    const response = await fetch(`${BASE_URL}/ai/categorize`, {
-      method: 'POST',
-      headers: getHeaders(companyId),
-      body: JSON.stringify({ transactionIds }),
-    });
-    if (!response.ok) throw new Error('Failed to run AI categorization');
-    return response.json();
-  },
   complianceReview: async (companyId, visibleScore, pendingCount, overdueCount) => {
     const response = await fetch(`${BASE_URL}/ai/compliance-review`, {
       method: 'POST',
       headers: getHeaders(companyId),
       body: JSON.stringify({ visibleScore, pendingCount, overdueCount })
     });
-    if (!response.ok) throw new Error('Failed to run AI compliance review');
-    return response.json();
+    return handleResponse(response);
   },
   parseOCR: async (file, companyId) => {
     const formData = new FormData();
@@ -234,7 +243,6 @@ export const aiAPI = {
       headers,
       body: formData,
     });
-    if (!response.ok) throw new Error('Failed to run AI OCR extraction');
-    return response.json();
+    return handleResponse(response);
   }
 };
