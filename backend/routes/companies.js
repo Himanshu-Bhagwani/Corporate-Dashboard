@@ -47,12 +47,12 @@ router.put('/active/:companyId', authenticateToken, async (req, res) => {
 // Create new company
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { name, industry, taxId, address } = req.body;
+    const { name, industry, taxId, address, gstin, pan, entityType, plan, teamInvites } = req.body;
 
     // Create company
     const companyResult = await pool.query(
-      'INSERT INTO companies (name, industry, tax_id, address) VALUES ($1, $2, $3, $4) RETURNING *',
-      [name, industry, taxId, address]
+      'INSERT INTO companies (name, industry, tax_id, address, gstin, pan, entity_type, plan) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
+      [name, industry, taxId, address, gstin, pan, entityType, plan]
     );
 
     const company = companyResult.rows[0];
@@ -62,6 +62,18 @@ router.post('/', authenticateToken, async (req, res) => {
       'INSERT INTO user_companies (user_id, company_id, role, last_selected_at) VALUES ($1, $2, $3, NOW())',
       [req.user.userId, company.id, 'owner']
     );
+
+    // Add team invites
+    if (teamInvites && Array.isArray(teamInvites) && teamInvites.length > 0) {
+      for (const invite of teamInvites) {
+        if (invite.email && invite.role) {
+          await pool.query(
+            'INSERT INTO team_invites (company_id, email, role, status) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING',
+            [company.id, invite.email, invite.role, 'pending']
+          );
+        }
+      }
+    }
 
     res.json(company);
   } catch (error) {

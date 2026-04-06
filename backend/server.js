@@ -36,6 +36,25 @@ connectDB().then(() => {
       )
     )
     .catch((err) => console.error('Preference column init failed:', err.message));
+
+  // Ensure new columns for company onboarding exist
+  pool
+    .query(`
+      ALTER TABLE companies ADD COLUMN IF NOT EXISTS gstin VARCHAR(100);
+      ALTER TABLE companies ADD COLUMN IF NOT EXISTS pan VARCHAR(100);
+      ALTER TABLE companies ADD COLUMN IF NOT EXISTS entity_type VARCHAR(100);
+      ALTER TABLE companies ADD COLUMN IF NOT EXISTS plan VARCHAR(50);
+      CREATE TABLE IF NOT EXISTS team_invites (
+        id SERIAL PRIMARY KEY,
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        email VARCHAR(255) NOT NULL,
+        role VARCHAR(50) NOT NULL,
+        status VARCHAR(50) DEFAULT 'pending',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(company_id, email)
+      );
+    `)
+    .catch((err) => console.error('Company columns init failed:', err.message));
 });
 
 // Routes

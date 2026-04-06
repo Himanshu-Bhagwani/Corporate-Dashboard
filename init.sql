@@ -17,6 +17,10 @@ CREATE TABLE IF NOT EXISTS companies (
   industry VARCHAR(100),
   tax_id VARCHAR(100),
   address TEXT,
+  gstin VARCHAR(100),
+  pan VARCHAR(100),
+  entity_type VARCHAR(100),
+  plan VARCHAR(50),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -29,6 +33,17 @@ CREATE TABLE IF NOT EXISTS user_companies (
   role VARCHAR(50) DEFAULT 'member',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(user_id, company_id)
+);
+
+-- Team Invites
+CREATE TABLE IF NOT EXISTS team_invites (
+  id SERIAL PRIMARY KEY,
+  company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+  email VARCHAR(255) NOT NULL,
+  role VARCHAR(50) NOT NULL,
+  status VARCHAR(50) DEFAULT 'pending',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(company_id, email)
 );
 
 -- Accounts table (linked to companies)
