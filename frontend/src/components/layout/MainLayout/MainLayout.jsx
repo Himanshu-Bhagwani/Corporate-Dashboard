@@ -227,17 +227,19 @@ const MainLayout = () => {
     }
   };
 
-  const handleAICategorize = async (transactionIds) => {
+  // --- PDF Upload Handler ---
+  const handleUploadPDF = async (file) => {
     try {
-      const result = await aiAPI.categorize(transactionIds, currentCompany.id);
+      await transactionsAPI.uploadPDF(file, currentCompany.id);
       fetchTransactions();
+      fetchAccounts();
       fetchDashboardData();
-      return result;
     } catch (err) {
-      console.error('AI Categorization Failed:', err);
+      console.error('Failed to upload PDF:', err);
       throw err;
     }
   };
+
 
   const handleRunAIAudit = async (visibleScore, pendingCount, overdueCount) => {
     try {
@@ -424,7 +426,7 @@ const MainLayout = () => {
               onUpdate={handleUpdateTransaction}
               onDelete={handleDeleteTransaction}
               onUploadCSV={handleUploadCSV}
-              onAICategorize={handleAICategorize}
+              onUploadPDF={handleUploadPDF}
               navigateTarget={navigateTarget}
               accounts={accounts}
             />

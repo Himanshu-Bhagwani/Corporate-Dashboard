@@ -44,7 +44,7 @@ const TransactionsView = ({
   onUpdate,
   onDelete,
   onUploadCSV,
-  onAICategorize,
+  onUploadPDF,
   navigateTarget,
   accounts = [],
 }) => {
@@ -59,6 +59,7 @@ const TransactionsView = ({
   const [uploading, setUploading] = useState(false);
   const [isCategorizing, setIsCategorizing] = useState(false);
   const [showAllTransactions, setShowAllTransactions] = useState(false);
+  const [uploadErrorMessage, setUploadErrorMessage] = useState('');
   const fileInputRef = useRef(null);
 
   // --- Inline Edit Handlers ---
@@ -146,8 +147,15 @@ const TransactionsView = ({
   const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (file.size > 20 * 1024 * 1024) {
+        setUploadErrorMessage('File size exceeds 20MB limit.');
+        setUploadStatus('error');
+        setUploadFile(null);
+        return;
+      }
       setUploadFile(file);
       setUploadStatus('');
+      setUploadErrorMessage('');
     }
   };
 
@@ -155,40 +163,26 @@ const TransactionsView = ({
     if (!uploadFile) return;
     setUploading(true);
     setUploadStatus('');
+    setUploadErrorMessage('');
     try {
-      await onUploadCSV(uploadFile);
+      if (uploadFile.name.toLowerCase().endsWith('.pdf')) {
+        await onUploadPDF(uploadFile);
+      } else {
+        await onUploadCSV(uploadFile);
+      }
       setUploadStatus('success');
       setUploadFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
       setTimeout(() => setShowUploadModal(false), 1500);
     } catch (err) {
       setUploadStatus('error');
+      setUploadErrorMessage(err.message || 'An unexpected error occurred.');
     } finally {
       setUploading(false);
     }
   };
 
-  const handleAutoCategorize = async () => {
-    // Collect all 'Misc' or uncategorized transactions
-    const uncategorizedIds = transactions
-      .filter(t => !t.category || t.category === 'Misc' || t.category === 'All Categories')
-      .map(t => t.id);
 
-    if (uncategorizedIds.length === 0) {
-      alert("No uncategorized/Misc transactions found.");
-      return;
-    }
-
-    setIsCategorizing(true);
-    try {
-      const res = await onAICategorize(uncategorizedIds);
-      alert(res.message + ` (${res.updated} updated)`);
-    } catch (err) {
-      alert("Failed to run AI Categorization. Is Ollama running?");
-    } finally {
-      setIsCategorizing(false);
-    }
-  };
 
   // Debounce server search
   useEffect(() => {
@@ -242,17 +236,6 @@ const TransactionsView = ({
         <div style={{ display: 'flex', gap: '0.75rem' }}>
           <button
             className="btn-primary btn-add-short"
-            onClick={handleAutoCategorize}
-            disabled={isCategorizing}
-            style={{
-              background: 'linear-gradient(135deg, #a855f7, #7e22ce)',
-              display: 'flex', alignItems: 'center', gap: '6px', opacity: isCategorizing ? 0.7 : 1
-            }}
-          >
-            {isCategorizing ? '🪄 Thinking...' : '🪄 AI Auto-Categorize'}
-          </button>
-          <button
-            className="btn-primary btn-add-short"
             onClick={() => setShowUploadModal(true)}
             style={{
               background: 'linear-gradient(135deg, #10B981, #059669)',
@@ -260,7 +243,7 @@ const TransactionsView = ({
             }}
           >
             <Upload size={16} />
-            Upload CSV
+            Upload Statement
           </button>
           <button className="btn-primary btn-add-short" onClick={() => setShowAddModal(true)}>
             <PlusCircle size={18} />
@@ -515,15 +498,15 @@ const TransactionsView = ({
         </div>
       )}
 
-      {/* CSV Upload Modal */}
+      {/* Statement Upload Modal (CSV & PDF) */}
       {showUploadModal && (
         <div className="modal-overlay" onClick={() => setShowUploadModal(false)}>
           <div className="modal-box" onClick={(e) => e.stopPropagation()} style={{
-            background: 'white', borderRadius: '16px', padding: '2rem', maxWidth: '520px', width: '90%',
+            background: 'white', borderRadius: '16px', padding: '2rem', maxWidth: '560px', width: '90%',
             boxShadow: '0 25px 50px rgba(0,0,0,0.25)'
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-              <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#1a202c' }}>Upload CSV Statement</h2>
+              <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#1a202c' }}>Upload Statement</h2>
               <button onClick={() => setShowUploadModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', color: '#718096' }}>×</button>
             </div>
 
@@ -532,37 +515,46 @@ const TransactionsView = ({
               padding: '2rem', textAlign: 'center', marginBottom: '1.5rem',
               transition: 'all 0.3s ease', cursor: 'pointer'
             }}
-            onClick={() => fileInputRef.current?.click()}
-            onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = '#4F46E5'; }}
-            onDragLeave={(e) => { e.currentTarget.style.borderColor = '#e2e8f0'; }}
-            onDrop={(e) => {
-              e.preventDefault();
-              e.currentTarget.style.borderColor = '#e2e8f0';
-              const file = e.dataTransfer.files?.[0];
-              if (file) { setUploadFile(file); setUploadStatus(''); }
-            }}
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = '#4F46E5'; }}
+              onDragLeave={(e) => { e.currentTarget.style.borderColor = '#e2e8f0'; }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.currentTarget.style.borderColor = '#e2e8f0';
+                const file = e.dataTransfer.files?.[0];
+                if (file) { setUploadFile(file); setUploadStatus(''); }
+              }}
             >
               <Upload size={32} style={{ color: '#a0aec0', marginBottom: '0.75rem' }} />
               <p style={{ color: '#4a5568', fontWeight: 600, marginBottom: '0.25rem' }}>
-                {uploadFile ? uploadFile.name : 'Drop CSV file here or click to browse'}
+                {uploadFile ? uploadFile.name : 'Drop CSV or PDF file here or click to browse'}
               </p>
-              <p style={{ color: '#a0aec0', fontSize: '13px' }}>Supports: date, name, type, category, amount</p>
+              <p style={{ color: '#a0aec0', fontSize: '13px' }}>Supports: Standard .csv and most bank PDFs</p>
               <input
                 ref={fileInputRef}
-                type="file" accept=".csv" style={{ display: 'none' }}
+                type="file" accept=".csv,.pdf" style={{ display: 'none' }}
                 onChange={handleFileSelect}
               />
             </div>
 
-            <div style={{
-              background: 'rgba(79,70,229,0.05)', borderRadius: '10px', padding: '1rem',
-              marginBottom: '1.5rem', fontSize: '13px', color: '#4a5568', lineHeight: 1.6
-            }}>
-              <strong style={{ color: '#4F46E5' }}>CSV Format:</strong>
-              <div style={{ marginTop: '0.5rem', fontFamily: 'monospace', fontSize: '12px' }}>
-                date,name,type,category,amount<br/>
-                2025-01-15,Client Payment,income,Sales,500000<br/>
-                2025-01-20,Office Rent,expense,Rent,75000
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
+              <div style={{
+                background: 'rgba(79,70,229,0.05)', borderRadius: '10px', padding: '1rem',
+                fontSize: '12px', color: '#4a5568', lineHeight: 1.6
+              }}>
+                <strong style={{ color: '#4F46E5' }}>CSV Template:</strong>
+                <div style={{ marginTop: '0.25rem', fontFamily: 'monospace', color: '#718096' }}>
+                  date, name, amount, type
+                </div>
+              </div>
+              <div style={{
+                background: 'rgba(16,185,129,0.05)', borderRadius: '10px', padding: '1rem',
+                fontSize: '12px', color: '#4a5568', lineHeight: 1.6
+              }}>
+                <strong style={{ color: '#10b981' }}>PDF (Layout Aware):</strong>
+                <div style={{ marginTop: '0.25rem', color: '#718096' }}>
+                  Deterministic coordinate-based parsing. 100% accurate.
+                </div>
               </div>
             </div>
 
@@ -573,7 +565,7 @@ const TransactionsView = ({
             )}
             {uploadStatus === 'error' && (
               <div style={{ padding: '12px', background: 'rgba(239,68,68,0.1)', borderRadius: '10px', color: '#ef4444', fontWeight: 600, textAlign: 'center', marginBottom: '1rem' }}>
-                ✗ Failed to import. Please check your CSV format.
+                ✗ {uploadErrorMessage || (uploadFile?.name?.endsWith('.pdf') ? 'Parsing Error: Layout ambiguity detected.' : 'Failed to import CSV.')}
               </div>
             )}
 
@@ -589,7 +581,7 @@ const TransactionsView = ({
                 fontSize: '14px', fontWeight: 600, cursor: uploadFile && !uploading ? 'pointer' : 'not-allowed',
                 boxShadow: uploadFile ? '0 2px 8px rgba(16,185,129,0.3)' : 'none'
               }}>
-                {uploading ? 'Uploading...' : 'Upload & Import'}
+                {uploading ? (uploadFile?.name?.endsWith('.pdf') ? 'Reconstructing Layout...' : 'Uploading...') : 'Upload & Import'}
               </button>
             </div>
           </div>

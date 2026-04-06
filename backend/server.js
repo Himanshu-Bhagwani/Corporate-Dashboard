@@ -17,7 +17,8 @@ const app = express();
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '20mb' }));
+app.use(express.urlencoded({ limit: '20mb', extended: true }));
 
 // Connect to PostgreSQL and seed demo data
 connectDB().then(() => {
@@ -51,6 +52,15 @@ app.use('/api/reports', reportsRoutes);
 app.use('/api/ai', aiRoutes);
 app.get('/', (req, res) => {
   res.send('Backend is running');
+});
+
+// Error handling middleware (catch Multer/Express limit errors)
+app.use((err, req, res, next) => {
+  if (err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({ error: 'File too large (Max: 20MB)' });
+  }
+  console.error('Unhandled Error:', err);
+  res.status(500).json({ error: 'Internal Server Error' });
 });
 
 const PORT = process.env.PORT || 5000;
