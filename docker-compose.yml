@@ -10,7 +10,7 @@ services:
     ports:
       - "5434:5433"
     volumes:
-      - ./pg_data:/var/lib/postgresql/data
+      - pg_data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U dashboard_user -d dashboard_db -p 5433"]
@@ -69,4 +69,5 @@ services:
       - ollama
 
 volumes:
+  pg_data:
   ollama_data:

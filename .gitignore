@@ -57,6 +57,7 @@ backend/uploads/
 # Docker
 # =========================
 postgres_data/
+pg_data/
 
 # =========================
 # Ollama / AI Model Data
