@@ -11,11 +11,12 @@ import InvestmentsView from '../../views/InvestmentsView/InvestmentsView';
 import SettingsView from '../../views/SettingsView/SettingsView';
 import CashFlowView from '../../views/CashFlowView/CashFlowView';
 import ComplianceView from '../../views/ComplianceView/ComplianceView';
+import AccountingView from '../../views/AccountingView/AccountingView';
 import AddTransactionModal from '../../shared/AddTransactionModal/AddTransactionModal';
 import CreateCompanyModal from '../../company/CreateCompanyModal';
 import { 
   transactionsAPI, accountsAPI, dashboardAPI, 
-  invoicesAPI, complianceAPI, aiAPI 
+  invoicesAPI, complianceAPI, aiAPI, accountingAPI 
 } from '../../../services/api';
 import { getComplianceScore } from '../../../services/complianceService';
 import { useAuth } from '../../../context/AuthContext';
@@ -52,6 +53,11 @@ const MainLayout = () => {
   const [dashboardSummary, setDashboardSummary] = useState(null);
   const [invoices, setInvoices] = useState([]);
   const [compliance, setCompliance] = useState([]);
+
+  // Accounting state
+  const [ledgerData, setLedgerData] = useState({ customers: [], vendors: [] });
+  const [chartOfAccounts, setChartOfAccounts] = useState([]);
+  const [accountingLoading, setAccountingLoading] = useState(false);
 
   // Filters — now with date range, category, and search
   const [selectedDate, setSelectedDate] = useState(null);
@@ -292,6 +298,63 @@ const MainLayout = () => {
     }
   };
 
+  // --- Accounting Handlers ---
+  const fetchLedger = async (filters = {}) => {
+    if (!currentCompany) return;
+    setAccountingLoading(true);
+    try {
+      const data = await accountingAPI.getLedger(currentCompany.id, filters);
+      setLedgerData(data);
+    } catch (err) {
+      console.error('Failed to fetch ledger:', err);
+    } finally {
+      setAccountingLoading(false);
+    }
+  };
+
+  const fetchChartOfAccounts = async () => {
+    if (!currentCompany) return;
+    setAccountingLoading(true);
+    try {
+      const data = await accountingAPI.getChartOfAccounts(currentCompany.id);
+      setChartOfAccounts(data);
+    } catch (err) {
+      console.error('Failed to fetch chart of accounts:', err);
+    } finally {
+      setAccountingLoading(false);
+    }
+  };
+
+  const handleCreateCoaEntry = async (entry) => {
+    try {
+      await accountingAPI.createChartOfAccountsEntry(entry, currentCompany.id);
+      fetchChartOfAccounts();
+    } catch (err) {
+      console.error('Failed to create COA entry:', err);
+      throw err;
+    }
+  };
+
+  const handleUpdateCoaEntry = async (id, entry) => {
+    try {
+      await accountingAPI.updateChartOfAccountsEntry(id, entry, currentCompany.id);
+      fetchChartOfAccounts();
+    } catch (err) {
+      console.error('Failed to update COA entry:', err);
+      throw err;
+    }
+  };
+
+  const handleDeleteCoaEntry = async (id) => {
+    try {
+      await accountingAPI.deleteChartOfAccountsEntry(id, currentCompany.id);
+      fetchChartOfAccounts();
+    } catch (err) {
+      console.error('Failed to delete COA entry:', err);
+      throw err;
+    }
+  };
+
   // --- Account Handlers ---
   const handleAddAccount = async (newAccount) => {
     try {
@@ -470,6 +533,18 @@ const MainLayout = () => {
               onMarkFiled={handleMarkFiled}
               onRunAIAudit={handleRunAIAudit}
               backendScore={complianceScore}
+            />
+          )}
+          {activeView === 'accounting' && (
+            <AccountingView
+              ledgerData={ledgerData}
+              chartOfAccounts={chartOfAccounts}
+              onFetchLedger={fetchLedger}
+              onFetchChartOfAccounts={fetchChartOfAccounts}
+              onCreateAccount={handleCreateCoaEntry}
+              onUpdateAccount={handleUpdateCoaEntry}
+              onDeleteAccount={handleDeleteCoaEntry}
+              loading={accountingLoading}
             />
           )}
         </main>

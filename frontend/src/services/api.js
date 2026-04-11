@@ -246,3 +246,77 @@ export const aiAPI = {
     return handleResponse(response);
   }
 };
+
+export const accountingAPI = {
+  // Ledger
+  getLedger: async (companyId, filters = {}) => {
+    const params = new URLSearchParams();
+    if (filters.search) params.append('search', filters.search);
+    if (filters.filter) params.append('filter', filters.filter);
+    const response = await fetch(`${BASE_URL}/accounting/ledger?${params.toString()}`, {
+      headers: getHeaders(companyId)
+    });
+    return handleResponse(response);
+  },
+
+  // Chart of Accounts
+  getChartOfAccounts: async (companyId) => {
+    const response = await fetch(`${BASE_URL}/accounting/chart-of-accounts`, {
+      headers: getHeaders(companyId)
+    });
+    return handleResponse(response);
+  },
+
+  createChartOfAccountsEntry: async (entry, companyId) => {
+    const response = await fetch(`${BASE_URL}/accounting/chart-of-accounts`, {
+      method: 'POST',
+      headers: getHeaders(companyId),
+      body: JSON.stringify(entry),
+    });
+    return handleResponse(response);
+  },
+
+  updateChartOfAccountsEntry: async (id, entry, companyId) => {
+    const response = await fetch(`${BASE_URL}/accounting/chart-of-accounts/${id}`, {
+      method: 'PUT',
+      headers: getHeaders(companyId),
+      body: JSON.stringify(entry),
+    });
+    return handleResponse(response);
+  },
+
+  deleteChartOfAccountsEntry: async (id, companyId) => {
+    const response = await fetch(`${BASE_URL}/accounting/chart-of-accounts/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders(companyId),
+    });
+    return handleResponse(response);
+  },
+};
+
+export const notificationsAPI = {
+  getAll: async (companyId) => {
+    const response = await fetch(`${BASE_URL}/notifications`, {
+      headers: getHeaders(companyId),
+    });
+    return handleResponse(response);
+  },
+
+  dismiss: async (notificationKey, companyId) => {
+    const response = await fetch(`${BASE_URL}/notifications/dismiss`, {
+      method: 'POST',
+      headers: getHeaders(companyId),
+      body: JSON.stringify({ notificationKey }),
+    });
+    return handleResponse(response);
+  },
+
+  dismissAll: async (keys, companyId) => {
+    const response = await fetch(`${BASE_URL}/notifications/dismiss-all`, {
+      method: 'POST',
+      headers: getHeaders(companyId),
+      body: JSON.stringify({ keys }),
+    });
+    return handleResponse(response);
+  },
+};

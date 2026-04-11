@@ -1,8 +1,22 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, ChevronDown, User, Building2, Settings, LogOut, Plus } from 'lucide-react';
+import { Search, ChevronDown, User, Building2, Settings, LogOut, Plus, Bell, X, AlertTriangle, FileText, Shield, DollarSign, TrendingDown, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
+import { notificationsAPI } from '../../../services/api';
 import CreateCompanyModal from '../../company/CreateCompanyModal';
 import './EmbeddedHeader.css';
+
+const SEVERITY_CONFIG = {
+  critical: { color: '#ef4444', bg: 'rgba(239, 68, 68, 0.08)', icon: <AlertTriangle size={16} /> },
+  warning: { color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.08)', icon: <AlertTriangle size={16} /> },
+  info: { color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.08)', icon: <FileText size={16} /> },
+};
+
+const CATEGORY_ICONS = {
+  Invoices: <FileText size={14} />,
+  Compliance: <Shield size={14} />,
+  Payables: <DollarSign size={14} />,
+  'Financial Health': <TrendingDown size={14} />,
+};
 
 const EmbeddedHeader = ({ onSearch }) => {
   const { user, currentCompany, companies, logout, switchCompany, fetchCompanies } = useAuth();
@@ -13,9 +27,15 @@ const EmbeddedHeader = ({ onSearch }) => {
   const [searchResults, setSearchResults] = useState(null);
   const [showSearchResults, setShowSearchResults] = useState(false);
 
+  // Notifications state
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [notifLoading, setNotifLoading] = useState(false);
+
   const companyDropdownRef = useRef(null);
   const profileDropdownRef = useRef(null);
   const searchRef = useRef(null);
+  const notifRef = useRef(null);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -28,11 +48,59 @@ const EmbeddedHeader = ({ onSearch }) => {
       if (searchRef.current && !searchRef.current.contains(event.target)) {
         setShowSearchResults(false);
       }
+      if (notifRef.current && !notifRef.current.contains(event.target)) {
+        setShowNotifications(false);
+      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Fetch notifications on mount and when company changes, then poll every 60s
+  useEffect(() => {
+    if (!currentCompany) return;
+
+    const fetchNotifications = async () => {
+      try {
+        const data = await notificationsAPI.getAll(currentCompany.id);
+        setNotifications(data.notifications || []);
+      } catch (err) {
+        console.error('Failed to fetch notifications:', err);
+      }
+    };
+
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 60000);
+    return () => clearInterval(interval);
+  }, [currentCompany]);
+
+  const handleDismiss = async (key, e) => {
+    e.stopPropagation();
+    try {
+      await notificationsAPI.dismiss(key, currentCompany.id);
+      setNotifications(prev => prev.filter(n => n.id !== key));
+    } catch (err) {
+      console.error('Failed to dismiss notification:', err);
+    }
+  };
+
+  const handleDismissAll = async () => {
+    try {
+      const keys = notifications.map(n => n.id);
+      await notificationsAPI.dismissAll(keys, currentCompany.id);
+      setNotifications([]);
+    } catch (err) {
+      console.error('Failed to dismiss all:', err);
+    }
+  };
+
+  const handleNotifClick = (notif) => {
+    if (notif.actionView) {
+      window.dispatchEvent(new CustomEvent('navigate-to', { detail: { view: notif.actionView } }));
+    }
+    setShowNotifications(false);
+  };
 
   const handleSearch = async (query) => {
     setSearchQuery(query);
@@ -82,6 +150,17 @@ const EmbeddedHeader = ({ onSearch }) => {
       throw error;
     }
   };
+
+  const notifCount = notifications.length;
+  const hasNotifications = notifCount > 0;
+
+  // Group notifications by category
+  const groupedNotifications = notifications.reduce((acc, n) => {
+    const cat = n.category || 'Other';
+    if (!acc[cat]) acc[cat] = [];
+    acc[cat].push(n);
+    return acc;
+  }, {});
 
   return (
     <>
@@ -234,43 +313,122 @@ const EmbeddedHeader = ({ onSearch }) => {
           )}
         </div>
 
-        <div className="header-right" ref={profileDropdownRef}>
-          <button 
-            className="profile-button"
-            onClick={() => setShowProfileDropdown(!showProfileDropdown)}
-          >
-            <div className="profile-avatar">
-              {user?.avatarUrl ? (
-                <img src={user.avatarUrl} alt={user.fullName} />
-              ) : (
-                <User size={18} />
+        <div className="header-right-group">
+          {/* Notification Bell */}
+          <div className="notif-container" ref={notifRef}>
+            <button 
+              className="notif-bell-btn"
+              onClick={() => setShowNotifications(!showNotifications)}
+              aria-label="Notifications"
+            >
+              <Bell size={20} />
+              {hasNotifications && (
+                <span className="notif-badge">{notifCount > 9 ? '9+' : notifCount}</span>
               )}
-            </div>
-            <ChevronDown size={16} />
-          </button>
+            </button>
 
-          {showProfileDropdown && (
-            <div className="dropdown-menu profile-dropdown">
-              <div className="dropdown-header">
-                <div className="dropdown-user-name">{user?.fullName || user?.email}</div>
-                <div className="dropdown-user-email">{user?.email}</div>
+            {showNotifications && (
+              <div className="notif-panel">
+                <div className="notif-panel-header">
+                  <h3>Notifications</h3>
+                  <div className="notif-panel-actions">
+                    {hasNotifications && (
+                      <button className="notif-clear-all" onClick={handleDismissAll}>
+                        <CheckCircle2 size={14} />
+                        Clear All
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="notif-panel-body">
+                  {notifications.length === 0 ? (
+                    <div className="notif-empty">
+                      <Bell size={32} />
+                      <p>You're all caught up!</p>
+                      <span>No pending notifications</span>
+                    </div>
+                  ) : (
+                    Object.entries(groupedNotifications).map(([category, items]) => (
+                      <div key={category} className="notif-group">
+                        <div className="notif-group-title">
+                          {CATEGORY_ICONS[category] || <FileText size={14} />}
+                          <span>{category}</span>
+                          <span className="notif-group-count">{items.length}</span>
+                        </div>
+                        {items.map(notif => {
+                          const sev = SEVERITY_CONFIG[notif.severity] || SEVERITY_CONFIG.info;
+                          return (
+                            <div 
+                              key={notif.id} 
+                              className="notif-item"
+                              onClick={() => handleNotifClick(notif)}
+                              style={{ borderLeft: `3px solid ${sev.color}` }}
+                            >
+                              <div className="notif-item-icon" style={{ background: sev.bg, color: sev.color }}>
+                                {sev.icon}
+                              </div>
+                              <div className="notif-item-content">
+                                <div className="notif-item-title">{notif.title}</div>
+                                <div className="notif-item-desc">{notif.description}</div>
+                              </div>
+                              <button 
+                                className="notif-item-dismiss" 
+                                onClick={(e) => handleDismiss(notif.id, e)}
+                                title="Dismiss"
+                              >
+                                <X size={14} />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
-              <div className="dropdown-divider" />
-              <button className="dropdown-item">
-                <User size={16} />
-                <span>Profile</span>
-              </button>
-              <button className="dropdown-item">
-                <Settings size={16} />
-                <span>Company Settings</span>
-              </button>
-              <div className="dropdown-divider" />
-              <button className="dropdown-item" onClick={logout}>
-                <LogOut size={16} />
-                <span>Logout</span>
-              </button>
-            </div>
-          )}
+            )}
+          </div>
+
+          {/* Profile Button */}
+          <div className="header-right" ref={profileDropdownRef}>
+            <button 
+              className="profile-button"
+              onClick={() => setShowProfileDropdown(!showProfileDropdown)}
+            >
+              <div className="profile-avatar">
+                {user?.avatarUrl ? (
+                  <img src={user.avatarUrl} alt={user.fullName} />
+                ) : (
+                  <User size={18} />
+                )}
+              </div>
+              <ChevronDown size={16} />
+            </button>
+
+            {showProfileDropdown && (
+              <div className="dropdown-menu profile-dropdown">
+                <div className="dropdown-header">
+                  <div className="dropdown-user-name">{user?.fullName || user?.email}</div>
+                  <div className="dropdown-user-email">{user?.email}</div>
+                </div>
+                <div className="dropdown-divider" />
+                <button className="dropdown-item">
+                  <User size={16} />
+                  <span>Profile</span>
+                </button>
+                <button className="dropdown-item">
+                  <Settings size={16} />
+                  <span>Company Settings</span>
+                </button>
+                <div className="dropdown-divider" />
+                <button className="dropdown-item" onClick={logout}>
+                  <LogOut size={16} />
+                  <span>Logout</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -285,3 +443,4 @@ const EmbeddedHeader = ({ onSearch }) => {
 };
 
 export default EmbeddedHeader;
+

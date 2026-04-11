@@ -13,6 +13,8 @@ const invoiceRoutes = require('./routes/invoices');
 const complianceRoutes = require('./routes/compliance');
 const reportsRoutes = require('./routes/reports');
 const aiRoutes = require('./routes/ai');
+const accountingRoutes = require('./routes/accounting');
+const notificationsRoutes = require('./routes/notifications');
 const app = express();
 
 // Middleware
@@ -56,6 +58,37 @@ connectDB().then(() => {
       );
     `)
     .catch((err) => console.error('Company columns init failed:', err.message));
+
+  // Ensure chart_of_accounts table exists
+  pool
+    .query(`
+      CREATE TABLE IF NOT EXISTS chart_of_accounts (
+        id SERIAL PRIMARY KEY,
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        code VARCHAR(20) NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        account_type VARCHAR(50) NOT NULL CHECK (account_type IN ('Asset', 'Liability', 'Equity', 'Revenue', 'Expense')),
+        description TEXT,
+        opening_balance NUMERIC DEFAULT 0,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_chart_of_accounts_company ON chart_of_accounts(company_id);
+    `)
+    .catch((err) => console.error('Chart of accounts table init failed:', err.message));
+
+  // Ensure notification_dismissals table exists
+  pool
+    .query(`
+      CREATE TABLE IF NOT EXISTS notification_dismissals (
+        id SERIAL PRIMARY KEY,
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        notification_key VARCHAR(255) NOT NULL,
+        dismissed_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(company_id, notification_key)
+      );
+    `)
+    .catch((err) => console.error('Notification dismissals table init failed:', err.message));
 });
 
 // Routes
@@ -69,6 +102,8 @@ app.use('/api/invoices', invoiceRoutes);
 app.use('/api/compliance', complianceRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/accounting', accountingRoutes);
+app.use('/api/notifications', notificationsRoutes);
 app.get('/', (req, res) => {
   res.send('Backend is running');
 });

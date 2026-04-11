@@ -118,6 +118,19 @@ CREATE TABLE IF NOT EXISTS compliance_scores (
   last_calculated TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Chart of Accounts table
+CREATE TABLE IF NOT EXISTS chart_of_accounts (
+  id SERIAL PRIMARY KEY,
+  company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+  code VARCHAR(20) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  account_type VARCHAR(50) NOT NULL CHECK (account_type IN ('Asset', 'Liability', 'Equity', 'Revenue', 'Expense')),
+  description TEXT,
+  opening_balance NUMERIC DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_transactions_company ON transactions(company_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
@@ -127,6 +140,17 @@ CREATE INDEX IF NOT EXISTS idx_vendors_company ON vendors(company_id);
 CREATE INDEX IF NOT EXISTS idx_user_companies_user ON user_companies(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_companies_company ON user_companies(company_id);
 CREATE INDEX IF NOT EXISTS idx_compliance_events_company ON compliance_events(company_id);
+CREATE INDEX IF NOT EXISTS idx_chart_of_accounts_company ON chart_of_accounts(company_id);
+
+-- Notification Dismissals
+CREATE TABLE IF NOT EXISTS notification_dismissals (
+  id SERIAL PRIMARY KEY,
+  company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+  notification_key VARCHAR(255) NOT NULL,
+  dismissed_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(company_id, notification_key)
+);
+CREATE INDEX IF NOT EXISTS idx_notification_dismissals_company ON notification_dismissals(company_id);
 
 -- ============================================
 -- DEMO USER SETUP

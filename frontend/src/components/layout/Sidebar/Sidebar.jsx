@@ -1,6 +1,6 @@
 import React from 'react';
 import './Sidebar.css';
-import { LayoutDashboard, Receipt, FileText, TrendingUp, BarChart3, FileCheck, Settings } from 'lucide-react';
+import { LayoutDashboard, Receipt, FileText, TrendingUp, BarChart3, FileCheck, Settings, BookOpen } from 'lucide-react';
 
 const Sidebar = ({ activeView, setActiveView, stats }) => {
   return (
@@ -31,6 +31,13 @@ const Sidebar = ({ activeView, setActiveView, stats }) => {
         >
           <Receipt size={20} />
           <span>Transactions</span>
+        </button>
+        <button 
+          className={`nav-button ${activeView === 'accounting' ? 'active' : ''}`}
+          onClick={() => setActiveView('accounting')}
+        >
+          <BookOpen size={20} />
+          <span>Accounting</span>
         </button>
         <button 
           className={`nav-button ${activeView === 'invoices' ? 'active' : ''}`}
