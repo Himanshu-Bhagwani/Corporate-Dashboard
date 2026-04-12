@@ -1,0 +1,185 @@
+.profit-header {
+  margin-bottom: 24px;
+}
+
+.profit-insight-banner {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.05), rgba(245, 158, 11, 0.05));
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 12px;
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.insight-badge {
+  background: #f59e0b;
+  color: white;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.profit-insight-banner p {
+  margin: 0;
+  font-size: 1.05rem;
+  color: var(--text-color);
+  line-height: 1.5;
+}
+
+.profit-insight-banner strong {
+  color: #ef4444;
+}
+
+.profit-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  padding-bottom: 40px;
+}
+
+.span-2 {
+  grid-column: span 2;
+}
+
+.span-3 {
+  grid-column: span 3;
+}
+
+.profit-card {
+  background: white;
+  border-radius: 16px;
+  border: 1px solid var(--border-color);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
+}
+
+.profit-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.profit-card-header h3 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--text-color);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.icon-blue { color: #3b82f6; }
+.icon-purple { color: #a855f7; }
+.icon-orange { color: #f97316; }
+
+.card-subtitle {
+  font-size: 0.85rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.chart-container {
+  width: 100%;
+  position: relative;
+  flex-grow: 1;
+}
+
+.breakdown-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.breakdown-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.95rem;
+  color: #475569;
+  font-weight: 500;
+}
+
+.breakdown-list span.positive { color: #10b981; font-weight: 600; }
+.breakdown-list span.warning { color: #f59e0b; font-weight: 600; }
+.breakdown-list span.negative { color: #ef4444; font-weight: 600; }
+
+.heatmap-container {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.heatmap-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.heatmap-table th {
+  text-align: left;
+  padding: 12px 16px;
+  color: #64748b;
+  font-weight: 500;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.heatmap-table td {
+  padding: 16px;
+  text-align: center;
+  font-weight: 600;
+  font-size: 0.95rem;
+  border: 2px solid white;
+  border-radius: 6px;
+  transition: opacity 0.2s;
+}
+
+.heatmap-table td:hover {
+  opacity: 0.8;
+  cursor: pointer;
+}
+
+.heatmap-table td.category-name {
+  text-align: left;
+  color: var(--text-color);
+  background: transparent !important;
+  border-color: transparent;
+  width: 30%;
+}
+
+@media (max-width: 1024px) {
+  .profit-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .span-3 {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 768px) {
+  .profit-grid {
+    grid-template-columns: 1fr;
+  }
+  .span-2, .span-3 {
+    grid-column: 1fr;
+  }
+  .profit-insight-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
