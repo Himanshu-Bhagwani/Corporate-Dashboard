@@ -91,11 +91,11 @@ const AddTransactionModal = ({ onClose, onSubmit, accounts, onGoToAccounts }) =>
             <div className="radio-group">
               <label className={`radio-option ${formData.type === 'expense' ? 'active' : ''}`}>
                 <input type="radio" name="type" value="expense" checked={formData.type === 'expense'} onChange={handleInputChange} />
-                <span>Expense</span>
+                <span>Debit</span>
               </label>
               <label className={`radio-option ${formData.type === 'income' ? 'active' : ''}`}>
                 <input type="radio" name="type" value="income" checked={formData.type === 'income'} onChange={handleInputChange} />
-                <span>Income</span>
+                <span>Credit</span>
               </label>
             </div>
           </div>

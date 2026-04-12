@@ -18,7 +18,7 @@ const AnalyticsView = ({ stats }) => {
         </div>
         <div className="time-filter">
           <Calendar size={18} />
-          <select 
+          <select
             className="filter-select"
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(e.target.value)}
@@ -37,7 +37,7 @@ const AnalyticsView = ({ stats }) => {
             <TrendingUp size={20} />
           </div>
           <div className="stat-content-analytics">
-            <div className="stat-label-analytics">Avg Income</div>
+            <div className="stat-label-analytics">Avg Credit</div>
             <div className="stat-value-analytics">$5,214</div>
             <div className="stat-sublabel">per month</div>
           </div>
@@ -48,7 +48,7 @@ const AnalyticsView = ({ stats }) => {
             <TrendingDown size={20} />
           </div>
           <div className="stat-content-analytics">
-            <div className="stat-label-analytics">Avg Expenses</div>
+            <div className="stat-label-analytics">Avg Debits</div>
             <div className="stat-value-analytics">$3,929</div>
             <div className="stat-sublabel">per month</div>
           </div>
@@ -61,7 +61,7 @@ const AnalyticsView = ({ stats }) => {
           <div className="stat-content-analytics">
             <div className="stat-label-analytics">Savings Rate</div>
             <div className="stat-value-analytics">24.7%</div>
-            <div className="stat-sublabel">of income</div>
+            <div className="stat-sublabel">of credit</div>
           </div>
         </div>
 
@@ -79,18 +79,18 @@ const AnalyticsView = ({ stats }) => {
 
       {/* Main Charts Section */}
       <div className="main-charts-container">
-        {/* Income vs Expenses Chart */}
+        {/* Credit vs Debits Chart */}
         <div className="chart-section-income-expenses">
           <div className="chart-header">
-            <h3 className="chart-title">Income vs Expenses</h3>
+            <h3 className="chart-title">Credit vs Debits</h3>
             <div className="chart-legend">
               <div className="legend-item-chart">
                 <span className="legend-dot green"></span>
-                <span>Income</span>
+                <span>Credit</span>
               </div>
               <div className="legend-item-chart">
                 <span className="legend-dot red"></span>
-                <span>Expenses</span>
+                <span>Debits</span>
               </div>
             </div>
           </div>
@@ -102,7 +102,7 @@ const AnalyticsView = ({ stats }) => {
                 <line x1="0" y1="100" x2="600" y2="100" stroke="rgba(0,0,0,0.05)" strokeWidth="1" />
                 <line x1="0" y1="150" x2="600" y2="150" stroke="rgba(0,0,0,0.05)" strokeWidth="1" />
                 <line x1="0" y1="200" x2="600" y2="200" stroke="rgba(0,0,0,0.05)" strokeWidth="1" />
-                
+
                 {/* Income line gradient */}
                 <defs>
                   <linearGradient id="incomeGradient" x1="0%" y1="0%" x2="0%" y2="0%">
@@ -120,13 +120,13 @@ const AnalyticsView = ({ stats }) => {
                   d="M 0,80 L 100,60 L 200,70 L 300,55 L 400,45 L 500,40 L 600,50 L 600,250 L 0,250 Z"
                   fill="url(#incomeGradient)"
                 />
-                
+
                 {/* Expense area */}
                 <path
                   d="M 0,120 L 100,130 L 200,115 L 300,125 L 400,110 L 500,120 L 600,115 L 600,250 L 0,250 Z"
                   fill="url(#expenseGradient)"
                 />
-                
+
                 {/* Income line */}
                 <polyline
                   points="0,80 100,60 200,70 300,55 400,45 500,40 600,50"
@@ -136,7 +136,7 @@ const AnalyticsView = ({ stats }) => {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 />
-                
+
                 {/* Expense line */}
                 <polyline
                   points="0,120 100,130 200,115 300,125 400,110 500,120 600,115"
@@ -146,7 +146,7 @@ const AnalyticsView = ({ stats }) => {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 />
-                
+
                 {/* Data points - Income */}
                 <circle cx="0" cy="80" r="6" fill="#10b981" className="chart-dot" />
                 <circle cx="100" cy="60" r="6" fill="#10b981" className="chart-dot" />
@@ -155,7 +155,7 @@ const AnalyticsView = ({ stats }) => {
                 <circle cx="400" cy="45" r="6" fill="#10b981" className="chart-dot" />
                 <circle cx="500" cy="40" r="6" fill="#10b981" className="chart-dot" />
                 <circle cx="600" cy="50" r="6" fill="#10b981" className="chart-dot" />
-                
+
                 {/* Data points - Expenses */}
                 <circle cx="0" cy="120" r="6" fill="#ef4444" className="chart-dot" />
                 <circle cx="100" cy="130" r="6" fill="#ef4444" className="chart-dot" />
@@ -187,28 +187,28 @@ const AnalyticsView = ({ stats }) => {
             <div className="pie-chart-wrapper">
               <svg viewBox="0 0 240 240" className="pie-chart-svg">
                 {/* Donut Chart Slices */}
-                <circle cx="120" cy="120" r="90" fill="none" stroke="#3b82f6" strokeWidth="40" 
-                  strokeDasharray="169.65 565.49" strokeDashoffset="0" transform="rotate(-90 120 120)" 
+                <circle cx="120" cy="120" r="90" fill="none" stroke="#3b82f6" strokeWidth="40"
+                  strokeDasharray="169.65 565.49" strokeDashoffset="0" transform="rotate(-90 120 120)"
                   className="pie-slice" data-index="0" />
                 <circle cx="120" cy="120" r="90" fill="none" stroke="#10b981" strokeWidth="40"
-                  strokeDasharray="118.51 565.49" strokeDashoffset="-169.65" transform="rotate(-90 120 120)" 
+                  strokeDasharray="118.51 565.49" strokeDashoffset="-169.65" transform="rotate(-90 120 120)"
                   className="pie-slice" data-index="1" />
                 <circle cx="120" cy="120" r="90" fill="none" stroke="#8b5cf6" strokeWidth="40"
-                  strokeDasharray="90.48 565.49" strokeDashoffset="-288.16" transform="rotate(-90 120 120)" 
+                  strokeDasharray="90.48 565.49" strokeDashoffset="-288.16" transform="rotate(-90 120 120)"
                   className="pie-slice" data-index="2" />
                 <circle cx="120" cy="120" r="90" fill="none" stroke="#ec4899" strokeWidth="40"
-                  strokeDasharray="62.20 565.49" strokeDashoffset="-378.64" transform="rotate(-90 120 120)" 
+                  strokeDasharray="62.20 565.49" strokeDashoffset="-378.64" transform="rotate(-90 120 120)"
                   className="pie-slice" data-index="3" />
                 <circle cx="120" cy="120" r="90" fill="none" stroke="#ef4444" strokeWidth="40"
-                  strokeDasharray="56.55 565.49" strokeDashoffset="-440.84" transform="rotate(-90 120 120)" 
+                  strokeDasharray="56.55 565.49" strokeDashoffset="-440.84" transform="rotate(-90 120 120)"
                   className="pie-slice" data-index="4" />
                 <circle cx="120" cy="120" r="90" fill="none" stroke="#f59e0b" strokeWidth="40"
-                  strokeDasharray="45.24 565.49" strokeDashoffset="-497.39" transform="rotate(-90 120 120)" 
+                  strokeDasharray="45.24 565.49" strokeDashoffset="-497.39" transform="rotate(-90 120 120)"
                   className="pie-slice" data-index="5" />
                 <circle cx="120" cy="120" r="90" fill="none" stroke="#6b7280" strokeWidth="40"
-                  strokeDasharray="22.62 565.49" strokeDashoffset="-542.63" transform="rotate(-90 120 120)" 
+                  strokeDasharray="22.62 565.49" strokeDashoffset="-542.63" transform="rotate(-90 120 120)"
                   className="pie-slice" data-index="6" />
-                
+
                 {/* White circle in center for donut effect */}
                 <circle cx="120" cy="120" r="65" fill="white" />
               </svg>
@@ -227,8 +227,8 @@ const AnalyticsView = ({ stats }) => {
                 { name: 'Utilities', amount: 314, percent: 8, color: '#f59e0b' },
                 { name: 'Other', amount: 157, percent: 4, color: '#6b7280' }
               ].map((category, index) => (
-                <div 
-                  key={index} 
+                <div
+                  key={index}
                   className={`category-item ${hoveredCategory === index ? 'active' : ''}`}
                   onMouseEnter={() => setHoveredCategory(index)}
                   onMouseLeave={() => setHoveredCategory(null)}
@@ -265,14 +265,14 @@ const AnalyticsView = ({ stats }) => {
               const heights = [70, 85, 75, 75, 60, 85, 75];
               const amounts = [850, 1020, 900, 900, 720, 1020, 900];
               return (
-                <div 
-                  key={month} 
+                <div
+                  key={month}
                   className="bar-wrapper-enhanced"
                   onMouseEnter={() => setHoveredBar(i)}
                   onMouseLeave={() => setHoveredBar(null)}
                 >
                   <div className="bar-container">
-                    <div 
+                    <div
                       className={`bar-fill blue ${hoveredBar === i ? 'active' : ''}`}
                       style={{ height: `${heights[i]}%` }}
                     >
@@ -297,7 +297,7 @@ const AnalyticsView = ({ stats }) => {
               return (
                 <div key={day} className="bar-wrapper-enhanced">
                   <div className="bar-container">
-                    <div 
+                    <div
                       className="bar-fill purple"
                       style={{ height: `${heights[i]}%` }}
                     >

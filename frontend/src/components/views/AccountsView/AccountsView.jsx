@@ -168,14 +168,14 @@ const AccountsView = ({ accounts, stats, loading, onAdd, onUpdate, onDelete }) =
 
   const getAccountTypeGradient = (type) => {
     switch ((type || '').toLowerCase()) {
-      case 'checking':   return 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
-      case 'savings':    return 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
-      case 'credit':     return 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)';
+      case 'checking': return 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+      case 'savings': return 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+      case 'credit': return 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)';
       case 'investment': return 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)';
-      case 'upi':        return 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)';
-      case 'wallet':     return 'linear-gradient(135deg, #ec4899 0%, #db2777 100%)';
-      case 'cash':       return 'linear-gradient(135deg, #84cc16 0%, #65a30d 100%)';
-      default:           return 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+      case 'upi': return 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)';
+      case 'wallet': return 'linear-gradient(135deg, #ec4899 0%, #db2777 100%)';
+      case 'cash': return 'linear-gradient(135deg, #84cc16 0%, #65a30d 100%)';
+      default: return 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
     }
   };
 
@@ -237,11 +237,11 @@ const AccountsView = ({ accounts, stats, loading, onAdd, onUpdate, onDelete }) =
         <div className="stat-card-accounts">
           <div className="stat-icon-wrapper-accounts red"><CreditCard size={20} /></div>
           <div className="stat-content-accounts">
-            <div className="stat-label-accounts">Total Expenses</div>
+            <div className="stat-label-accounts">Total Debits</div>
             <div className="stat-value-accounts">
               ₹{totalExpenses.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
-            <div className="stat-sublabel-accounts">All time spending</div>
+            <div className="stat-sublabel-accounts">All time debits</div>
           </div>
         </div>
       </div>
@@ -392,8 +392,8 @@ const AccountsView = ({ accounts, stats, loading, onAdd, onUpdate, onDelete }) =
           <div className="insight-card-accounts green">
             <div className="insight-icon-wrapper-accounts"><TrendingUp size={24} /></div>
             <div className="insight-content-accounts">
-              <h4 className="insight-title-text">Total Income</h4>
-              <p className="insight-description">All income recorded across accounts</p>
+              <h4 className="insight-title-text">Total Credit</h4>
+              <p className="insight-description">All credits recorded across accounts</p>
             </div>
             <div className="insight-value-large">
               ₹{totalIncome.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -489,7 +489,7 @@ const AccountsView = ({ accounts, stats, loading, onAdd, onUpdate, onDelete }) =
                 {[
                   { icon: '🏦', text: `The account — ${deleteConfirmAccount.name} (${deleteConfirmAccount.bank})` },
                   { icon: '📋', text: `All ${parseInt(deleteConfirmAccount.transaction_count) || 0} transaction${parseInt(deleteConfirmAccount.transaction_count) !== 1 ? 's' : ''} linked to this account` },
-                  { icon: '📊', text: 'All income and expense history for this account' },
+                  { icon: '📊', text: 'All credit and debit history for this account' },
                   { icon: '💰', text: `Opening balance of ₹${parseFloat(deleteConfirmAccount.opening_balance || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
                 ].map((item, i) => (
                   <div key={i} style={{

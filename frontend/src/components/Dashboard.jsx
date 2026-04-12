@@ -105,7 +105,7 @@ const Dashboard = () => {
           </div>
           <div className="stat-content-new">
             <div className="stat-header-row">
-              <span className="stat-label-new">Total Income</span>
+              <span className="stat-label-new">Total Credit</span>
               <span className="stat-change positive">+12.5%</span>
             </div>
             <div className="stat-value-new">${stats.totalIncome.toLocaleString()}</div>
@@ -118,7 +118,7 @@ const Dashboard = () => {
           </div>
           <div className="stat-content-new">
             <div className="stat-header-row">
-              <span className="stat-label-new">Total Expenses</span>
+              <span className="stat-label-new">Total Debits</span>
               <span className="stat-change negative">-3.2%</span>
             </div>
             <div className="stat-value-new">${stats.totalExpenses.toLocaleString()}</div>
@@ -217,7 +217,7 @@ const Dashboard = () => {
       <div className="view-header">
         <div>
           <h1 className="view-title">Transactions</h1>
-          <p className="view-subtitle">Track and manage your income and expenses</p>
+          <p className="view-subtitle">Track and manage your credits and debits</p>
         </div>
         <button className="btn-primary" onClick={() => setShowAddModal(true)}>
           <PlusCircle size={20} />
@@ -232,7 +232,7 @@ const Dashboard = () => {
             <TrendingUp size={18} />
           </div>
           <div className="stat-content-simple">
-            <div className="stat-label-simple">Total Income</div>
+            <div className="stat-label-simple">Total Credit</div>
             <div className="stat-value-simple green">${stats.totalIncome.toLocaleString()}</div>
           </div>
         </div>
@@ -242,7 +242,7 @@ const Dashboard = () => {
             <TrendingDown size={18} />
           </div>
           <div className="stat-content-simple">
-            <div className="stat-label-simple">Total Expenses</div>
+            <div className="stat-label-simple">Total Debits</div>
             <div className="stat-value-simple red">${stats.totalExpenses.toLocaleString()}</div>
           </div>
         </div>
@@ -271,8 +271,8 @@ const Dashboard = () => {
         </div>
         <select className="filter-select">
           <option>All Types</option>
-          <option>Income</option>
-          <option>Expense</option>
+          <option>Credit</option>
+          <option>Debit</option>
         </select>
         <select className="filter-select">
           <option>All Time</option>
@@ -346,7 +346,7 @@ const Dashboard = () => {
             <TrendingUp size={18} />
           </div>
           <div className="stat-content-analytics">
-            <div className="stat-label-analytics">Avg Income</div>
+            <div className="stat-label-analytics">Avg Credit</div>
             <div className="stat-value-analytics">$5214</div>
             <div className="stat-sublabel">per month</div>
           </div>
@@ -357,7 +357,7 @@ const Dashboard = () => {
             <TrendingDown size={18} />
           </div>
           <div className="stat-content-analytics">
-            <div className="stat-label-analytics">Avg Expenses</div>
+            <div className="stat-label-analytics">Avg Debits</div>
             <div className="stat-value-analytics">$3929</div>
             <div className="stat-sublabel">per month</div>
           </div>
@@ -370,7 +370,7 @@ const Dashboard = () => {
           <div className="stat-content-analytics">
             <div className="stat-label-analytics">Savings Rate</div>
             <div className="stat-value-analytics">24.7%</div>
-            <div className="stat-sublabel">of income</div>
+            <div className="stat-sublabel">of credit</div>
           </div>
         </div>
 
@@ -388,20 +388,20 @@ const Dashboard = () => {
 
       {/* Charts Grid */}
       <div className="charts-grid">
-        {/* Income vs Expenses Chart */}
-        <div className="chart-section-large">
-          <div className="chart-header">
-            <h3 className="chart-title">Income vs Expenses</h3>
+        {/* Credit vs Debits Chart */}
+        <div className="chart-section-income-expenses">
+          <div className="chart-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 className="chart-title">Credit vs Debits</h3>
           </div>
           <div className="chart-placeholder">
             <div className="chart-legend">
               <div className="legend-item-chart">
-                <span className="legend-dot red"></span>
-                <span>Expenses</span>
+                <span className="legend-dot green"></span>
+                <span>Credit</span>
               </div>
               <div className="legend-item-chart">
-                <span className="legend-dot green"></span>
-                <span>Income</span>
+                <span className="legend-dot red"></span>
+                <span>Debits</span>
               </div>
             </div>
             <div className="line-chart-placeholder">
@@ -705,7 +705,7 @@ const Dashboard = () => {
                       checked={formData.type === 'expense'}
                       onChange={handleInputChange}
                     />
-                    <span>Expense</span>
+                    <span>Debit</span>
                   </label>
                   <label className={`radio-option ${formData.type === 'income' ? 'active' : ''}`}>
                     <input
@@ -715,7 +715,7 @@ const Dashboard = () => {
                       checked={formData.type === 'income'}
                       onChange={handleInputChange}
                     />
-                    <span>Income</span>
+                    <span>Credit</span>
                   </label>
                 </div>
               </div>

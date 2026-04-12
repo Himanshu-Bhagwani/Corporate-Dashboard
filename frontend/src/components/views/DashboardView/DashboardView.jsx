@@ -319,7 +319,7 @@ const DashboardView = ({
           </div>
           <div className="stat-content-new">
             <div className="stat-header-row">
-              <span className="stat-label-new">Total Expenses</span>
+              <span className="stat-label-new">Total Debits</span>
               {summary.expensesChange > 0 && <span className="stat-change negative">+{summary.expensesChange}%</span>}
             </div>
             <div className="stat-value-new">{formatCurrency(summary.totalExpenses || stats.totalExpenses || 0)}</div>
@@ -339,8 +339,8 @@ const DashboardView = ({
           </div>
         </div>
 
-        <div 
-          className="stat-card-new" 
+        <div
+          className="stat-card-new"
           onClick={() => setActiveView && setActiveView('accounts')}
           style={{ cursor: 'pointer' }}
           title="Click to view Bank Accounts"
@@ -411,11 +411,11 @@ const DashboardView = ({
 
       {/* === CHARTS SECTION === */}
       <div className="charts-section">
-        {/* Revenue vs Expenses Line Chart */}
+        {/* Revenue vs Debits Line Chart */}
         <div className="chart-container">
           <div className="chart-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <div className="chart-title">Revenue vs Expenses</div>
+              <div className="chart-title">Revenue vs Debits</div>
               <div className="chart-subtitle">Monthly comparison</div>
             </div>
             <select
@@ -440,7 +440,7 @@ const DashboardView = ({
                 <Tooltip formatter={(v) => formatCurrency(v)} contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
                 <Legend />
                 <Line type="monotone" dataKey="revenue" name="Revenue" stroke="#10B981" strokeWidth={3} dot={{ r: 5 }} activeDot={{ r: 7 }} />
-                <Line type="monotone" dataKey="expenses" name="Expenses" stroke="#EF4444" strokeWidth={3} dot={{ r: 5 }} activeDot={{ r: 7 }} />
+                <Line type="monotone" dataKey="expenses" name="Debits" stroke="#EF4444" strokeWidth={3} dot={{ r: 5 }} activeDot={{ r: 7 }} />
               </LineChart>
             </ResponsiveContainer>
           ) : (
@@ -448,10 +448,10 @@ const DashboardView = ({
           )}
         </div>
 
-        {/* Expense Breakdown Pie Chart */}
+        {/* Debit Breakdown Pie Chart */}
         <div className="chart-container">
           <div className="chart-header">
-            <div className="chart-title">Expense Breakdown</div>
+            <div className="chart-title">Debit Breakdown</div>
             <div className="chart-subtitle">By category</div>
           </div>
           {expenseBreakdown.length > 0 ? (
@@ -538,7 +538,7 @@ const DashboardView = ({
               </div>
             </div>
           ) : (
-            <div className="no-data-placeholder">No expense data available</div>
+            <div className="no-data-placeholder">No debit data available</div>
           )}
         </div>
       </div>
