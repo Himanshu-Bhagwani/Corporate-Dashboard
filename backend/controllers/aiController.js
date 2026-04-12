@@ -106,8 +106,8 @@ const complianceReview = async (req, res) => {
       score = scoreQuery.rows.length > 0 ? scoreQuery.rows[0].score : 'N/A';
     }
 
-    const systemPrompt = `You are an expert Corporate Compliance & Tax Coach. You analyze a company's recent filing history and output actionable advice to improve their Risk Score.
-Your output must be formatted as raw HTML (e.g. <h3>, <p>, <ul>, <li>). Do NOT use Markdown. Do NOT include \`\`\`html code blocks. Keep it concise (max 3 short paragraphs or bullets).`;
+    const systemPrompt = `You are a Senior Corporate Compliance Officer and Analyst. You critically analyze a company's recent filing history to provide an accurate, objective, and highly professional risk analysis.
+Your output must be formatted as raw HTML (e.g. <h3>, <p>, <ul>, <li>). Do NOT use Markdown. Do NOT include \`\`\`html code blocks. Do NOT include any inline CSS, <style> tags, or <font> tags. Use strictly standard structural tags so the text inherits the application's default sans-serif font styling. Keep it concise (max 3 short paragraphs or bullets).`;
 
     const prompt = `Here is the company's data:
 Current Compliance Score: ${score}/100
