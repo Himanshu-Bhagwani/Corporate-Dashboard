@@ -231,7 +231,7 @@ const TransactionsView = ({
       <div className="view-header">
         <div>
           <h1 className="view-title">Transactions</h1>
-          <p className="view-subtitle">Track and manage your corporate income and expenses</p>
+          <p className="view-subtitle">Track and manage your corporate debits and credits</p>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem' }}>
           <button
@@ -257,14 +257,14 @@ const TransactionsView = ({
         <div className="stat-card-simple">
           <div className="stat-icon-wrapper-small green"><TrendingUp size={18} /></div>
           <div className="stat-content-simple">
-            <div className="stat-label-simple">Total Income</div>
+            <div className="stat-label-simple">Total Credit</div>
             <div className="stat-value-simple green">₹{stats.totalIncome.toLocaleString()}</div>
           </div>
         </div>
         <div className="stat-card-simple">
           <div className="stat-icon-wrapper-small red"><TrendingDown size={18} /></div>
           <div className="stat-content-simple">
-            <div className="stat-label-simple">Total Expenses</div>
+            <div className="stat-label-simple">Total Debits</div>
             <div className="stat-value-simple red">₹{stats.totalExpenses.toLocaleString()}</div>
           </div>
         </div>
@@ -327,8 +327,8 @@ const TransactionsView = ({
           onChange={(e) => setSelectedType(e.target.value)}
         >
           <option value="all">All Types</option>
-          <option value="income">Income</option>
-          <option value="expense">Expense</option>
+          <option value="income">Credit</option>
+          <option value="expense">Debit</option>
         </select>
         <select
           className="filter-select"
@@ -395,8 +395,8 @@ const TransactionsView = ({
                             value={editForm.type}
                             onChange={e => setEditForm({ ...editForm, type: e.target.value })}
                           >
-                            <option value="income">Income</option>
-                            <option value="expense">Expense</option>
+                            <option value="income">Credit</option>
+                            <option value="expense">Debit</option>
                           </select>
                         </td>
                         <td>
