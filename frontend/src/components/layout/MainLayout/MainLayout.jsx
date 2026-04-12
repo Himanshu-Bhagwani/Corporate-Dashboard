@@ -12,6 +12,7 @@ import SettingsView from '../../views/SettingsView/SettingsView';
 import CashFlowView from '../../views/CashFlowView/CashFlowView';
 import ComplianceView from '../../views/ComplianceView/ComplianceView';
 import AccountingView from '../../views/AccountingView/AccountingView';
+import AiCfoView from '../../views/AiCfoView/AiCfoView';
 import AddTransactionModal from '../../shared/AddTransactionModal/AddTransactionModal';
 import CreateCompanyModal from '../../company/CreateCompanyModal';
 import { 
@@ -546,6 +547,9 @@ const MainLayout = () => {
               onDeleteAccount={handleDeleteCoaEntry}
               loading={accountingLoading}
             />
+          )}
+          {activeView === 'aicfo' && (
+            <AiCfoView />
           )}
         </main>
       </div>

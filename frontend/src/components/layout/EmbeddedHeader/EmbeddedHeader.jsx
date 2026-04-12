@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, ChevronDown, User, Building2, Settings, LogOut, Plus, Bell, X, AlertTriangle, FileText, Shield, DollarSign, TrendingDown, CheckCircle2 } from 'lucide-react';
+import { Search, ChevronDown, User, Building2, Settings, LogOut, Plus, Bell, X, AlertTriangle, FileText, Shield, DollarSign, TrendingDown, CheckCircle2, BrainCircuit } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { notificationsAPI } from '../../../services/api';
 import CreateCompanyModal from '../../company/CreateCompanyModal';
@@ -314,6 +314,17 @@ const EmbeddedHeader = ({ onSearch }) => {
         </div>
 
         <div className="header-right-group">
+          {/* AI CFO Button */}
+          <button 
+            className="notif-bell-btn"
+            style={{ color: 'var(--primary-color)' }}
+            onClick={() => window.dispatchEvent(new CustomEvent('navigate-to', { detail: { view: 'aicfo' } }))}
+            title="AI CFO Module"
+            aria-label="AI CFO Module"
+          >
+            <BrainCircuit size={20} />
+          </button>
+
           {/* Notification Bell */}
           <div className="notif-container" ref={notifRef}>
             <button 
