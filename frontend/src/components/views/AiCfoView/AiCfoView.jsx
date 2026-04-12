@@ -10,11 +10,17 @@ import {
   TrendingUp,
   X,
   CheckCircle,
-  Zap
+  Zap,
+  Lock,
+  Crown
 } from 'lucide-react';
+import { useAuth } from '../../../context/AuthContext';
 import './AiCfoView.css';
 const AiCfoView = () => {
+  const { currentCompany } = useAuth();
   const [activeModal, setActiveModal] = useState(null);
+
+  const isLaunchpad = currentCompany?.plan === 'Launchpad';
 
   const getModalContent = (type) => {
     switch (type) {
@@ -64,6 +70,44 @@ const AiCfoView = () => {
   };
 
   const modalData = activeModal ? getModalContent(activeModal) : null;
+
+  if (isLaunchpad) {
+    return (
+      <>
+        <EmbeddedHeader />
+        <div className="view-header aicfo-header">
+          <div>
+            <h1 className="view-title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <BrainCircuit size={28} style={{ color: 'var(--primary-color)' }} />
+              AI CFO Module
+            </h1>
+            <p className="view-subtitle">Strategic financial insights and optimization plans powered by AI</p>
+          </div>
+        </div>
+        
+        <div className="aicfo-paywall-container">
+          <div className="aicfo-paywall-card">
+            <div className="aicfo-paywall-icon">
+              <Lock size={48} />
+            </div>
+            <h2>Unlock the AI CFO Module</h2>
+            <p>Upgrade to the <strong>Growth</strong> or <strong>Enterprise</strong> plan to unlock strategic cost, tax, and cash flow insights powered by our Virtual AI CFO.</p>
+            <div className="aicfo-paywall-features">
+              <ul>
+                <li><CheckCircle size={16} /> Automated Cost Reduction Plans</li>
+                <li><CheckCircle size={16} /> Real-time Tax Liquidity Alerts</li>
+                <li><CheckCircle size={16} /> Predictive Cash Flow Sequencing</li>
+                <li><CheckCircle size={16} /> Growth Capital Strategies</li>
+              </ul>
+            </div>
+            <button className="aicfo-paywall-btn">
+              <Crown size={18} /> Upgrade to Growth
+            </button>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, ChevronDown, User, Building2, Settings, LogOut, Plus, Bell, X, AlertTriangle, FileText, Shield, DollarSign, TrendingDown, CheckCircle2, BrainCircuit } from 'lucide-react';
+import { Search, ChevronDown, User, Building2, Settings, LogOut, Plus, Bell, X, AlertTriangle, FileText, Shield, DollarSign, TrendingDown, CheckCircle2, BrainCircuit, Lock } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { notificationsAPI } from '../../../services/api';
 import CreateCompanyModal from '../../company/CreateCompanyModal';
@@ -317,12 +317,17 @@ const EmbeddedHeader = ({ onSearch }) => {
           {/* AI CFO Button */}
           <button 
             className="notif-bell-btn"
-            style={{ color: 'var(--primary-color)' }}
+            style={{ color: 'var(--primary-color)', position: 'relative' }}
             onClick={() => window.dispatchEvent(new CustomEvent('navigate-to', { detail: { view: 'aicfo' } }))}
             title="AI CFO Module"
             aria-label="AI CFO Module"
           >
             <BrainCircuit size={20} />
+            {currentCompany?.plan === 'Launchpad' && (
+              <span style={{ position: 'absolute', top: '1px', right: '1px', background: 'white', borderRadius: '50%', display: 'flex', border: '1px solid white' }}>
+                <Lock size={10} color="#94a3b8" />
+              </span>
+            )}
           </button>
 
           {/* Notification Bell */}

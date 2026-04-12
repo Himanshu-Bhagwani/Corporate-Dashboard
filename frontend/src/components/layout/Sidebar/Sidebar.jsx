@@ -1,8 +1,13 @@
 import React from 'react';
 import './Sidebar.css';
-import { LayoutDashboard, Receipt, FileText, TrendingUp, BarChart3, FileCheck, Settings, BookOpen, BrainCircuit } from 'lucide-react';
+import { LayoutDashboard, Receipt, FileText, TrendingUp, BarChart3, FileCheck, Settings, BookOpen, BrainCircuit, Lock } from 'lucide-react';
+import { useAuth } from '../../../context/AuthContext';
 
 const Sidebar = ({ activeView, setActiveView, stats }) => {
+  const { currentCompany } = useAuth();
+  
+  const isLaunchpad = currentCompany?.plan === 'Launchpad';
+
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
@@ -72,7 +77,10 @@ const Sidebar = ({ activeView, setActiveView, stats }) => {
           onClick={() => setActiveView('aicfo')}
         >
           <BrainCircuit size={20} />
-          <span>AI CFO</span>
+          <span style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+            AI CFO
+            {isLaunchpad && <Lock size={14} style={{ marginLeft: 'auto', color: '#94a3b8' }} />}
+          </span>
         </button>
         <button 
           className={`nav-button ${activeView === 'settings' ? 'active' : ''}`}
