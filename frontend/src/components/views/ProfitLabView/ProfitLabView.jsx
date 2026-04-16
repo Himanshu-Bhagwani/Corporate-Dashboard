@@ -99,10 +99,7 @@ const ProfitLabView = () => {
         </div>
       </div>
 
-      <div className="profit-insight-banner">
-        <div className="insight-badge">Critical Insight</div>
-        <p>"<strong>Client A</strong> generates <strong>32%</strong> of your total revenue, but contributes only <strong>9%</strong> to the net profit due to high servicing costs."</p>
-      </div>
+
 
       <div className="profit-grid">
         {/* Profit by Client Chart */}

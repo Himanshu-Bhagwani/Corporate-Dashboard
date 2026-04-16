@@ -58,7 +58,8 @@ const TransactionsView = ({
   const [uploadStatus, setUploadStatus] = useState('');
   const [uploading, setUploading] = useState(false);
   const [isCategorizing, setIsCategorizing] = useState(false);
-  const [showAllTransactions, setShowAllTransactions] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 25;
   const [uploadErrorMessage, setUploadErrorMessage] = useState('');
   const fileInputRef = useRef(null);
 
@@ -139,9 +140,15 @@ const TransactionsView = ({
     t.category?.toLowerCase().includes(localSearch.toLowerCase()) ||
     t.account?.toLowerCase().includes(localSearch.toLowerCase())
   );
-  const displayedTransactions = showAllTransactions 
-    ? filteredTransactions 
-    : filteredTransactions.slice(0, 25);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [localSearch, transactions]);
+
+  const totalPages = Math.ceil(filteredTransactions.length / itemsPerPage);
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const displayedTransactions = filteredTransactions.slice(indexOfFirstItem, indexOfLastItem);
 
   // --- CSV Upload ---
   const handleFileSelect = (e) => {
@@ -483,17 +490,34 @@ const TransactionsView = ({
           </table>
         </div>
       )}
-      {!loading && !error && filteredTransactions.length > 25 && !showAllTransactions && (
-        <div style={{ textAlign: 'center', marginTop: '1.5rem', marginBottom: '2.5rem' }}>
+      {!loading && !error && totalPages > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', marginTop: '1.5rem', marginBottom: '2.5rem' }}>
           <button 
-            onClick={() => setShowAllTransactions(true)} 
+            disabled={currentPage === 1}
+            onClick={() => setCurrentPage(p => Math.max(1, p - 1))} 
             style={{ 
-              background: 'none', border: 'none', color: '#3b82f6', 
-              fontSize: '15px', fontWeight: 'bold', cursor: 'pointer',
-              textDecoration: 'none', padding: '0.5rem 1rem'
+              background: 'white', border: '1px solid #e2e8f0', color: currentPage === 1 ? '#cbd5e1' : '#4a5568', 
+              padding: '0.5rem 1rem', borderRadius: '8px', cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+              display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px', fontWeight: 600,
+              boxShadow: '0 1px 2px rgba(0,0,0,0.05)', transition: 'all 0.2s ease'
             }}
           >
-            view all transactions
+            <ChevronLeft size={16} /> Previous
+          </button>
+          <span style={{ fontSize: '14px', color: '#4a5568', fontWeight: 500 }}>
+            Page {currentPage} of {totalPages}
+          </span>
+          <button 
+            disabled={currentPage === totalPages}
+            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} 
+            style={{ 
+              background: 'white', border: '1px solid #e2e8f0', color: currentPage === totalPages ? '#cbd5e1' : '#4a5568', 
+              padding: '0.5rem 1rem', borderRadius: '8px', cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+              display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px', fontWeight: 600,
+              boxShadow: '0 1px 2px rgba(0,0,0,0.05)', transition: 'all 0.2s ease'
+            }}
+          >
+            Next <ChevronRight size={16} />
           </button>
         </div>
       )}
