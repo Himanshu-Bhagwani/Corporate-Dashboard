@@ -86,23 +86,28 @@ const uploadPdfStatement = async (req, res) => {
         const cleanText = (cell.text || '').toString().trim();
         const cellX = cell.x;
 
+        let processedText = cleanText;
+
         // Check if it's a date
-        if (datePattern.test(cleanText) && !rowDate) {
-          rowDate = cleanText;
-          continue;
+        if (datePattern.test(processedText)) {
+          if (!rowDate) {
+            // Extract just the date string matching the pattern
+            rowDate = processedText.match(datePattern)[0];
+          }
+          // Strip date string(s) from text so they don't appear in the description
+          processedText = processedText.replace(new RegExp(datePattern, 'g'), ' ').replace(/\s+/g, ' ').trim();
+          if (processedText.length === 0) continue; // Cell was entirely a date
         }
 
-        // Skip reference IDs FIRST — long pure-digit strings (6+ digits without a decimal)
-        // must be checked BEFORE currency format, otherwise "532816890685" would be
-        // parsed as a ₹532B transaction amount.
-        const digitsOnly = cleanText.replace(/[^\d]/g, '');
-        if (/^\d{6,}$/.test(digitsOnly) && !cleanText.includes('.')) {
-          continue; // Reference ID, account number, UTR, etc.
+        // Strip reference numbers (6+ digits without decimal) from text without dropping surrounding characters
+        if (/\d{6,}/.test(processedText) && !processedText.includes('.')) {
+          processedText = processedText.replace(/(?:[-/:]+)?\d{6,}(?:[-/:]+)?/g, ' ').replace(/\s+/g, ' ').trim();
+          if (processedText.length === 0) continue; // Cell was entirely a reference number
         }
 
-        // Check if it's numeric/currency
-        if (isCurrencyFormat(cleanText)) {
-          const num = parseNumber(cleanText);
+        // Check if processed text is numeric/currency
+        if (isCurrencyFormat(processedText)) {
+          const num = parseNumber(processedText);
           // Filter: >= 10 to skip noise, and <= 10,00,00,000 (10 crore) as sanity max
           if (num !== null && Math.abs(num) >= 10 && Math.abs(num) <= 1000000000) {
             numericValues.push({ value: num, x: cellX, index: i });
@@ -111,8 +116,8 @@ const uploadPdfStatement = async (req, res) => {
         }
 
         // Otherwise, it's text
-        if (cleanText.length > 0) {
-          textComponents.push(cleanText);
+        if (processedText.length > 0) {
+          textComponents.push(processedText);
         }
       }
 
@@ -193,7 +198,7 @@ const uploadPdfStatement = async (req, res) => {
         // Date formatting — keep raw, never inject new Date()
         let formattedDate = lastKnownDate;
 
-        const safeName = description.trim() ? description.substring(0, 250) : 'Unknown Transaction';
+        const safeName = description.trim() ? description : 'Unknown Transaction';
 
         const txn = {
           date: formattedDate,
@@ -208,10 +213,10 @@ const uploadPdfStatement = async (req, res) => {
         if (currentTxn) normalizedTransactions.push(currentTxn);
         currentTxn = txn;
 
-      } else if (!hasAmount && !rowDate && currentTxn && description) {
+      } else if (!hasAmount && currentTxn && description) {
         // CONTINUATION row: Append description text to the pending transaction
-        const combined = currentTxn.name + ' ' + description;
-        currentTxn.name = combined.substring(0, 250);
+        // (Even if rowDate is true, without an amount it cannot be a new transaction)
+        currentTxn.name = currentTxn.name + ' ' + description;
       }
     }
     
@@ -245,12 +250,30 @@ const uploadPdfStatement = async (req, res) => {
     client = await pool.connect();
     await client.query('BEGIN');
     
+    const autoCategorize = (desc) => {
+      if (!desc) return 'Misc';
+      const d = desc.toLowerCase();
+      if (d.includes('salary') || d.includes('payroll')) return 'Salaries';
+      if (d.includes('aws') || d.includes('gcp') || d.includes('azure') || d.includes('github') || d.includes('software') || d.includes('subscription')) return 'Software';
+      if (d.includes('rent') || d.includes('lease')) return 'Rent';
+      if (d.includes('tax') || d.includes('gst') || d.includes('tds') || d.includes('income tax')) return 'Tax';
+      if (d.includes('consulting') || d.includes('advisory') || d.includes('fee')) return 'Consulting';
+      if (d.includes('flight') || d.includes('hotel') || d.includes('uber') || d.includes('ola') || d.includes('irctc') || d.includes('makemytrip')) return 'Travel';
+      if (d.includes('marketing') || d.includes('ads') || d.includes('facebook') || d.includes('google') || d.includes('meta')) return 'Marketing';
+      if (d.includes('electricity') || d.includes('water') || d.includes('internet') || d.includes('wifi') || d.includes('airtel') || d.includes('jio')) return 'Utilities';
+      if (d.includes('insurance')) return 'Insurance';
+      if (d.includes('maintenance') || d.includes('repair')) return 'Maintainance';
+      if (d.includes('sales') || d.includes('revenue') || d.includes('invoice')) return 'Sales';
+      return 'Misc';
+    };
+
     const created = [];
     for (const txn of normalizedTransactions) {
+      const category = autoCategorize(txn.name);
       const result = await client.query(
         `INSERT INTO transactions (company_id, name, type, category, amount, date, notes)
          VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-        [companyId, txn.name, txn.type, 'Misc', txn.amount, txn.date, txn.notes]
+        [companyId, txn.name, txn.type, category, txn.amount, txn.date, txn.notes]
       );
       created.push(result.rows[0]);
     }

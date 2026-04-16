@@ -61,7 +61,17 @@ const TransactionsView = ({
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 25;
   const [uploadErrorMessage, setUploadErrorMessage] = useState('');
+  const [expandedTransactions, setExpandedTransactions] = useState(new Set());
   const fileInputRef = useRef(null);
+
+  const toggleExpand = (id) => {
+    setExpandedTransactions(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   // --- Inline Edit Handlers ---
   const startEdit = (transaction) => {
@@ -464,7 +474,30 @@ const TransactionsView = ({
                             <div className={`table-icon ${transaction.type === 'income' ? 'green' : 'red'}`}>
                               {transaction.type === 'income' ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
                             </div>
-                            <span className="table-main-text">{transaction.name}</span>
+                            <span className="table-main-text" style={{ maxWidth: expandedTransactions.has(transaction.id) ? '400px' : 'auto', display: 'block', lineHeight: '1.4' }}>
+                              {transaction.name?.length > 40 ? (
+                                <>
+                                  <span 
+                                    className="expandable-name-text" 
+                                    onClick={() => toggleExpand(transaction.id)}
+                                    style={{ cursor: 'pointer', color: '#1a202c' }}
+                                  >
+                                    {expandedTransactions.has(transaction.id) 
+                                      ? transaction.name 
+                                      : `${transaction.name.slice(0, 40)}...`}
+                                  </span>
+                                  <span 
+                                    className="expand-toggle-btn"
+                                    onClick={() => toggleExpand(transaction.id)}
+                                    style={{ color: '#3b82f6', cursor: 'pointer', fontSize: '13px', marginLeft: '6px', fontWeight: 600 }}
+                                  >
+                                    {expandedTransactions.has(transaction.id) ? 'Collapse' : 'Expand'}
+                                  </span>
+                                </>
+                              ) : (
+                                transaction.name
+                              )}
+                            </span>
                           </div>
                         </td>
                         <td><span className="table-secondary-text">{transaction.category}</span></td>
