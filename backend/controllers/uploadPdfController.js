@@ -37,6 +37,7 @@ const uploadPdfStatement = async (req, res) => {
     let currentTxn = null;
     let identifiedCandidateRows = 0;
     let lastKnownDate = null;
+    let pendingDescription = ''; // buffer for narration rows that appear before/between amount rows
 
     const datePattern = /(\d{1,2}[\s\/\-.]{1,3}(?:\d{1,2}|[A-Za-z]{3,8})[\s\/\-.]{1,3}\d{2,4})|(\d{4}[\s\/\-.]{1,3}\d{1,2}[\s\/\-.]{1,3}\d{1,2})/;
     const noiseKeywords = [
@@ -124,7 +125,7 @@ const uploadPdfStatement = async (req, res) => {
       if (rowDate) lastKnownDate = rowDate;
 
       const hasAmount = numericValues.length > 0;
-      const description = textComponents.join(' ');
+      const description = textComponents.join(' ').trim();
 
       if (hasAmount) {
         // Must have a date
@@ -198,7 +199,14 @@ const uploadPdfStatement = async (req, res) => {
         // Date formatting — keep raw, never inject new Date()
         let formattedDate = lastKnownDate;
 
-        const safeName = description.trim() ? description : 'Unknown Transaction';
+        // Merge: same-row description wins; fall back to any buffered pending description;
+        // only use 'Unknown Transaction' as last resort.
+        let finalDescription = description;
+        if (!finalDescription && pendingDescription) {
+          finalDescription = pendingDescription;
+        }
+        pendingDescription = ''; // consumed
+        const safeName = finalDescription || 'Unknown Transaction';
 
         const txn = {
           date: formattedDate,
@@ -213,10 +221,19 @@ const uploadPdfStatement = async (req, res) => {
         if (currentTxn) normalizedTransactions.push(currentTxn);
         currentTxn = txn;
 
-      } else if (!hasAmount && currentTxn && description) {
-        // CONTINUATION row: Append description text to the pending transaction
-        // (Even if rowDate is true, without an amount it cannot be a new transaction)
-        currentTxn.name = currentTxn.name + ' ' + description;
+      } else if (!hasAmount && description) {
+        // No amount on this row — it is either:
+        //   a) A continuation of the most-recently started transaction, OR
+        //   b) A narration row that precedes its transaction's amount row
+        if (currentTxn) {
+          // Append to the current in-flight transaction
+          currentTxn.name = (currentTxn.name + ' ' + description).trim();
+        } else {
+          // Buffer it — the amount row for this narration hasn't appeared yet
+          pendingDescription = pendingDescription
+            ? (pendingDescription + ' ' + description).trim()
+            : description;
+        }
       }
     }
     
