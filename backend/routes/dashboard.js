@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { getSummary } = require('../controllers/dashboardController');
+const { getSummary, getInsightsData } = require('../controllers/dashboardController');
 
 router.get('/summary', getSummary);
+router.get('/insights', getInsightsData);
 
 module.exports = router;

@@ -800,6 +800,26 @@
   border: 1px solid rgba(239,68,68,0.2);
 }
 
+/* Expendable Description Styles */
+.expandable-name-text {
+  transition: all 0.2s ease;
+  line-height: inherit;
+}
+
+.expandable-name-text:hover {
+  text-decoration: underline;
+}
+
+.expand-toggle-btn {
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.expand-toggle-btn:hover {
+  text-decoration: underline;
+  color: var(--deep-blue);
+}
+
 /* Responsive */
 @media (max-width: 1024px) {
   .stats-grid-3 {

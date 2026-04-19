@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import EmbeddedHeader from '../../layout/EmbeddedHeader/EmbeddedHeader';
 import { 
   TrendingDown, 
@@ -15,23 +15,46 @@ import {
   Crown
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
+import { dashboardAPI } from '../../../services/api';
 import './AiCfoView.css';
 const AiCfoView = () => {
   const { currentCompany } = useAuth();
   const [activeModal, setActiveModal] = useState(null);
+  const [insights, setInsights] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   const isLaunchpad = currentCompany?.plan === 'Launchpad';
 
+  useEffect(() => {
+    const fetchInsights = async () => {
+      if (!currentCompany || isLaunchpad) {
+        setLoading(false);
+        return;
+      }
+      try {
+        setLoading(true);
+        const data = await dashboardAPI.getInsights(currentCompany.id);
+        setInsights(data.aiCfo);
+      } catch (error) {
+        console.error('Failed to fetch AI CFO insights:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchInsights();
+  }, [currentCompany, isLaunchpad]);
+
   const getModalContent = (type) => {
+    if (!insights) return null;
     switch (type) {
       case 'cost':
         return {
           title: 'Cost Optimization Strategy',
-          intro: 'Execution plan to reduce marketing spend without impacting lead generation.',
+          intro: `Execution plan to reduce ${insights.costOptimization?.category || 'expenses'} spend without impacting operations.`,
           steps: [
-            'Pause underperforming LinkedIn outbound campaigns',
-            'Re-allocate 12% ad budget to Q4 cash reserve',
-            'Estimated monthly savings: ₹25,830'
+            `Analyze ${insights.costOptimization?.category || 'uncategorized'} expenses for immediate reduction opportunities`,
+            `Re-allocate 12% budget to short-term cash reserves`,
+            `Estimated savings: ₹${(insights.costOptimization?.savings || 0).toLocaleString(undefined, {maximumFractionDigits: 0})}`
           ]
         };
       case 'tax':
@@ -40,14 +63,14 @@ const AiCfoView = () => {
           intro: 'Quarterly payment execution steps to boost short-term liquidity.',
           steps: [
             'Consult CPA regarding quarterly safe-harbor requirements',
-            'Calculate rolling quarterly average tax liability',
+            `Calculate rolling quarterly average tax liability currently at ₹${(insights.taxOptimization?.monthlyAverage || 0).toLocaleString(undefined, {maximumFractionDigits: 0})}/month`,
             'Automate cash sweep into designated tax-reserve accounts'
           ]
         };
       case 'cash':
         return {
           title: 'Working Capital Recovery',
-          intro: 'Automated follow-up sequence for Client XYZ (Avg delay: 52 days).',
+          intro: `Automated follow-up strategy. Average gap between income is ${insights.cashFlow?.avgGap || 0} days.`,
           steps: [
             'Configure automated Dunning emails at 30 and 45 days',
             'Send standardized late-fee warning notice',
@@ -59,9 +82,9 @@ const AiCfoView = () => {
           title: 'Excess Capital Allocation',
           intro: 'Safe-yield strategy for compounding dormant cash reserves.',
           steps: [
-            'Identify dormant funds in operational checking accounts',
-            'Transition capital to 6-month laddered Treasury Bills',
-            'Achieve estimated ~4.5% risk-free annualized return'
+            `Identify dormant funds in operational checking accounts (₹${(insights.growth?.idleCash || 0).toLocaleString(undefined, {maximumFractionDigits: 0})})`,
+            'Transition capital to 6-month laddered Treasury Bills at ~7% yield',
+            `Achieve estimated ₹${(insights.growth?.estimatedReturn || 0).toLocaleString(undefined, {maximumFractionDigits: 0})} risk-free annualized return`
           ]
         };
       default:
@@ -134,8 +157,12 @@ const AiCfoView = () => {
           <p className="aicfo-card-desc">AI-driven opportunities to reduce overarching business expenses without sacrificing operational efficiency.</p>
           <div className="aicfo-suggestion-box">
             <div className="suggestion-badge" style={{ background: '#fef2f2', color: '#ef4444' }}>High Priority</div>
-            <p className="suggestion-text">"Reducing marketing spend by 12% increases net profit by ₹3.1L annually."</p>
-            <button className="aicfo-action-btn" onClick={() => setActiveModal('cost')}>
+            <p className="suggestion-text">
+              {loading ? "Analyzing expenses..." : insights?.costOptimization ? 
+                `"Reducing ${insights.costOptimization.category} spend by 12% increases net profit by ₹${insights.costOptimization.savings.toLocaleString(undefined, {maximumFractionDigits: 0})}."` :
+                "Upload transactions to unlock optimization strategies."}
+            </p>
+            <button className="aicfo-action-btn" onClick={() => setActiveModal('cost')} disabled={loading || !insights?.costOptimization}>
               View Strategy Plan <ArrowRight size={16} />
             </button>
           </div>
@@ -152,8 +179,12 @@ const AiCfoView = () => {
           <p className="aicfo-card-desc">Proactive structural and payment cadence adjustments aimed at maximizing tax benefits.</p>
           <div className="aicfo-suggestion-box">
             <div className="suggestion-badge" style={{ background: '#f5f3ff', color: '#8b5cf6' }}>Liquidity Boost</div>
-            <p className="suggestion-text">"Switch to quarterly tax payments to improve overall liquidity."</p>
-            <button className="aicfo-action-btn" onClick={() => setActiveModal('tax')}>
+            <p className="suggestion-text">
+              {loading ? "Analyzing taxes..." : insights?.taxOptimization?.totalTax > 0 ?
+                `"Switch to quarterly tax payments for your ₹${insights.taxOptimization.monthlyAverage.toLocaleString(undefined, {maximumFractionDigits: 0})} avg monthly liability to improve liquidity."` :
+                "No tax liabilities detected. Upload more transactions."}
+            </p>
+            <button className="aicfo-action-btn" onClick={() => setActiveModal('tax')} disabled={loading || !insights?.taxOptimization?.totalTax}>
               Review Liabilities <ArrowRight size={16} />
             </button>
           </div>
@@ -170,8 +201,12 @@ const AiCfoView = () => {
           <p className="aicfo-card-desc">Actionable alerts identifying delayed inflows and identifying working capital acceleration solutions.</p>
           <div className="aicfo-suggestion-box">
             <div className="suggestion-badge" style={{ background: '#fffbeb', color: '#d97706' }}>Action Required</div>
-            <p className="suggestion-text">"Client XYZ payment delay average: 52 days. Consider automated reminders."</p>
-            <button className="aicfo-action-btn" onClick={() => setActiveModal('cash')}>
+            <p className="suggestion-text">
+              {loading ? "Analyzing cash flow gaps..." : insights?.cashFlow?.avgGap > 0 ?
+                `"Average gap between income is ${insights.cashFlow.avgGap} days, with longest at ${insights.cashFlow.longestGap} days. Consider automated reminders."` :
+                "Upload income transactions to analyze cash flow gaps."}
+            </p>
+            <button className="aicfo-action-btn" onClick={() => setActiveModal('cash')} disabled={loading || !insights?.cashFlow?.avgGap}>
               Automate Follow-ups <ArrowRight size={16} />
             </button>
           </div>
@@ -188,8 +223,12 @@ const AiCfoView = () => {
           <p className="aicfo-card-desc">Calculated capital allocation recommendations designed to compound and sustainably accelerate growth metrics.</p>
           <div className="aicfo-suggestion-box">
             <div className="suggestion-badge" style={{ background: '#ecfdf5', color: '#10b981' }}>Opportunity</div>
-            <p className="suggestion-text">"Allocating excess cash to short-term T-bills adds an estimated 4.5% risk-free return on dormant capital."</p>
-            <button className="aicfo-action-btn" onClick={() => setActiveModal('growth')}>
+            <p className="suggestion-text">
+              {loading ? "Analyzing idle cash..." : insights?.growth?.idleCash > 0 ?
+                `"Allocating excess ₹${insights.growth.idleCash.toLocaleString(undefined, {maximumFractionDigits: 0})} cash to short-term T-bills adds an estimated ₹${insights.growth.estimatedReturn.toLocaleString(undefined, {maximumFractionDigits: 0})} risk-free return on dormant capital."` :
+                "Increase cash reserves to unlock investment strategies."}
+            </p>
+            <button className="aicfo-action-btn" onClick={() => setActiveModal('growth')} disabled={loading || !insights?.growth?.idleCash}>
               Explore Investments <ArrowRight size={16} />
             </button>
           </div>

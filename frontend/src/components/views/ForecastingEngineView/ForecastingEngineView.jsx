@@ -1,31 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import EmbeddedHeader from '../../layout/EmbeddedHeader/EmbeddedHeader';
 import { LineChart, CalendarClock, Lock, Crown, CheckCircle, ArrowUpRight, ArrowDownRight, DollarSign, Wallet2, Calculator } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
+import { dashboardAPI } from '../../../services/api';
 import { ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import './ForecastingEngineView.css';
-
-// Generic runway data simulation based on Timeframe filter
-const RUNWAY_DATA = {
-  3: [
-    { month: 'Current', cash: 450000, expenses: 85000, revenue: 110000, runway: 5.2 },
-    { month: '+1M', cash: 475000, expenses: 88000, revenue: 115000, runway: 5.3 },
-    { month: '+2M', cash: 502000, expenses: 90000, revenue: 118000, runway: 5.5 },
-    { month: '+3M', cash: 530000, expenses: 92000, revenue: 125000, runway: 5.7 }
-  ],
-  6: [
-    { month: 'Current', cash: 450000, expenses: 85000, revenue: 110000 },
-    { month: '+2M', cash: 502000, expenses: 90000, revenue: 118000 },
-    { month: '+4M', cash: 565000, expenses: 105000, revenue: 140000 },
-    { month: '+6M', cash: 620000, expenses: 120000, revenue: 160000 }
-  ],
-  12: [
-    { month: 'Q1', cash: 450000, expenses: 260000, revenue: 340000 },
-    { month: 'Q2', cash: 530000, expenses: 290000, revenue: 390000 },
-    { month: 'Q3', cash: 630000, expenses: 330000, revenue: 450000 },
-    { month: 'Q4', cash: 750000, expenses: 380000, revenue: 520000 }
-  ]
-};
 
 const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
@@ -45,6 +24,27 @@ const ForecastingEngineView = () => {
   const { currentCompany } = useAuth();
   const isLaunchpad = currentCompany?.plan === 'Launchpad';
   const [timeframe, setTimeframe] = useState(6);
+  const [forecastData, setForecastData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchInsights = async () => {
+      if (!currentCompany || isLaunchpad) {
+        setLoading(false);
+        return;
+      }
+      try {
+        setLoading(true);
+        const data = await dashboardAPI.getInsights(currentCompany.id);
+        setForecastData(data.forecast);
+      } catch (error) {
+        console.error('Failed to fetch forecasting insights:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchInsights();
+  }, [currentCompany, isLaunchpad]);
 
   if (isLaunchpad) {
     return (
@@ -84,7 +84,46 @@ const ForecastingEngineView = () => {
     );
   }
 
-  const currentData = RUNWAY_DATA[timeframe];
+  const generateChartData = (months) => {
+    if (!forecastData || !forecastData.historicalData || forecastData.historicalData.length === 0) return [];
+    
+    const data = [];
+    let currentCash = forecastData.cashInBank || 0;
+    
+    const history = forecastData.historicalData;
+    let baseRevenue = history[history.length - 1].revenue;
+    let baseExpenses = history[history.length - 1].expenses;
+    
+    const revGrowth = parseFloat(forecastData.revGrowthDisplay || '0') / 100;
+    const expGrowth = parseFloat(forecastData.expGrowthDisplay || '0') / 100;
+    
+    for (let i = 0; i <= months; i++) {
+      const monthLabel = i === 0 ? 'Current' : `+${i}M`;
+      const projRev = baseRevenue * Math.pow(1 + revGrowth, i);
+      const projExp = baseExpenses * Math.pow(1 + expGrowth, i);
+      
+      data.push({
+        month: monthLabel,
+        cash: currentCash,
+        expenses: projExp,
+        revenue: projRev
+      });
+      
+      currentCash += (projRev - projExp);
+    }
+    return data;
+  };
+
+  const currentData = generateChartData(timeframe);
+  const runwayMonths = forecastData?.avgMonthlyExpense > 0 
+    ? (forecastData.cashInBank / forecastData.avgMonthlyExpense) 
+    : 99;
+  
+  const statusObject = runwayMonths > 12 
+    ? { text: 'Secure ( > 12 Mo )', background: '#ecfdf5', color: '#059669', borderColor: '#a7f3d0' } 
+    : runwayMonths > 6 
+      ? { text: `Caution ( ${runwayMonths.toFixed(1)} Mo )`, background: '#fffbeb', color: '#d97706', borderColor: '#fcd34d' }
+      : { text: `Critical ( ${runwayMonths.toFixed(1)} Mo )`, background: '#fef2f2', color: '#dc2626', borderColor: '#fca5a5' };
 
   return (
     <>
@@ -112,7 +151,7 @@ const ForecastingEngineView = () => {
           </div>
           <div className="metric-content">
             <p>Revenue Forecast</p>
-            <h3>+18%</h3>
+            <h3>{loading ? "..." : `${parseFloat(forecastData?.revGrowthDisplay || 0) > 0 ? '+' : ''}${forecastData?.revGrowthDisplay || 0}%`}</h3>
             <span>Baseline Trajectory</span>
           </div>
         </div>
@@ -123,7 +162,7 @@ const ForecastingEngineView = () => {
           </div>
           <div className="metric-content">
             <p>Expense Forecast</p>
-            <h3>+5%</h3>
+            <h3>{loading ? "..." : `${parseFloat(forecastData?.expGrowthDisplay || 0) > 0 ? '+' : ''}${forecastData?.expGrowthDisplay || 0}%`}</h3>
             <span>Fixed \u0026 Variable</span>
           </div>
         </div>
@@ -134,8 +173,8 @@ const ForecastingEngineView = () => {
           </div>
           <div className="metric-content">
             <p>Cash Flow Forecast</p>
-            <h3>Stable</h3>
-            <span>No expected deficits</span>
+            <h3>{loading ? "..." : parseFloat(forecastData?.revGrowthDisplay) > parseFloat(forecastData?.expGrowthDisplay) ? "Positive" : "Stable/Deficit"}</h3>
+            <span>Projected Trend</span>
           </div>
         </div>
 
@@ -144,8 +183,8 @@ const ForecastingEngineView = () => {
             <Calculator size={20} />
           </div>
           <div className="metric-content">
-            <p>Tax Liability Forecast</p>
-            <h3>₹1.8L</h3>
+            <p>Tax Liability Est</p>
+            <h3>{loading ? "..." : `₹${((forecastData?.totalTax || 0) / 1000).toFixed(1)}K`}</h3>
             <span>Estimated Provision</span>
           </div>
         </div>
@@ -158,8 +197,8 @@ const ForecastingEngineView = () => {
             <h3>Cash Runway Projection</h3>
             <p className="card-subtitle">Aggregated view of capital reserves vs burning rate to foresee \u0026 avoid cash crises.</p>
           </div>
-          <div className="runway-status secure">
-            Status: Secure ( \u003e 12 Mo )
+          <div className="runway-status secure" style={{ background: statusObject.background, color: statusObject.color, borderColor: statusObject.borderColor }}>
+            Status: {loading ? "Loading..." : statusObject.text}
           </div>
         </div>
         
