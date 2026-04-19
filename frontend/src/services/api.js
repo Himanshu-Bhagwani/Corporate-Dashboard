@@ -175,6 +175,12 @@ export const dashboardAPI = {
     });
     return handleResponse(response);
   },
+  getInsights: async (companyId) => {
+    const response = await fetch(`${BASE_URL}/dashboard/insights`, {
+      headers: getHeaders(companyId)
+    });
+    return handleResponse(response);
+  },
 };
 
 export const invoicesAPI = {
