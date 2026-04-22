@@ -32,39 +32,6 @@ const uploadPdfStatement = async (req, res) => {
       console.warn('[PDF Parser] Column detection failed — falling back to legacy heuristic.');
     }
 
-    // ── Find description column right boundary ────────────────────────────
-    // The "Cheque/Reference No." column sits between Description and Debit/Credit.
-    // Detect its x-position so we can exclude reference column text from descriptions.
-    let descriptionMaxX = null;
-    if (hasColumnMap) {
-      // Scan the header row (and ±2 rows around it) for the reference/cheque column header
-      for (let ri = Math.max(0, columnMap.headerRowIndex - 2);
-           ri <= Math.min(rows.length - 1, columnMap.headerRowIndex + 2);
-           ri++) {
-        const hRow = rows[ri];
-        if (!Array.isArray(hRow)) continue;
-        for (const cell of hRow) {
-          const t = (cell.text || '').toLowerCase().trim();
-          if (t.startsWith('cheque') || t === 'chq' || t === 'ref' ||
-              t.startsWith('reference') || t === 'instrument no' ||
-              t === 'narration no' || t.startsWith('chq/') || t === 'utr') {
-            descriptionMaxX = cell.x;
-            break;
-          }
-        }
-        if (descriptionMaxX !== null) break;
-      }
-      // Fallback: estimate from leftmost numeric column minus buffer
-      if (descriptionMaxX === null) {
-        const numericXValues = [columnMap.debitX, columnMap.creditX, columnMap.amountX]
-          .filter(x => x !== null && x !== undefined);
-        if (numericXValues.length > 0) {
-          descriptionMaxX = Math.min(...numericXValues) - columnMap.tolerance * 2;
-        }
-      }
-      console.log(`[PDF Parser] Description column max X: ${descriptionMaxX !== null ? descriptionMaxX.toFixed(1) : 'N/A (no filter)'}`);
-    }
-
     // ── Stage 4: Intelligent Row-Level Extraction ────────────────────────
     const normalizedTransactions = [];
     let currentTxn = null;
@@ -134,13 +101,10 @@ const uploadPdfStatement = async (req, res) => {
           if (processedText.length === 0) continue; // Cell was entirely a date
         }
 
-        // In legacy fallback mode (no column map), strip standalone reference numbers
-        // from description text. When a column map is active, reference column text is
-        // excluded below by x-coordinate, so stripping is not needed (and would corrupt
-        // UPI transaction IDs that are legitimately part of the description).
-        if (!hasColumnMap && /\d{6,}/.test(processedText) && !processedText.includes('.')) {
+        // Strip reference numbers (6+ digits without decimal) from text without dropping surrounding characters
+        if (/\d{6,}/.test(processedText) && !processedText.includes('.')) {
           processedText = processedText.replace(/(?:[-/:]+)?\d{6,}(?:[-/:]+)?/g, ' ').replace(/\s+/g, ' ').trim();
-          if (processedText.length === 0) continue;
+          if (processedText.length === 0) continue; // Cell was entirely a reference number
         }
 
         // Check if processed text is numeric/currency
@@ -153,14 +117,7 @@ const uploadPdfStatement = async (req, res) => {
           continue;
         }
 
-        // Exclude text cells that fall in the reference/cheque column or further right.
-        // This prevents "Cheque/Reference No." column values (e.g. YBLf05ecb9ad1bc43, stray
-        // hex fragments) from bleeding into the transaction description.
-        if (descriptionMaxX !== null && cellX >= descriptionMaxX) {
-          continue;
-        }
-
-        // Otherwise, it's description text
+        // Otherwise, it's text
         if (processedText.length > 0) {
           textComponents.push(processedText);
         }
