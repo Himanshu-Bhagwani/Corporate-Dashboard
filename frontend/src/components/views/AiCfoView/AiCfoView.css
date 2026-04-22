@@ -725,3 +725,137 @@
     height: 52px;
   }
 }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CARD ENHANCEMENTS — Severity, Sparklines, Metric Pills, Ask AI
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Severity Border ───────────────────────────────────────────────────── */
+.aicfo-card {
+  border-left: 4px solid transparent;
+}
+
+.aicfo-card.severity-critical {
+  border-left-color: #ef4444;
+  animation: severity-pulse 2.5s ease-in-out infinite;
+}
+
+.aicfo-card.severity-warning {
+  border-left-color: #f59e0b;
+}
+
+.aicfo-card.severity-good {
+  border-left-color: #10b981;
+}
+
+.aicfo-card.severity-neutral {
+  border-left-color: #e2e8f0;
+}
+
+@keyframes severity-pulse {
+  0%, 100% { box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+  50% { box-shadow: 0 4px 20px -1px rgba(239, 68, 68, 0.15); }
+}
+
+/* ── Sparkline ─────────────────────────────────────────────────────────── */
+.sparkline-svg {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* ── Metric Pills ──────────────────────────────────────────────────────── */
+.metric-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.metric-pill {
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  background: #f1f5f9;
+  color: #475569;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.metric-pill.pill-green {
+  background: #ecfdf5;
+  color: #059669;
+}
+
+/* ── Card Actions Row ──────────────────────────────────────────────────── */
+.aicfo-card-actions {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.aicfo-card-actions .aicfo-action-btn {
+  flex: 1;
+}
+
+.aicfo-ask-btn {
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  background: linear-gradient(135deg, #ede9fe, #e0e7ff);
+  color: #4338ca;
+  border: 1px solid #c7d2fe;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.aicfo-ask-btn:hover {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: white;
+  border-color: #6366f1;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+/* ── Chat Header Action Buttons ────────────────────────────────────────── */
+.chat-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chat-header-btn {
+  background: rgba(255, 255, 255, 0.12);
+  border: none;
+  color: rgba(255, 255, 255, 0.8);
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.chat-header-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+  color: white;
+}
+
+/* ── Streaming Cursor ──────────────────────────────────────────────────── */
+.streaming-cursor {
+  display: inline;
+  animation: blink-cursor 0.8s step-end infinite;
+  color: #6366f1;
+  font-weight: 300;
+  margin-left: 1px;
+}
+
+@keyframes blink-cursor {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}

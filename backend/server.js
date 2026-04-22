@@ -89,6 +89,20 @@ connectDB().then(() => {
       );
     `)
     .catch((err) => console.error('Notification dismissals table init failed:', err.message));
+
+  // Ensure chat_history table exists
+  pool
+    .query(`
+      CREATE TABLE IF NOT EXISTS chat_history (
+        id SERIAL PRIMARY KEY,
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        role VARCHAR(10) NOT NULL CHECK (role IN ('user', 'ai')),
+        message TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_chat_history_company ON chat_history(company_id);
+    `)
+    .catch((err) => console.error('Chat history table init failed:', err.message));
 });
 
 // Routes

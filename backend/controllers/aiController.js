@@ -1,6 +1,7 @@
 const { pool } = require('../config/db');
-const { generateResponse } = require('../services/aiService');
+const { generateResponse, generateStreamResponse } = require('../services/aiService');
 const Tesseract = require('tesseract.js');
+const PDFDocument = require('pdfkit');
 
 const CORPORATE_CATEGORIES = [
   'Sales', 'Consulting', 'Salaries', 'Marketing', 'Software', 'Rent', 'Tax',
@@ -174,105 +175,49 @@ If a field is missing, use null.`;
   }
 };
 
-// ── AI CFO Chatbot ──────────────────────────────────────────────────────────
-const chatWithCFO = async (req, res) => {
-  try {
-    const companyId = req.headers['x-company-id'];
-    if (!companyId) return res.status(400).json({ error: 'Company ID required' });
+// ══════════════════════════════════════════════════════════════════════════════
+// SHARED: Build financial context from DB for chat prompts
+// ══════════════════════════════════════════════════════════════════════════════
+const buildFinancialContext = async (companyId) => {
+  const [
+    revExpRes, topExpensesRes, monthlyTrendRes,
+    accountsRes, receivablesRes, payablesRes, recentTxnRes
+  ] = await Promise.all([
+    pool.query(`SELECT type, COALESCE(SUM(amount), 0) as total FROM transactions WHERE company_id = $1 GROUP BY type`, [companyId]),
+    pool.query(`SELECT category, SUM(amount) as total FROM transactions WHERE company_id = $1 AND type = 'expense' GROUP BY category ORDER BY total DESC LIMIT 5`, [companyId]),
+    pool.query(`SELECT TO_CHAR(DATE_TRUNC('month', date), 'Mon YYYY') as month, type, SUM(amount) as total FROM transactions WHERE company_id = $1 AND date >= NOW() - INTERVAL '6 months' GROUP BY month, DATE_TRUNC('month', date), type ORDER BY DATE_TRUNC('month', date) ASC`, [companyId]),
+    pool.query(`SELECT name, type, bank, COALESCE(opening_balance, 0) as balance FROM accounts WHERE company_id = $1`, [companyId]),
+    pool.query(`SELECT COALESCE(SUM(amount), 0) as total, COUNT(*) as count FROM invoices WHERE company_id = $1 AND status IN ('pending', 'overdue')`, [companyId]),
+    pool.query(`SELECT COALESCE(SUM(amount), 0) as total FROM invoices WHERE company_id = $1 AND type = 'payable' AND status IN ('pending', 'overdue')`, [companyId]),
+    pool.query(`SELECT name, type, category, amount, TO_CHAR(date, 'YYYY-MM-DD') as date FROM transactions WHERE company_id = $1 ORDER BY date DESC LIMIT 10`, [companyId])
+  ]);
 
-    const { message } = req.body;
-    if (!message || typeof message !== 'string' || message.trim().length === 0) {
-      return res.status(400).json({ error: 'Message is required' });
-    }
+  const getTotal = (rows, type) => parseFloat(rows.find(r => r.type === type)?.total || 0);
+  const totalRevenue = getTotal(revExpRes.rows, 'income');
+  const totalExpenses = getTotal(revExpRes.rows, 'expense');
+  const netProfit = totalRevenue - totalExpenses;
+  const openingBal = accountsRes.rows.reduce((s, a) => s + parseFloat(a.balance), 0);
+  const cashInBank = openingBal + netProfit;
 
-    // ── 1. Parallel pre-aggregation (fast path — ~50ms) ───────────────────
-    const [
-      revExpRes,
-      topExpensesRes,
-      monthlyTrendRes,
-      accountsRes,
-      receivablesRes,
-      payablesRes,
-      recentTxnRes
-    ] = await Promise.all([
-      // Total revenue & expenses
-      pool.query(
-        `SELECT type, COALESCE(SUM(amount), 0) as total
-         FROM transactions WHERE company_id = $1 GROUP BY type`,
-        [companyId]
-      ),
-      // Top 5 expense categories
-      pool.query(
-        `SELECT category, SUM(amount) as total
-         FROM transactions WHERE company_id = $1 AND type = 'expense'
-         GROUP BY category ORDER BY total DESC LIMIT 5`,
-        [companyId]
-      ),
-      // Monthly trend — last 6 months
-      pool.query(
-        `SELECT TO_CHAR(DATE_TRUNC('month', date), 'Mon YYYY') as month,
-                type, SUM(amount) as total
-         FROM transactions
-         WHERE company_id = $1 AND date >= NOW() - INTERVAL '6 months'
-         GROUP BY month, DATE_TRUNC('month', date), type
-         ORDER BY DATE_TRUNC('month', date) ASC`,
-        [companyId]
-      ),
-      // Accounts with opening balances
-      pool.query(
-        `SELECT name, type, bank, COALESCE(opening_balance, 0) as balance
-         FROM accounts WHERE company_id = $1`,
-        [companyId]
-      ),
-      // Receivables
-      pool.query(
-        `SELECT COALESCE(SUM(amount), 0) as total, COUNT(*) as count
-         FROM invoices WHERE company_id = $1 AND status IN ('pending', 'overdue')`,
-        [companyId]
-      ),
-      // Payables
-      pool.query(
-        `SELECT COALESCE(SUM(amount), 0) as total
-         FROM invoices WHERE company_id = $1 AND type = 'payable' AND status IN ('pending', 'overdue')`,
-        [companyId]
-      ),
-      // Recent 10 transactions for context
-      pool.query(
-        `SELECT name, type, category, amount, TO_CHAR(date, 'YYYY-MM-DD') as date
-         FROM transactions WHERE company_id = $1
-         ORDER BY date DESC LIMIT 10`,
-        [companyId]
-      )
-    ]);
+  const topExpenses = topExpensesRes.rows
+    .map(r => `${r.category || 'Uncategorized'}: ₹${parseFloat(r.total).toLocaleString()}`)
+    .join(', ');
 
-    // ── 2. Build compact financial snapshot ────────────────────────────────
-    const getTotal = (rows, type) => parseFloat(rows.find(r => r.type === type)?.total || 0);
-    const totalRevenue = getTotal(revExpRes.rows, 'income');
-    const totalExpenses = getTotal(revExpRes.rows, 'expense');
-    const netProfit = totalRevenue - totalExpenses;
-    const openingBal = accountsRes.rows.reduce((s, a) => s + parseFloat(a.balance), 0);
-    const cashInBank = openingBal + netProfit;
+  const months = {};
+  monthlyTrendRes.rows.forEach(r => {
+    if (!months[r.month]) months[r.month] = { revenue: 0, expenses: 0 };
+    if (r.type === 'income') months[r.month].revenue = parseFloat(r.total);
+    if (r.type === 'expense') months[r.month].expenses = parseFloat(r.total);
+  });
+  const trendStr = Object.entries(months)
+    .map(([m, v]) => `${m}: Rev ₹${v.revenue.toLocaleString()}, Exp ₹${v.expenses.toLocaleString()}`)
+    .join(' | ');
 
-    const topExpenses = topExpensesRes.rows
-      .map(r => `${r.category || 'Uncategorized'}: ₹${parseFloat(r.total).toLocaleString()}`)
-      .join(', ');
+  const recentTxns = recentTxnRes.rows
+    .map(t => `${t.date} ${t.type} ₹${parseFloat(t.amount).toLocaleString()} ${t.name} [${t.category || '-'}]`)
+    .join('\n');
 
-    // Monthly trend
-    const months = {};
-    monthlyTrendRes.rows.forEach(r => {
-      if (!months[r.month]) months[r.month] = { revenue: 0, expenses: 0 };
-      if (r.type === 'income') months[r.month].revenue = parseFloat(r.total);
-      if (r.type === 'expense') months[r.month].expenses = parseFloat(r.total);
-    });
-    const trendStr = Object.entries(months)
-      .map(([m, v]) => `${m}: Rev ₹${v.revenue.toLocaleString()}, Exp ₹${v.expenses.toLocaleString()}`)
-      .join(' | ');
-
-    const recentTxns = recentTxnRes.rows
-      .map(t => `${t.date} ${t.type} ₹${parseFloat(t.amount).toLocaleString()} ${t.name} [${t.category || '-'}]`)
-      .join('\n');
-
-    const financialContext = `
+  return `
 COMPANY FINANCIAL SNAPSHOT:
 • Total Revenue: ₹${totalRevenue.toLocaleString()}
 • Total Expenses: ₹${totalExpenses.toLocaleString()}
@@ -281,25 +226,36 @@ COMPANY FINANCIAL SNAPSHOT:
 • Receivables: ₹${parseFloat(receivablesRes.rows[0].total).toLocaleString()} (${receivablesRes.rows[0].count} pending)
 • Payables: ₹${parseFloat(payablesRes.rows[0].total).toLocaleString()}
 • Top Expenses: ${topExpenses || 'None'}
-• 6‑Month Trend: ${trendStr || 'No data'}
+• 6-Month Trend: ${trendStr || 'No data'}
 • Accounts: ${accountsRes.rows.map(a => `${a.name} (${a.bank}): ₹${parseFloat(a.balance).toLocaleString()}`).join(', ') || 'None'}
 
 RECENT TRANSACTIONS:
 ${recentTxns || 'No transactions yet.'}
 `.trim();
+};
 
-    // ── 3. System prompt with strict finance guard ─────────────────────────
-    const systemPrompt = `You are the AI CFO Assistant for this company. You have access to the company's real financial data shown below. Answer ONLY finance, accounting, tax, cash flow, budgeting, and business performance questions. For ANY non-finance question, respond exactly: "I can only assist with finance-related questions about your business data."
+const CFO_SYSTEM_PREFIX = `You are the AI CFO Assistant for this company. You have access to the company's real financial data shown below. Answer ONLY finance, accounting, tax, cash flow, budgeting, and business performance questions. For ANY non-finance question, respond exactly: "I can only assist with finance-related questions about your business data."
 
-Keep answers concise (2–3 sentences max). Use ₹ for currency. Reference actual numbers from the data. Do not make up data.
+Keep answers concise (2-3 sentences max). Use ₹ for currency. Reference actual numbers from the data. Do not make up data.
 
-${financialContext}`;
+`;
 
-    // ── 4. Race LLM against 3-second timeout ──────────────────────────────
+// ── AI CFO Chatbot (non-streaming, kept as fallback) ────────────────────────
+const chatWithCFO = async (req, res) => {
+  try {
+    const companyId = req.headers['x-company-id'];
+    if (!companyId) return res.status(400).json({ error: 'Company ID required' });
+    const { message } = req.body;
+    if (!message || typeof message !== 'string' || message.trim().length === 0) {
+      return res.status(400).json({ error: 'Message is required' });
+    }
+
+    const financialContext = await buildFinancialContext(companyId);
+    const systemPrompt = CFO_SYSTEM_PREFIX + financialContext;
+
     const timeoutPromise = new Promise((_, reject) =>
       setTimeout(() => reject(new Error('TIMEOUT')), 8000)
     );
-
     let reply;
     try {
       reply = await Promise.race([
@@ -308,13 +264,10 @@ ${financialContext}`;
       ]);
     } catch (err) {
       if (err.message === 'TIMEOUT') {
-        return res.json({
-          reply: 'The analysis is taking longer than expected. Please try a simpler question or try again shortly.'
-        });
+        return res.json({ reply: 'The analysis is taking longer than expected. Please try a simpler question or try again shortly.' });
       }
       throw err;
     }
-
     res.json({ reply: reply.trim() });
   } catch (error) {
     console.error('Chat CFO Error:', error);
@@ -322,9 +275,200 @@ ${financialContext}`;
   }
 };
 
+// ── AI CFO Chatbot — Streaming (SSE) ────────────────────────────────────────
+const chatWithCFOStream = async (req, res) => {
+  try {
+    const companyId = req.headers['x-company-id'];
+    if (!companyId) return res.status(400).json({ error: 'Company ID required' });
+    const { message } = req.body;
+    if (!message || typeof message !== 'string' || message.trim().length === 0) {
+      return res.status(400).json({ error: 'Message is required' });
+    }
+
+    const financialContext = await buildFinancialContext(companyId);
+    const systemPrompt = CFO_SYSTEM_PREFIX + financialContext;
+
+    // SSE headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no'); // Nginx
+    res.flushHeaders();
+
+    const ollamaRes = await generateStreamResponse(message, systemPrompt);
+    const stream = ollamaRes.body;
+    let fullReply = '';
+    let buffer = '';
+
+    stream.on('data', (chunk) => {
+      buffer += chunk.toString();
+      // Ollama sends NDJSON — one JSON object per line
+      const lines = buffer.split('\n');
+      buffer = lines.pop(); // keep incomplete last line
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const parsed = JSON.parse(line);
+          if (parsed.response) {
+            fullReply += parsed.response;
+            res.write(`data: ${JSON.stringify({ token: parsed.response })}\n\n`);
+          }
+          if (parsed.done) {
+            res.write(`data: [DONE]\n\n`);
+          }
+        } catch (e) { /* skip malformed lines */ }
+      }
+    });
+
+    stream.on('end', async () => {
+      // Process any remaining buffer
+      if (buffer.trim()) {
+        try {
+          const parsed = JSON.parse(buffer);
+          if (parsed.response) {
+            fullReply += parsed.response;
+            res.write(`data: ${JSON.stringify({ token: parsed.response })}\n\n`);
+          }
+        } catch (e) { /* ignore */ }
+      }
+      res.write(`data: [DONE]\n\n`);
+
+      // Persist to chat history
+      try {
+        await pool.query(
+          `INSERT INTO chat_history (company_id, role, message) VALUES ($1, 'user', $2), ($1, 'ai', $3)`,
+          [companyId, message.trim(), fullReply.trim()]
+        );
+      } catch (e) {
+        console.error('Failed to persist chat:', e.message);
+      }
+
+      res.end();
+    });
+
+    stream.on('error', (err) => {
+      console.error('Stream error:', err);
+      res.write(`data: ${JSON.stringify({ token: '\n\nSorry, the analysis encountered an error.' })}\n\n`);
+      res.write(`data: [DONE]\n\n`);
+      res.end();
+    });
+
+    // Client disconnect cleanup
+    req.on('close', () => {
+      stream.destroy();
+    });
+  } catch (error) {
+    console.error('Stream Chat CFO Error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to process your question' });
+    }
+  }
+};
+
+// ── Chat History ────────────────────────────────────────────────────────────
+const getChatHistory = async (req, res) => {
+  try {
+    const companyId = req.headers['x-company-id'];
+    if (!companyId) return res.status(400).json({ error: 'Company ID required' });
+
+    const result = await pool.query(
+      `SELECT role, message as text, created_at FROM chat_history WHERE company_id = $1 ORDER BY created_at ASC LIMIT 50`,
+      [companyId]
+    );
+    res.json({ messages: result.rows });
+  } catch (error) {
+    console.error('Get Chat History Error:', error);
+    res.json({ messages: [] }); // Graceful fallback if table doesn't exist
+  }
+};
+
+const clearChatHistory = async (req, res) => {
+  try {
+    const companyId = req.headers['x-company-id'];
+    if (!companyId) return res.status(400).json({ error: 'Company ID required' });
+
+    await pool.query(`DELETE FROM chat_history WHERE company_id = $1`, [companyId]);
+    res.json({ message: 'Chat history cleared' });
+  } catch (error) {
+    console.error('Clear Chat History Error:', error);
+    res.status(500).json({ error: 'Failed to clear chat history' });
+  }
+};
+
+// ── Export Chat as PDF ──────────────────────────────────────────────────────
+const exportChatPDF = async (req, res) => {
+  try {
+    const companyId = req.headers['x-company-id'];
+    if (!companyId) return res.status(400).json({ error: 'Company ID required' });
+
+    // Fetch company name
+    const companyRes = await pool.query(`SELECT name FROM companies WHERE id = $1`, [companyId]);
+    const companyName = companyRes.rows[0]?.name || 'Company';
+
+    // Fetch chat history
+    const historyRes = await pool.query(
+      `SELECT role, message, TO_CHAR(created_at, 'DD Mon YYYY, HH12:MI AM') as timestamp FROM chat_history WHERE company_id = $1 ORDER BY created_at ASC`,
+      [companyId]
+    );
+
+    if (historyRes.rows.length === 0) {
+      return res.status(400).json({ error: 'No chat history to export' });
+    }
+
+    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="AI_CFO_Report_${companyName.replace(/\s+/g, '_')}.pdf"`);
+    doc.pipe(res);
+
+    // Header
+    doc.fontSize(22).font('Helvetica-Bold').fillColor('#4f46e5')
+      .text('AI CFO Conversation Report', { align: 'center' });
+    doc.moveDown(0.3);
+    doc.fontSize(11).font('Helvetica').fillColor('#64748b')
+      .text(`${companyName}  •  Generated on ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`, { align: 'center' });
+    doc.moveDown(0.5);
+    doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor('#e2e8f0').stroke();
+    doc.moveDown(1);
+
+    // Messages
+    for (const msg of historyRes.rows) {
+      const isUser = msg.role === 'user';
+      const label = isUser ? 'You' : 'AI CFO';
+      const color = isUser ? '#3b82f6' : '#4f46e5';
+
+      doc.fontSize(9).font('Helvetica').fillColor('#94a3b8').text(msg.timestamp);
+      doc.fontSize(10).font('Helvetica-Bold').fillColor(color).text(label);
+      doc.fontSize(10).font('Helvetica').fillColor('#1e293b').text(msg.message, { lineGap: 3 });
+      doc.moveDown(0.8);
+
+      // Page break safety
+      if (doc.y > 720) doc.addPage();
+    }
+
+    // Footer
+    doc.moveDown(1);
+    doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor('#e2e8f0').stroke();
+    doc.moveDown(0.5);
+    doc.fontSize(8).font('Helvetica').fillColor('#94a3b8')
+      .text('SODA Corporate Dashboard — AI CFO Module', { align: 'center' });
+
+    doc.end();
+  } catch (error) {
+    console.error('Export Chat PDF Error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to export chat' });
+    }
+  }
+};
+
 module.exports = {
   categorizeTransactions,
   complianceReview,
   parseInvoiceOCR,
-  chatWithCFO
+  chatWithCFO,
+  chatWithCFOStream,
+  getChatHistory,
+  clearChatHistory,
+  exportChatPDF
 };
