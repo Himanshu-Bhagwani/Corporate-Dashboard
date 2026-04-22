@@ -26,17 +26,23 @@ import './AiCfoView.css';
 
 // ── Finance keyword filter ──────────────────────────────────────────────────
 const FINANCE_KEYWORDS = [
-  'revenue', 'expense', 'profit', 'loss', 'cash', 'tax', 'budget', 'cost',
+  'revenue', 'expense', 'expenses', 'profit', 'loss', 'cash', 'tax', 'budget', 'cost',
   'payment', 'invoice', 'balance', 'income', 'spending', 'salary', 'salaries',
   'debit', 'credit', 'account', 'bank', 'financial', 'money', 'fund',
   'invest', 'return', 'margin', 'growth', 'decline', 'trend', 'forecast',
   'receivable', 'payable', 'liability', 'asset', 'equity', 'capital',
-  'transaction', 'category', 'rupee', 'rupees', '₹', 'inr', 'gst',
+  'transaction', 'transactions', 'category', 'rupee', 'rupees', '₹', 'inr', 'gst',
   'tds', 'compliance', 'audit', 'ledger', 'journal', 'p&l', 'pnl',
   'cashflow', 'cash flow', 'net worth', 'overhead', 'operating', 'ebitda',
   'gross', 'net', 'total', 'monthly', 'quarterly', 'annual', 'yearly',
   'how much', 'what is my', 'break even', 'burn rate', 'runway',
-  'top', 'highest', 'lowest', 'average', 'summary', 'overview', 'report'
+  'top', 'highest', 'lowest', 'average', 'summary', 'overview', 'report',
+  'spent', 'earned', 'paid', 'received', 'owe', 'owed', 'due', 'outstanding',
+  'vendor', 'client', 'supplier', 'purchase', 'sale', 'sales', 'rent',
+  'utilities', 'insurance', 'software', 'marketing', 'training', 'maintenance',
+  'show me', 'tell me', 'give me', 'what are', 'how are', 'analyse', 'analyze',
+  'compare', 'breakdown', 'break down', 'where', 'which', 'who', 'when',
+  'did i', 'do i', 'have i', 'am i', 'am i spending', 'am i making'
 ];
 
 const isFinanceQuestion = (msg) => {

@@ -198,16 +198,20 @@ const uploadPdfStatement = async (req, res) => {
         }
 
         if (currentTxn) {
-          // Flush the previous transaction context
-          const combinedName = (currentTxn.name + ' ' + pendingDescriptions.join(' ')).trim().substring(0, 250);
+          // Flush the previous transaction — continuation lines between two amount rows belong to it
+          const combinedName = [currentTxn.name, ...pendingDescriptions].filter(Boolean).join(' ').trim().substring(0, 250);
           currentTxn.name = combinedName || 'Unknown Transaction';
           normalizedTransactions.push(currentTxn);
           currentTxn = null;
+          pendingDescriptions = []; // consumed by previous transaction — clear before building new one
         }
 
+        // pendingDescriptions is now either empty (post-flush) or holds pre-amount description lines
         const initialDesc = [...pendingDescriptions, description].join(' ').trim();
         pendingDescriptions = [];
-        const safeName = initialDesc.substring(0, 250) || 'Unknown Transaction';
+        // Use "" as interim — 'Unknown Transaction' is applied only at final flush/finalize
+        // so that continuation lines appended later aren't prefixed with it
+        const safeName = initialDesc.substring(0, 250);
 
         const txn = {
           date: lastKnownDate,
@@ -224,15 +228,16 @@ const uploadPdfStatement = async (req, res) => {
       } else {
         // No amount on this row
         if (rowDate) {
-           // A new date with no amount marks the start of a new transaction context!
+           // A new date with no amount marks the start of a new transaction context
            if (currentTxn) {
-               const combinedName = (currentTxn.name + ' ' + pendingDescriptions.join(' ')).trim().substring(0, 250);
+               const combinedName = [currentTxn.name, ...pendingDescriptions].filter(Boolean).join(' ').trim().substring(0, 250);
                currentTxn.name = combinedName || 'Unknown Transaction';
                normalizedTransactions.push(currentTxn);
                currentTxn = null;
+               pendingDescriptions = []; // same fix — these belonged to the flushed transaction
            }
         }
-        
+
         if (description.trim()) {
            pendingDescriptions.push(description.trim());
         }
@@ -241,7 +246,7 @@ const uploadPdfStatement = async (req, res) => {
     
     // Finalize the last pending transaction
     if (currentTxn) {
-       const combinedName = (currentTxn.name + ' ' + pendingDescriptions.join(' ')).trim().substring(0, 250);
+       const combinedName = [currentTxn.name, ...pendingDescriptions].filter(Boolean).join(' ').trim().substring(0, 250);
        currentTxn.name = combinedName || 'Unknown Transaction';
        normalizedTransactions.push(currentTxn);
     }
@@ -269,26 +274,104 @@ const uploadPdfStatement = async (req, res) => {
       });
     }
 
-    // ── Stage 6: Atomic Persistence ──────────────────────────────────────
-    client = await pool.connect();
-    await client.query('BEGIN');
-    
+    // ── Stage 6: Categorisation ──────────────────────────────────────────
     const autoCategorize = (desc) => {
       if (!desc) return 'Misc';
       const d = desc.toLowerCase();
-      if (d.includes('salary') || d.includes('payroll')) return 'Salaries';
-      if (d.includes('aws') || d.includes('gcp') || d.includes('azure') || d.includes('github') || d.includes('software') || d.includes('subscription')) return 'Software';
-      if (d.includes('rent') || d.includes('lease')) return 'Rent';
-      if (d.includes('tax') || d.includes('gst') || d.includes('tds') || d.includes('income tax')) return 'Tax';
-      if (d.includes('consulting') || d.includes('advisory') || d.includes('fee')) return 'Consulting';
-      if (d.includes('flight') || d.includes('hotel') || d.includes('uber') || d.includes('ola') || d.includes('irctc') || d.includes('makemytrip')) return 'Travel';
-      if (d.includes('marketing') || d.includes('ads') || d.includes('facebook') || d.includes('google') || d.includes('meta')) return 'Marketing';
-      if (d.includes('electricity') || d.includes('water') || d.includes('internet') || d.includes('wifi') || d.includes('airtel') || d.includes('jio')) return 'Utilities';
-      if (d.includes('insurance')) return 'Insurance';
-      if (d.includes('maintenance') || d.includes('repair')) return 'Maintainance';
-      if (d.includes('sales') || d.includes('revenue') || d.includes('invoice')) return 'Sales';
+
+      if (d.includes('salary') || d.includes('salaries') || d.includes('payroll') ||
+          d.includes('wages') || d.includes('stipend') || d.includes('payslip') ||
+          d.includes('employee payment') || d.includes('staff payment')) return 'Salaries';
+
+      if (d.includes('aws') || d.includes('amazon web') || d.includes('gcp') ||
+          d.includes('google cloud') || d.includes('azure') || d.includes('github') ||
+          d.includes('gitlab') || d.includes('software') || d.includes('subscription') ||
+          d.includes('saas') || d.includes('netflix') || d.includes('spotify') ||
+          d.includes('zoom') || d.includes('slack') || d.includes('notion') ||
+          d.includes('figma') || d.includes('adobe') || d.includes('microsoft') ||
+          d.includes('office 365') || d.includes('shopify') || d.includes('hubspot') ||
+          d.includes('razorpay') || d.includes('cashfree') || d.includes('stripe') ||
+          d.includes('twilio') || d.includes('sendgrid') || d.includes('digitalocean') ||
+          d.includes('heroku') || d.includes('hosting') || d.includes('domain') ||
+          d.includes('licence') || d.includes('license')) return 'Software';
+
+      if (d.includes('rent') || d.includes('lease') || d.includes('landlord') ||
+          d.includes('society maintenance') || d.includes('premises')) return 'Rent';
+
+      if (d.includes('income tax') || d.includes('income-tax') || d.includes('gst') ||
+          d.includes('tds') || d.includes('advance tax') || d.includes('tax payment') ||
+          d.includes('cess') || d.includes('customs') || d.includes('nsdl') ||
+          d.includes('traces') || d.includes('challan') || d.includes('itns') ||
+          d.includes('professional tax') || d.includes('pt ')) return 'Tax';
+
+      if (d.includes('consulting') || d.includes('advisory') || d.includes('consultant')) return 'Consulting';
+
+      if (d.includes('professional fee') || d.includes('legal fee') || d.includes('legal fees') ||
+          d.includes('lawyer') || d.includes('advocate') || d.includes('audit fee') ||
+          d.includes('chartered accountant') || d.includes('retainer') ||
+          d.includes('law firm') || d.includes('notary')) return 'Professional Fees';
+
+      if (d.includes('flight') || d.includes('airline') || d.includes(' air ') ||
+          d.includes('hotel') || d.includes('uber') || d.includes('ola ') ||
+          d.includes('irctc') || d.includes('makemytrip') || d.includes('cleartrip') ||
+          d.includes('yatra') || d.includes('booking.com') || d.includes('airbnb') ||
+          d.includes('rapido') || d.includes('taxi') || d.includes('cab ') ||
+          d.includes('indigo') || d.includes('spicejet') || d.includes('air india') ||
+          d.includes('vistara') || d.includes('akasa') || d.includes('travel')) return 'Travel';
+
+      if (d.includes('marketing') || d.includes('advertising') || d.includes(' ads') ||
+          d.includes('facebook') || d.includes('google ads') || d.includes('meta ads') ||
+          d.includes('linkedin ads') || d.includes('twitter') || d.includes('seo') ||
+          d.includes('campaign') || d.includes('branding') || d.includes('promotion') ||
+          d.includes('influencer')) return 'Marketing';
+
+      if (d.includes('electricity') || d.includes('electric bill') || d.includes('power bill') ||
+          d.includes('water bill') || d.includes('internet') || d.includes('broadband') ||
+          d.includes('wifi') || d.includes('airtel') || d.includes('jio') ||
+          d.includes('bsnl') || d.includes('vodafone') || d.includes('vi ') ||
+          d.includes('telecom') || d.includes('tata sky') || d.includes('dth') ||
+          d.includes('msedcl') || d.includes('bses') || d.includes('bescom') ||
+          d.includes('tneb') || d.includes('gas bill') || d.includes('cng') ||
+          d.includes('utility') || d.includes('recharge')) return 'Utilities';
+
+      if (d.includes('insurance') || d.includes('insur') || d.includes('lic premium') ||
+          d.includes('lic ') || d.includes('health cover') || d.includes('policy') ||
+          d.includes('icici pru') || d.includes('hdfc life') || d.includes('max life') ||
+          d.includes('bajaj allianz') || d.includes('star health') ||
+          d.includes('mediclaim') || d.includes('premium payment')) return 'Insurance';
+
+      if (d.includes('training') || d.includes('workshop') || d.includes('seminar') ||
+          d.includes('conference') || d.includes('course') || d.includes('certification') ||
+          d.includes('udemy') || d.includes('coursera') || d.includes('education')) return 'Training';
+
+      if (d.includes('stationery') || d.includes('office supply') || d.includes('supplies') ||
+          d.includes('printer') || d.includes('cartridge') || d.includes('furniture') ||
+          d.includes('equipment') || d.includes('laptop') || d.includes('computer') ||
+          d.includes('hardware') || d.includes('amazon') || d.includes('flipkart') ||
+          d.includes('material')) return 'Office supplies';
+
+      if (d.includes('maintenance') || d.includes('repair') || d.includes('service charge') ||
+          d.includes('amc') || d.includes('annual maintenance') || d.includes('housekeeping') ||
+          d.includes('cleaning') || d.includes('security')) return 'Maintainance';
+
+      if (d.includes('sales') || d.includes('revenue') || d.includes('invoice') ||
+          d.includes('payment received') || d.includes('collection') ||
+          d.includes('receivable') || d.includes('refund') || d.includes('cashback') ||
+          d.includes('credit from') || d.includes('inward neft') || d.includes('inward rtgs') ||
+          d.includes('inward imps') || d.includes('incoming') || d.includes('cr-')) return 'Sales';
+
+      if (d.includes('share') || d.includes('equity') || d.includes('dividend') ||
+          d.includes('mutual fund') || d.includes('zerodha') || d.includes('groww') ||
+          d.includes('upstox') || d.includes('demat') || d.includes('nse') ||
+          d.includes('bse') || d.includes('stock') || d.includes('investment') ||
+          d.includes('mf ')) return 'Shares';
+
       return 'Misc';
     };
+
+    // ── Stage 7: Atomic Persistence ──────────────────────────────────────
+    client = await pool.connect();
+    await client.query('BEGIN');
 
     const created = [];
     for (const txn of normalizedTransactions) {
@@ -300,7 +383,7 @@ const uploadPdfStatement = async (req, res) => {
       );
       created.push(result.rows[0]);
     }
-    
+
     await client.query('COMMIT');
     res.json({ 
       message: 'Successfully imported transactions from PDF',
