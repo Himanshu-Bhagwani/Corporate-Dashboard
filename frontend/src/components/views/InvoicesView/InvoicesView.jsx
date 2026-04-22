@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import './InvoicesView.css';
 import EmbeddedHeader from '../../layout/EmbeddedHeader/EmbeddedHeader';
-import { FileText, PlusCircle, Eye, Pencil, ArrowUpDown, X, DollarSign, CheckCircle, Clock, AlertTriangle, Upload } from 'lucide-react';
+import { FileText, PlusCircle, Eye, Pencil, ArrowUpDown, X, DollarSign, CheckCircle, Clock, AlertTriangle, Upload, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
 
 const InvoicesView = ({
   invoices,
@@ -17,19 +17,25 @@ const InvoicesView = ({
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [sortField, setSortField] = useState('due_date');
   const [sortDir, setSortDir] = useState('desc');
+  const [filterType, setFilterType] = useState('all');
+
+  const filteredInvoices = useMemo(() => {
+    if (filterType === 'all') return invoices;
+    return invoices.filter(i => (i.type || 'receivable') === filterType);
+  }, [invoices, filterType]);
 
   // --- Stats ---
   const stats = useMemo(() => {
-    const total = invoices.reduce((s, i) => s + parseFloat(i.amount || 0), 0);
-    const paid = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + parseFloat(i.amount || 0), 0);
-    const pending = invoices.filter(i => i.status === 'pending').reduce((s, i) => s + parseFloat(i.amount || 0), 0);
-    const overdue = invoices.filter(i => i.status === 'overdue').reduce((s, i) => s + parseFloat(i.amount || 0), 0);
+    const total = filteredInvoices.reduce((s, i) => s + parseFloat(i.amount || 0), 0);
+    const paid = filteredInvoices.filter(i => i.status === 'paid').reduce((s, i) => s + parseFloat(i.amount || 0), 0);
+    const pending = filteredInvoices.filter(i => i.status === 'pending').reduce((s, i) => s + parseFloat(i.amount || 0), 0);
+    const overdue = filteredInvoices.filter(i => i.status === 'overdue').reduce((s, i) => s + parseFloat(i.amount || 0), 0);
     return { total, paid, pending, overdue };
-  }, [invoices]);
+  }, [filteredInvoices]);
 
   // --- Sorting: paid invoices always at bottom ---
   const sortedInvoices = useMemo(() => {
-    const copy = [...invoices];
+    const copy = [...filteredInvoices];
     copy.sort((a, b) => {
       if (a.status === 'paid' && b.status !== 'paid') return 1;
       if (a.status !== 'paid' && b.status === 'paid') return -1;
@@ -93,6 +99,7 @@ const InvoicesView = ({
       issue_date: today,
       due_date: '',
       notes: '',
+      type: 'receivable',
     });
     const [error, setError] = useState('');
     const [submitting, setSubmitting] = useState(false);
@@ -138,7 +145,7 @@ const InvoicesView = ({
           issue_date: form.issue_date,
           due_date: form.due_date,
           notes: form.notes.trim() || null,
-          type: 'receivable',
+          type: form.type,
         });
         setShowCreateModal(false);
       } catch (err) {
@@ -170,9 +177,28 @@ const InvoicesView = ({
               </label>
             </div>
 
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', marginBottom: '1.5rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: 600, color: '#4a5568' }}>
+                <input
+                  type="radio"
+                  name="modal_invoice_type"
+                  checked={form.type === 'receivable'}
+                  onChange={() => setForm(p => ({ ...p, type: 'receivable' }))}
+                /> Receivable
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: 600, color: '#4a5568' }}>
+                <input
+                  type="radio"
+                  name="modal_invoice_type"
+                  checked={form.type === 'payable'}
+                  onChange={() => setForm(p => ({ ...p, type: 'payable' }))}
+                /> Payable
+              </label>
+            </div>
+
             <div className="invoice-form-group">
-              <label>Client Name <span className="req">*</span></label>
-              <input type="text" value={form.client_name} onChange={e => setForm({...form, client_name: e.target.value})} placeholder="Enter client name" />
+              <label>{form.type === 'payable' ? 'Vendor Name' : 'Client Name'} <span className="req">*</span></label>
+              <input type="text" value={form.client_name} onChange={e => setForm({...form, client_name: e.target.value})} placeholder={form.type === 'payable' ? 'Enter vendor name' : 'Enter client name'} />
             </div>
             <div className="invoice-form-group">
               <label>Amount (₹) <span className="req">*</span></label>
@@ -212,6 +238,7 @@ const InvoicesView = ({
       due_date: inv?.due_date || '',
       notes: inv?.notes || '',
       status: inv?.status || 'pending',
+      type: inv?.type || 'receivable',
     });
     const [error, setError] = useState('');
     const [submitting, setSubmitting] = useState(false);
@@ -232,6 +259,7 @@ const InvoicesView = ({
           due_date: form.due_date,
           notes: form.notes.trim() || null,
           status: form.status,
+          type: form.type,
         });
         setShowEditModal(false);
         setSelectedInvoice(null);
@@ -251,8 +279,26 @@ const InvoicesView = ({
           </div>
           <div className="invoice-modal-body">
             {error && <div className="invoice-modal-error">{error}</div>}
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', marginBottom: '1.5rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: 600, color: '#4a5568' }}>
+                <input
+                  type="radio"
+                  name="edit_invoice_type"
+                  checked={form.type === 'receivable'}
+                  onChange={() => setForm(p => ({ ...p, type: 'receivable' }))}
+                /> Receivable
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: 600, color: '#4a5568' }}>
+                <input
+                  type="radio"
+                  name="edit_invoice_type"
+                  checked={form.type === 'payable'}
+                  onChange={() => setForm(p => ({ ...p, type: 'payable' }))}
+                /> Payable
+              </label>
+            </div>
             <div className="invoice-form-group">
-              <label>Client Name <span className="req">*</span></label>
+              <label>{form.type === 'payable' ? 'Vendor Name' : 'Client Name'} <span className="req">*</span></label>
               <input type="text" value={form.client_name} onChange={e => setForm({...form, client_name: e.target.value})} />
             </div>
             <div className="invoice-form-group">
@@ -303,8 +349,12 @@ const InvoicesView = ({
           </div>
           <div className="invoice-modal-body">
             <div className="invoice-detail-row">
-              <span className="detail-label">Client</span>
-              <span className="detail-value">{inv?.client_name}</span>
+              <span className="detail-label">Client / Vendor</span>
+              <span className="detail-value">{inv?.client_name || inv?.vendor_name}</span>
+            </div>
+            <div className="invoice-detail-row">
+              <span className="detail-label">Type</span>
+              <span className="detail-value" style={{textTransform: 'capitalize'}}>{inv?.type || 'receivable'}</span>
             </div>
             <div className="invoice-detail-row">
               <span className="detail-label">Amount</span>
@@ -349,10 +399,35 @@ const InvoicesView = ({
           <h1 className="view-title">Invoices</h1>
           <p className="view-subtitle">Create and manage client invoices</p>
         </div>
-        <button className="btn-primary btn-add-short" onClick={() => setShowCreateModal(true)}>
-          <PlusCircle size={18} />
-          Create Invoice
-        </button>
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: '8px', padding: '4px' }}>
+            {['all', 'receivable', 'payable'].map(t => (
+              <button
+                key={t}
+                onClick={() => setFilterType(t)}
+                style={{
+                  background: filterType === t ? 'white' : 'transparent',
+                  border: 'none',
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  color: filterType === t ? '#4F46E5' : '#64748b',
+                  cursor: 'pointer',
+                  boxShadow: filterType === t ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
+                  textTransform: 'capitalize',
+                  transition: 'all 0.2s'
+                }}
+              >
+                {t === 'all' ? 'All Invoices' : t + 's'}
+              </button>
+            ))}
+          </div>
+          <button className="btn-primary btn-add-short" onClick={() => setShowCreateModal(true)}>
+            <PlusCircle size={18} />
+            Create Invoice
+          </button>
+        </div>
       </div>
 
       {/* Stats Cards — same design as Transactions stats */}
@@ -400,8 +475,9 @@ const InvoicesView = ({
                   INVOICE # <ArrowUpDown size={12} style={{ verticalAlign: 'middle', marginLeft: 4, opacity: 0.5 }} />
                 </th>
                 <th onClick={() => toggleSort('client_name')} style={{ cursor: 'pointer' }}>
-                  CLIENT NAME <ArrowUpDown size={12} style={{ verticalAlign: 'middle', marginLeft: 4, opacity: 0.5 }} />
+                  CLIENT / VENDOR <ArrowUpDown size={12} style={{ verticalAlign: 'middle', marginLeft: 4, opacity: 0.5 }} />
                 </th>
+                <th>TYPE</th>
                 <th onClick={() => toggleSort('amount')} style={{ cursor: 'pointer' }}>
                   AMOUNT <ArrowUpDown size={12} style={{ verticalAlign: 'middle', marginLeft: 4, opacity: 0.5 }} />
                 </th>
@@ -426,7 +502,18 @@ const InvoicesView = ({
                 sortedInvoices.map(invoice => (
                   <tr key={invoice.id} className={invoice.status === 'paid' ? 'row-paid' : ''}>
                     <td><span className="table-main-text" style={{ fontWeight: 600 }}>{invoice.invoice_number}</span></td>
-                    <td><span className="table-secondary-text" style={{ color: '#4F46E5', fontWeight: 500 }}>{invoice.client_name}</span></td>
+                    <td><span className="table-secondary-text" style={{ color: '#4F46E5', fontWeight: 500 }}>{invoice.client_name || invoice.vendor_name || '-'}</span></td>
+                    <td>
+                      {invoice.type === 'payable' ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#EF4444', fontWeight: 500, fontSize: '13px', textTransform: 'capitalize' }}>
+                          <ArrowUpRight size={14} /> {invoice.type}
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#10B981', fontWeight: 500, fontSize: '13px', textTransform: 'capitalize' }}>
+                          <ArrowDownLeft size={14} /> {invoice.type || 'receivable'}
+                        </div>
+                      )}
+                    </td>
                     <td><span className="table-main-text" style={{ fontWeight: 600 }}>{formatAmount(invoice.amount)}</span></td>
                     <td><span className="table-secondary-text">{formatDate(invoice.issue_date)}</span></td>
                     <td><span className="table-secondary-text">{formatDate(invoice.due_date)}</span></td>

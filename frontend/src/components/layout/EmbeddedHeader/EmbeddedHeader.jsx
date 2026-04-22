@@ -13,6 +13,7 @@ const SEVERITY_CONFIG = {
 
 const CATEGORY_ICONS = {
   Invoices: <FileText size={14} />,
+  Receivables: <FileText size={14} />,
   Compliance: <Shield size={14} />,
   Payables: <DollarSign size={14} />,
   'Financial Health': <TrendingDown size={14} />,

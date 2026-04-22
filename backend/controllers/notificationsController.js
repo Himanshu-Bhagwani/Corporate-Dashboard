@@ -40,6 +40,7 @@ const getNotifications = async (req, res) => {
               TO_CHAR(due_date, 'YYYY-MM-DD') as due_date, status
        FROM invoices 
        WHERE company_id = $1 
+         AND type = 'receivable'
          AND status IN ('pending')
          AND due_date >= CURRENT_DATE 
          AND due_date <= CURRENT_DATE + INTERVAL '7 days'
@@ -56,10 +57,10 @@ const getNotifications = async (req, res) => {
         id: key,
         type: 'invoice',
         severity: daysLeft <= 2 ? 'warning' : 'info',
-        title: `Invoice ${inv.invoice_number} due ${daysLeft === 0 ? 'today' : daysLeft === 1 ? 'tomorrow' : `in ${daysLeft} days`}`,
+        title: `Receivable ${inv.invoice_number} due ${daysLeft === 0 ? 'today' : daysLeft === 1 ? 'tomorrow' : `in ${daysLeft} days`}`,
         description: `${inv.client_name || inv.vendor_name || 'Unknown'} — ₹${Number(inv.amount).toLocaleString('en-IN')}`,
         date: inv.due_date,
-        category: 'Invoices',
+        category: 'Receivables',
         actionView: 'invoices',
       });
     }

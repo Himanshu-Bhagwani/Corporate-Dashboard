@@ -232,7 +232,7 @@ const ComplianceView = ({ compliance = [], invoices = [], onMarkFiled, onRunAIAu
 
   const renderOverviewTab = () => (
     <>
-      <div className="dashboard-section" style={{ border: 'none', padding: 0, boxShadow: 'none' }}>
+      <div className="dashboard-section">
         <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#1a202c', marginBottom: '4px' }}>Compliance Tracker</h3>
         <p style={{ fontSize: '13px', color: '#718096', marginBottom: '1.5rem' }}>Due filings & deadlines</p>
 

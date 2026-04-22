@@ -396,3 +396,14 @@ export const notificationsAPI = {
     return handleResponse(response);
   },
 };
+
+export const companiesAPI = {
+  upgradePlan: async (companyId, plan) => {
+    const response = await fetch(`${BASE_URL}/companies/${companyId}/plan`, {
+      method: 'PUT',
+      headers: getHeaders(companyId),
+      body: JSON.stringify({ plan }),
+    });
+    return handleResponse(response);
+  },
+};

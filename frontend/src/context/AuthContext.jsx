@@ -129,6 +129,14 @@ export const AuthProvider = ({ children }) => {
     }).catch(() => {});
   };
 
+  const updateCurrentCompanyPlan = (newPlan) => {
+    if (currentCompany) {
+      const updated = { ...currentCompany, plan: newPlan };
+      setCurrentCompany(updated);
+      setCompanies(prev => prev.map(c => c.id === updated.id ? updated : c));
+    }
+  };
+
   return (
     <AuthContext.Provider value={{
       user,
@@ -141,7 +149,8 @@ export const AuthProvider = ({ children }) => {
       loginWithGoogle,
       logout,
       switchCompany,
-      fetchCompanies
+      fetchCompanies,
+      updateCurrentCompanyPlan
     }}>
       {children}
     </AuthContext.Provider>

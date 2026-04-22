@@ -104,4 +104,50 @@ router.put('/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// Upgrade company plan
+router.put('/:id/plan', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { plan } = req.body;
+
+    const VALID_PLANS = ['Launchpad', 'Growth', 'Enterprise X'];
+    if (!plan || !VALID_PLANS.includes(plan)) {
+      return res.status(400).json({ error: 'Invalid plan. Must be Launchpad, Growth, or Enterprise X.' });
+    }
+
+    // Verify the user owns (or belongs to) this company
+    const memberCheck = await pool.query(
+      'SELECT role FROM user_companies WHERE user_id = $1 AND company_id = $2',
+      [req.user.userId, id]
+    );
+    if (memberCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Get current plan
+    const currentResult = await pool.query('SELECT plan FROM companies WHERE id = $1', [id]);
+    if (currentResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Company not found' });
+    }
+
+    const currentPlan = currentResult.rows[0].plan;
+    const currentIdx = VALID_PLANS.indexOf(currentPlan);
+    const newIdx = VALID_PLANS.indexOf(plan);
+
+    if (newIdx <= currentIdx) {
+      return res.status(400).json({ error: 'Can only upgrade to a higher plan.' });
+    }
+
+    const result = await pool.query(
+      'UPDATE companies SET plan = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
+      [plan, id]
+    );
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Upgrade plan error:', error);
+    res.status(500).json({ error: 'Failed to upgrade plan' });
+  }
+});
+
 module.exports = router;

@@ -133,6 +133,11 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`Backend live on port ${PORT}`);
 });
+
+// Increase timeout for long-running PDF extraction and AI categorization
+server.setTimeout(600000); // 10 minutes
+server.keepAliveTimeout = 600000;
+server.headersTimeout = 600000;

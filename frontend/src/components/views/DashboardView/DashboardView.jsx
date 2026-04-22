@@ -3,6 +3,7 @@ import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, Sector,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
+import { ArrowUpRight, ArrowDownLeft } from 'lucide-react';
 import './DashboardView.css';
 import EmbeddedHeader from '../../layout/EmbeddedHeader/EmbeddedHeader';
 
@@ -68,7 +69,7 @@ const DashboardView = ({
 }) => {
   const [activeExpenseIndex, setActiveExpenseIndex] = useState(0);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
-  const [invoiceForm, setInvoiceForm] = useState({ client_name: '', amount: '', due_date: '' });
+  const [invoiceForm, setInvoiceForm] = useState({ client_name: '', amount: '', due_date: '', type: 'receivable' });
   const [revenueTimeframe, setRevenueTimeframe] = useState(6);
 
   // Local state for Income Tax & TDS items
@@ -272,7 +273,7 @@ const DashboardView = ({
     try {
       await onCreateInvoice(invoiceForm);
       setShowInvoiceModal(false);
-      setInvoiceForm({ client_name: '', amount: '', due_date: '' });
+      setInvoiceForm({ client_name: '', amount: '', due_date: '', type: 'receivable' });
     } catch (err) {
       console.error('Failed to create invoice:', err);
     }
@@ -625,10 +626,10 @@ const DashboardView = ({
 
       {/* === RECEIVABLES SUMMARY + COMPLIANCE TRACKER === */}
       <div className="dashboard-grid">
-        {/* Receivables Summary */}
+        {/* Invoices Summary */}
         <div className="dashboard-section">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-            <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#1a202c' }}>Receivables Summary</h3>
+            <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#1a202c' }}>Invoices Summary</h3>
             <button
               onClick={() => setShowInvoiceModal(true)}
               style={{
@@ -651,8 +652,9 @@ const DashboardView = ({
             <table className="receivables-table">
               <thead>
                 <tr>
-                  <th>Client Name</th>
-                  <th>Invoice Amount</th>
+                  <th>Client / Vendor Name</th>
+                  <th>Type</th>
+                  <th>Amount</th>
                   <th>Due Date</th>
                   <th>Status</th>
                 </tr>
@@ -660,7 +662,18 @@ const DashboardView = ({
               <tbody>
                 {(invoices || []).slice(0, 5).map((inv, idx) => (
                   <tr key={inv.id || idx}>
-                    <td style={{ fontWeight: 600, color: '#1a202c' }}>{inv.client_name || '-'}</td>
+                    <td style={{ fontWeight: 600, color: '#1a202c' }}>{inv.client_name || inv.vendor_name || '-'}</td>
+                    <td>
+                      {inv.type === 'payable' ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#EF4444', fontWeight: 500, fontSize: '13px' }}>
+                          <ArrowUpRight size={14} /> Payable
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#10B981', fontWeight: 500, fontSize: '13px' }}>
+                          <ArrowDownLeft size={14} /> Receivable
+                        </div>
+                      )}
+                    </td>
                     <td style={{ fontWeight: 600, color: '#4F46E5' }}>{formatCurrency(Number(inv.amount) || 0)}</td>
                     <td style={{ color: '#4a5568' }}>{formatDateShort(inv.due_date)}</td>
                     <td>{getStatusBadge(inv.status || 'pending')}</td>
@@ -668,7 +681,7 @@ const DashboardView = ({
                 ))}
                 {(!invoices || invoices.length === 0) && (
                   <tr>
-                    <td colSpan="4" style={{ textAlign: 'center', color: '#a0aec0', padding: '2rem' }}>No invoices found</td>
+                    <td colSpan="5" style={{ textAlign: 'center', color: '#a0aec0', padding: '2rem' }}>No invoices found</td>
                   </tr>
                 )}
               </tbody>
@@ -686,7 +699,7 @@ const DashboardView = ({
               onMouseOver={(e) => { e.target.style.color = '#7C3AED'; }}
               onMouseOut={(e) => { e.target.style.color = '#4F46E5'; }}
             >
-              View all receivables →
+              View all invoices →
             </button>
           </div>
         </div>
@@ -754,8 +767,28 @@ const DashboardView = ({
           }}>
             <h2 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '1.5rem', color: '#1a202c' }}>Create Invoice</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', marginBottom: '0.5rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: 600, color: '#4a5568' }}>
+                  <input
+                    type="radio"
+                    name="invoice_type"
+                    checked={invoiceForm.type === 'receivable'}
+                    onChange={() => setInvoiceForm(p => ({ ...p, type: 'receivable' }))}
+                  /> Receivable
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: 600, color: '#4a5568' }}>
+                  <input
+                    type="radio"
+                    name="invoice_type"
+                    checked={invoiceForm.type === 'payable'}
+                    onChange={() => setInvoiceForm(p => ({ ...p, type: 'payable' }))}
+                  /> Payable
+                </label>
+              </div>
               <div>
-                <label style={{ fontSize: '13px', fontWeight: 600, color: '#4a5568', display: 'block', marginBottom: '6px' }}>Client Name</label>
+                <label style={{ fontSize: '13px', fontWeight: 600, color: '#4a5568', display: 'block', marginBottom: '6px' }}>
+                  {invoiceForm.type === 'payable' ? 'Vendor Name' : 'Client Name'}
+                </label>
                 <input
                   type="text" value={invoiceForm.client_name}
                   onChange={(e) => setInvoiceForm(p => ({ ...p, client_name: e.target.value }))}

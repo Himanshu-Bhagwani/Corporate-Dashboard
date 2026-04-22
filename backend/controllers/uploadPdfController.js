@@ -35,6 +35,7 @@ const uploadPdfStatement = async (req, res) => {
     // ── Stage 4: Intelligent Row-Level Extraction ────────────────────────
     const normalizedTransactions = [];
     let currentTxn = null;
+    let pendingDescriptions = [];
     let identifiedCandidateRows = 0;
     let lastKnownDate = null;
     let pendingDescription = ''; // buffer for narration rows that appear before/between amount rows
@@ -125,17 +126,17 @@ const uploadPdfStatement = async (req, res) => {
       if (rowDate) lastKnownDate = rowDate;
 
       const hasAmount = numericValues.length > 0;
-      const description = textComponents.join(' ').trim();
+      const description = textComponents.join(' ');
+
+        // ── Column-Aware Classification ──
+        let type = 'unknown';
+        let absoluteAmount = 0;
 
       if (hasAmount) {
         // Must have a date
         if (!lastKnownDate) continue;
 
         identifiedCandidateRows++;
-
-        // ── Column-Aware Classification ──
-        let type = 'unknown';
-        let absoluteAmount = 0;
 
         if (hasColumnMap) {
           // Classify each numeric value by its x-coordinate
@@ -196,20 +197,20 @@ const uploadPdfStatement = async (req, res) => {
           absoluteAmount = Math.abs(bestAmtObj.value);
         }
 
-        // Date formatting — keep raw, never inject new Date()
-        let formattedDate = lastKnownDate;
-
-        // Merge: same-row description wins; fall back to any buffered pending description;
-        // only use 'Unknown Transaction' as last resort.
-        let finalDescription = description;
-        if (!finalDescription && pendingDescription) {
-          finalDescription = pendingDescription;
+        if (currentTxn) {
+          // Flush the previous transaction context
+          const combinedName = (currentTxn.name + ' ' + pendingDescriptions.join(' ')).trim().substring(0, 250);
+          currentTxn.name = combinedName || 'Unknown Transaction';
+          normalizedTransactions.push(currentTxn);
+          currentTxn = null;
         }
-        pendingDescription = ''; // consumed
-        const safeName = finalDescription || 'Unknown Transaction';
+
+        const initialDesc = [...pendingDescriptions, description].join(' ').trim();
+        pendingDescriptions = [];
+        const safeName = initialDesc.substring(0, 250) || 'Unknown Transaction';
 
         const txn = {
-          date: formattedDate,
+          date: lastKnownDate,
           name: safeName,
           amount: absoluteAmount,
           type: type,
@@ -218,27 +219,32 @@ const uploadPdfStatement = async (req, res) => {
             : 'Imported via Legacy Heuristic (no header detected)'
         };
         
-        if (currentTxn) normalizedTransactions.push(currentTxn);
         currentTxn = txn;
 
-      } else if (!hasAmount && description) {
-        // No amount on this row — it is either:
-        //   a) A continuation of the most-recently started transaction, OR
-        //   b) A narration row that precedes its transaction's amount row
-        if (currentTxn) {
-          // Append to the current in-flight transaction
-          currentTxn.name = (currentTxn.name + ' ' + description).trim();
-        } else {
-          // Buffer it — the amount row for this narration hasn't appeared yet
-          pendingDescription = pendingDescription
-            ? (pendingDescription + ' ' + description).trim()
-            : description;
+      } else {
+        // No amount on this row
+        if (rowDate) {
+           // A new date with no amount marks the start of a new transaction context!
+           if (currentTxn) {
+               const combinedName = (currentTxn.name + ' ' + pendingDescriptions.join(' ')).trim().substring(0, 250);
+               currentTxn.name = combinedName || 'Unknown Transaction';
+               normalizedTransactions.push(currentTxn);
+               currentTxn = null;
+           }
+        }
+        
+        if (description.trim()) {
+           pendingDescriptions.push(description.trim());
         }
       }
     }
     
     // Finalize the last pending transaction
-    if (currentTxn) normalizedTransactions.push(currentTxn);
+    if (currentTxn) {
+       const combinedName = (currentTxn.name + ' ' + pendingDescriptions.join(' ')).trim().substring(0, 250);
+       currentTxn.name = combinedName || 'Unknown Transaction';
+       normalizedTransactions.push(currentTxn);
+    }
 
     // ── Stage 5: Validation ──────────────────────────────────────────────
     const validCount = normalizedTransactions.length;
