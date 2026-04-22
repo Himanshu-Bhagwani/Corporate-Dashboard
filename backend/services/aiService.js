@@ -34,6 +34,32 @@ const generateResponse = async (prompt, systemPrompt = '', jsonFormat = false) =
   }
 };
 
+/**
+ * Streaming variant — returns the raw fetch Response whose body is an
+ * NDJSON stream of { response, done } chunks from Ollama.
+ */
+const generateStreamResponse = async (prompt, systemPrompt = '') => {
+  const payload = {
+    model: MODEL,
+    prompt: prompt,
+    system: systemPrompt,
+    stream: true,
+  };
+
+  const response = await fetch(OLLAMA_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    throw new Error(`Ollama API error: ${response.statusText}`);
+  }
+
+  return response; // caller reads .body (ReadableStream)
+};
+
 module.exports = {
-  generateResponse
+  generateResponse,
+  generateStreamResponse
 };

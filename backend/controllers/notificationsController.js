@@ -262,6 +262,113 @@ const getNotifications = async (req, res) => {
       // compliance_scores may not exist yet
     }
 
+    // ─── 7. AI CFO — EXPENSE SPIKE (>30% vs last month in any category) ───
+    try {
+      const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+      const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 10);
+      const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().slice(0, 10);
+
+      const curCatExp = await pool.query(
+        `SELECT category, SUM(amount) as total FROM transactions WHERE company_id = $1 AND type = 'expense' AND date >= $2 GROUP BY category ORDER BY total DESC LIMIT 1`,
+        [companyId, thisMonthStart]
+      );
+      if (curCatExp.rows.length > 0) {
+        const topCat = curCatExp.rows[0];
+        const prevCatExp = await pool.query(
+          `SELECT SUM(amount) as total FROM transactions WHERE company_id = $1 AND type = 'expense' AND category = $2 AND date >= $3 AND date <= $4`,
+          [companyId, topCat.category, lastMonthStart, lastMonthEnd]
+        );
+        const prevTotal = parseFloat(prevCatExp.rows[0]?.total || 0);
+        const curTotal = parseFloat(topCat.total);
+        if (prevTotal > 0 && curTotal > prevTotal * 1.3) {
+          const pct = (((curTotal / prevTotal) - 1) * 100).toFixed(0);
+          const key = `aicfo-expense-spike`;
+          if (!dismissedKeys.has(key)) {
+            notifications.push({
+              id: key,
+              type: 'metric',
+              severity: pct > 50 ? 'critical' : 'warning',
+              title: `${topCat.category || 'Uncategorized'} expenses spiked ${pct}%`,
+              description: `₹${Math.round(curTotal).toLocaleString('en-IN')} this month vs ₹${Math.round(prevTotal).toLocaleString('en-IN')} last month`,
+              date: today,
+              category: 'AI CFO Insight',
+              actionView: 'aicfo',
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Expense spike notification error:', e.message);
+    }
+
+    // ─── 8. AI CFO — REVENUE DECLINE (>20% drop vs last month) ───
+    try {
+      const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+      const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 10);
+      const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().slice(0, 10);
+
+      const curRev = await pool.query(
+        `SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE company_id = $1 AND type = 'income' AND date >= $2`,
+        [companyId, thisMonthStart]
+      );
+      const prevRev = await pool.query(
+        `SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE company_id = $1 AND type = 'income' AND date >= $2 AND date <= $3`,
+        [companyId, lastMonthStart, lastMonthEnd]
+      );
+      const curRevTotal = parseFloat(curRev.rows[0].total);
+      const prevRevTotal = parseFloat(prevRev.rows[0].total);
+      if (prevRevTotal > 0 && curRevTotal < prevRevTotal * 0.8) {
+        const dropPct = (((prevRevTotal - curRevTotal) / prevRevTotal) * 100).toFixed(0);
+        const key = `aicfo-revenue-decline`;
+        if (!dismissedKeys.has(key)) {
+          notifications.push({
+            id: key,
+            type: 'metric',
+            severity: dropPct > 40 ? 'critical' : 'warning',
+            title: `Revenue dropped ${dropPct}% vs last month`,
+            description: `₹${Math.round(curRevTotal).toLocaleString('en-IN')} this month vs ₹${Math.round(prevRevTotal).toLocaleString('en-IN')} last month`,
+            date: today,
+            category: 'AI CFO Insight',
+            actionView: 'aicfo',
+          });
+        }
+      }
+    } catch (e) {
+      console.error('Revenue decline notification error:', e.message);
+    }
+
+    // ─── 9. AI CFO — LOW PROFIT MARGIN (<10%) ───
+    try {
+      const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+      const monthTotals = await pool.query(
+        `SELECT type, COALESCE(SUM(amount), 0) as total FROM transactions WHERE company_id = $1 AND date >= $2 GROUP BY type`,
+        [companyId, thisMonthStart]
+      );
+      const getT = (rows, type) => parseFloat(rows.find(r => r.type === type)?.total || 0);
+      const mRev = getT(monthTotals.rows, 'income');
+      const mExp = getT(monthTotals.rows, 'expense');
+      if (mRev > 0) {
+        const margin = ((mRev - mExp) / mRev) * 100;
+        if (margin < 10) {
+          const key = `aicfo-margin-warning`;
+          if (!dismissedKeys.has(key)) {
+            notifications.push({
+              id: key,
+              type: 'metric',
+              severity: margin < 0 ? 'critical' : 'warning',
+              title: `Profit margin at ${margin.toFixed(1)}% this month`,
+              description: margin < 0 ? 'You are operating at a loss this month.' : 'Margin is below the 10% healthy threshold.',
+              date: today,
+              category: 'AI CFO Insight',
+              actionView: 'aicfo',
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Margin warning notification error:', e.message);
+    }
+
     // Sort by severity (critical > warning > info) then by date
     const severityOrder = { critical: 0, warning: 1, info: 2 };
     notifications.sort((a, b) => {

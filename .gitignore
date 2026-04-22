@@ -70,3 +70,5 @@ ollama_data/
 # =========================
 .gemini/
 *.DS_Store
+
+CLAUDE.md

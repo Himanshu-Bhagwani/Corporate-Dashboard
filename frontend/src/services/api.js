@@ -250,6 +250,76 @@ export const aiAPI = {
       body: formData,
     });
     return handleResponse(response);
+  },
+  chatWithCFO: async (message, companyId) => {
+    const response = await fetch(`${BASE_URL}/ai/chat`, {
+      method: 'POST',
+      headers: getHeaders(companyId),
+      body: JSON.stringify({ message }),
+    });
+    return handleResponse(response);
+  },
+  // Streaming chat — calls onToken(token) for each word/chunk
+  chatWithCFOStream: async (message, companyId, onToken) => {
+    const response = await fetch(`${BASE_URL}/ai/chat-stream`, {
+      method: 'POST',
+      headers: getHeaders(companyId),
+      body: JSON.stringify({ message }),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: 'Stream failed' }));
+      throw new Error(err.error || 'Stream failed');
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const payload = line.slice(6).trim();
+        if (payload === '[DONE]') return;
+        try {
+          const { token } = JSON.parse(payload);
+          if (token) onToken(token);
+        } catch (e) { /* skip */ }
+      }
+    }
+  },
+  getChatHistory: async (companyId) => {
+    const response = await fetch(`${BASE_URL}/ai/chat-history`, {
+      headers: getHeaders(companyId),
+    });
+    return handleResponse(response);
+  },
+  clearChatHistory: async (companyId) => {
+    const response = await fetch(`${BASE_URL}/ai/chat-history`, {
+      method: 'DELETE',
+      headers: getHeaders(companyId),
+    });
+    return handleResponse(response);
+  },
+  exportChatPDF: async (companyId) => {
+    const response = await fetch(`${BASE_URL}/ai/chat-export`, {
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        'x-company-id': companyId,
+      },
+    });
+    if (!response.ok) throw new Error('Export failed');
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'AI_CFO_Report.pdf';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
   }
 };
 
