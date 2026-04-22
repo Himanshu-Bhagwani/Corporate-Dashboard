@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import EmbeddedHeader from '../../layout/EmbeddedHeader/EmbeddedHeader';
 import { 
   TrendingDown, 
@@ -12,16 +12,58 @@ import {
   CheckCircle,
   Zap,
   Lock,
-  Crown
+  Crown,
+  MessageSquare,
+  Send,
+  Bot,
+  User,
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
-import { dashboardAPI } from '../../../services/api';
+import { dashboardAPI, aiAPI } from '../../../services/api';
 import './AiCfoView.css';
+
+// ── Finance keyword filter ──────────────────────────────────────────────────
+const FINANCE_KEYWORDS = [
+  'revenue', 'expense', 'profit', 'loss', 'cash', 'tax', 'budget', 'cost',
+  'payment', 'invoice', 'balance', 'income', 'spending', 'salary', 'salaries',
+  'debit', 'credit', 'account', 'bank', 'financial', 'money', 'fund',
+  'invest', 'return', 'margin', 'growth', 'decline', 'trend', 'forecast',
+  'receivable', 'payable', 'liability', 'asset', 'equity', 'capital',
+  'transaction', 'category', 'rupee', 'rupees', '₹', 'inr', 'gst',
+  'tds', 'compliance', 'audit', 'ledger', 'journal', 'p&l', 'pnl',
+  'cashflow', 'cash flow', 'net worth', 'overhead', 'operating', 'ebitda',
+  'gross', 'net', 'total', 'monthly', 'quarterly', 'annual', 'yearly',
+  'how much', 'what is my', 'break even', 'burn rate', 'runway',
+  'top', 'highest', 'lowest', 'average', 'summary', 'overview', 'report'
+];
+
+const isFinanceQuestion = (msg) => {
+  const lower = msg.toLowerCase();
+  return FINANCE_KEYWORDS.some(kw => lower.includes(kw));
+};
+
+const SUGGESTED_QUESTIONS = [
+  { text: 'What\'s my top expense?', icon: '📊' },
+  { text: 'How is my cash flow?', icon: '💰' },
+  { text: 'Revenue vs expenses summary', icon: '📈' },
+  { text: 'What is my net profit?', icon: '🎯' },
+];
+
 const AiCfoView = () => {
   const { currentCompany } = useAuth();
   const [activeModal, setActiveModal] = useState(null);
   const [insights, setInsights] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // ── Chatbot state ───────────────────────────────────────────────────────
+  const [chatOpen, setChatOpen] = useState(false);
+  const [messages, setMessages] = useState([
+    { role: 'ai', text: 'Hello! I\'m your AI CFO Assistant. Ask me anything about your company\'s finances — revenue, expenses, cash flow, and more.' }
+  ]);
+  const [inputValue, setInputValue] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const messagesEndRef = useRef(null);
+  const inputRef = useRef(null);
 
   const isLaunchpad = currentCompany?.plan === 'Launchpad';
 
@@ -43,6 +85,57 @@ const AiCfoView = () => {
     };
     fetchInsights();
   }, [currentCompany, isLaunchpad]);
+
+  // Auto-scroll chat to bottom
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, chatLoading]);
+
+  // Focus input when chat opens
+  useEffect(() => {
+    if (chatOpen) inputRef.current?.focus();
+  }, [chatOpen]);
+
+  // ── Send message handler ────────────────────────────────────────────────
+  const sendMessage = async (text) => {
+    const msg = (text || inputValue).trim();
+    if (!msg || chatLoading) return;
+
+    setInputValue('');
+    setMessages(prev => [...prev, { role: 'user', text: msg }]);
+
+    // Client-side finance filter
+    if (!isFinanceQuestion(msg)) {
+      setTimeout(() => {
+        setMessages(prev => [...prev, {
+          role: 'ai',
+          text: 'I can only assist with finance-related questions about your business data. Try asking about revenue, expenses, cash flow, or any financial metric!'
+        }]);
+      }, 300);
+      return;
+    }
+
+    setChatLoading(true);
+    try {
+      const data = await aiAPI.chatWithCFO(msg, currentCompany?.id);
+      setMessages(prev => [...prev, { role: 'ai', text: data.reply }]);
+    } catch (error) {
+      console.error('Chat error:', error);
+      setMessages(prev => [...prev, {
+        role: 'ai',
+        text: 'Sorry, I encountered an error processing your question. Please try again.'
+      }]);
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
 
   const getModalContent = (type) => {
     if (!insights) return null;
@@ -235,6 +328,7 @@ const AiCfoView = () => {
         </div>
       </div>
 
+      {/* ── Strategy Modal ─────────────────────────────────────────────────── */}
       {activeModal && modalData && (
         <div className="modal-overlay" onClick={() => setActiveModal(null)}>
           <div className="aicfo-modal" onClick={(e) => e.stopPropagation()}>
@@ -276,6 +370,116 @@ const AiCfoView = () => {
                 Execute Plan
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Chatbot FAB ────────────────────────────────────────────────────── */}
+      {!chatOpen && (
+        <button
+          className="chat-fab"
+          onClick={() => setChatOpen(true)}
+          id="ai-cfo-chat-toggle"
+          title="Ask your AI CFO"
+        >
+          <MessageSquare size={24} />
+        </button>
+      )}
+
+      {/* ── Chatbot Panel ──────────────────────────────────────────────────── */}
+      {chatOpen && (
+        <div className="chat-panel" id="ai-cfo-chat-panel">
+          {/* Header */}
+          <div className="chat-panel-header">
+            <div className="chat-panel-title">
+              <div className="chat-panel-avatar">
+                <Bot size={18} />
+              </div>
+              <div>
+                <h4>AI CFO Assistant</h4>
+                <span className="chat-status">
+                  <span className="chat-status-dot"></span>
+                  Online • Powered by AI
+                </span>
+              </div>
+            </div>
+            <button className="chat-close-btn" onClick={() => setChatOpen(false)}>
+              <X size={18} />
+            </button>
+          </div>
+
+          {/* Messages */}
+          <div className="chat-messages">
+            {messages.map((msg, idx) => (
+              <div key={idx} className={`chat-message chat-message-${msg.role}`}>
+                {msg.role === 'ai' && (
+                  <div className="chat-msg-avatar ai-avatar">
+                    <BrainCircuit size={14} />
+                  </div>
+                )}
+                <div className={`chat-bubble chat-bubble-${msg.role}`}>
+                  {msg.text}
+                </div>
+                {msg.role === 'user' && (
+                  <div className="chat-msg-avatar user-avatar">
+                    <User size={14} />
+                  </div>
+                )}
+              </div>
+            ))}
+            {chatLoading && (
+              <div className="chat-message chat-message-ai">
+                <div className="chat-msg-avatar ai-avatar">
+                  <BrainCircuit size={14} />
+                </div>
+                <div className="chat-bubble chat-bubble-ai typing-bubble">
+                  <div className="typing-indicator">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
+                </div>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Suggested Questions */}
+          {messages.length <= 1 && !chatLoading && (
+            <div className="chat-suggestions">
+              {SUGGESTED_QUESTIONS.map((q, i) => (
+                <button
+                  key={i}
+                  className="chat-suggestion-chip"
+                  onClick={() => sendMessage(q.text)}
+                >
+                  <span>{q.icon}</span> {q.text}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Input */}
+          <div className="chat-input-bar">
+            <input
+              ref={inputRef}
+              type="text"
+              className="chat-input"
+              placeholder="Ask about your finances..."
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              disabled={chatLoading}
+              id="ai-cfo-chat-input"
+            />
+            <button
+              className="chat-send-btn"
+              onClick={() => sendMessage()}
+              disabled={!inputValue.trim() || chatLoading}
+              id="ai-cfo-chat-send"
+            >
+              <Send size={16} />
+            </button>
           </div>
         </div>
       )}

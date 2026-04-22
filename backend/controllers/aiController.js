@@ -174,8 +174,157 @@ If a field is missing, use null.`;
   }
 };
 
+// ── AI CFO Chatbot ──────────────────────────────────────────────────────────
+const chatWithCFO = async (req, res) => {
+  try {
+    const companyId = req.headers['x-company-id'];
+    if (!companyId) return res.status(400).json({ error: 'Company ID required' });
+
+    const { message } = req.body;
+    if (!message || typeof message !== 'string' || message.trim().length === 0) {
+      return res.status(400).json({ error: 'Message is required' });
+    }
+
+    // ── 1. Parallel pre-aggregation (fast path — ~50ms) ───────────────────
+    const [
+      revExpRes,
+      topExpensesRes,
+      monthlyTrendRes,
+      accountsRes,
+      receivablesRes,
+      payablesRes,
+      recentTxnRes
+    ] = await Promise.all([
+      // Total revenue & expenses
+      pool.query(
+        `SELECT type, COALESCE(SUM(amount), 0) as total
+         FROM transactions WHERE company_id = $1 GROUP BY type`,
+        [companyId]
+      ),
+      // Top 5 expense categories
+      pool.query(
+        `SELECT category, SUM(amount) as total
+         FROM transactions WHERE company_id = $1 AND type = 'expense'
+         GROUP BY category ORDER BY total DESC LIMIT 5`,
+        [companyId]
+      ),
+      // Monthly trend — last 6 months
+      pool.query(
+        `SELECT TO_CHAR(DATE_TRUNC('month', date), 'Mon YYYY') as month,
+                type, SUM(amount) as total
+         FROM transactions
+         WHERE company_id = $1 AND date >= NOW() - INTERVAL '6 months'
+         GROUP BY month, DATE_TRUNC('month', date), type
+         ORDER BY DATE_TRUNC('month', date) ASC`,
+        [companyId]
+      ),
+      // Accounts with opening balances
+      pool.query(
+        `SELECT name, type, bank, COALESCE(opening_balance, 0) as balance
+         FROM accounts WHERE company_id = $1`,
+        [companyId]
+      ),
+      // Receivables
+      pool.query(
+        `SELECT COALESCE(SUM(amount), 0) as total, COUNT(*) as count
+         FROM invoices WHERE company_id = $1 AND status IN ('pending', 'overdue')`,
+        [companyId]
+      ),
+      // Payables
+      pool.query(
+        `SELECT COALESCE(SUM(amount), 0) as total
+         FROM invoices WHERE company_id = $1 AND type = 'payable' AND status IN ('pending', 'overdue')`,
+        [companyId]
+      ),
+      // Recent 10 transactions for context
+      pool.query(
+        `SELECT name, type, category, amount, TO_CHAR(date, 'YYYY-MM-DD') as date
+         FROM transactions WHERE company_id = $1
+         ORDER BY date DESC LIMIT 10`,
+        [companyId]
+      )
+    ]);
+
+    // ── 2. Build compact financial snapshot ────────────────────────────────
+    const getTotal = (rows, type) => parseFloat(rows.find(r => r.type === type)?.total || 0);
+    const totalRevenue = getTotal(revExpRes.rows, 'income');
+    const totalExpenses = getTotal(revExpRes.rows, 'expense');
+    const netProfit = totalRevenue - totalExpenses;
+    const openingBal = accountsRes.rows.reduce((s, a) => s + parseFloat(a.balance), 0);
+    const cashInBank = openingBal + netProfit;
+
+    const topExpenses = topExpensesRes.rows
+      .map(r => `${r.category || 'Uncategorized'}: ₹${parseFloat(r.total).toLocaleString()}`)
+      .join(', ');
+
+    // Monthly trend
+    const months = {};
+    monthlyTrendRes.rows.forEach(r => {
+      if (!months[r.month]) months[r.month] = { revenue: 0, expenses: 0 };
+      if (r.type === 'income') months[r.month].revenue = parseFloat(r.total);
+      if (r.type === 'expense') months[r.month].expenses = parseFloat(r.total);
+    });
+    const trendStr = Object.entries(months)
+      .map(([m, v]) => `${m}: Rev ₹${v.revenue.toLocaleString()}, Exp ₹${v.expenses.toLocaleString()}`)
+      .join(' | ');
+
+    const recentTxns = recentTxnRes.rows
+      .map(t => `${t.date} ${t.type} ₹${parseFloat(t.amount).toLocaleString()} ${t.name} [${t.category || '-'}]`)
+      .join('\n');
+
+    const financialContext = `
+COMPANY FINANCIAL SNAPSHOT:
+• Total Revenue: ₹${totalRevenue.toLocaleString()}
+• Total Expenses: ₹${totalExpenses.toLocaleString()}
+• Net Profit: ₹${netProfit.toLocaleString()}
+• Cash in Bank: ₹${cashInBank.toLocaleString()}
+• Receivables: ₹${parseFloat(receivablesRes.rows[0].total).toLocaleString()} (${receivablesRes.rows[0].count} pending)
+• Payables: ₹${parseFloat(payablesRes.rows[0].total).toLocaleString()}
+• Top Expenses: ${topExpenses || 'None'}
+• 6‑Month Trend: ${trendStr || 'No data'}
+• Accounts: ${accountsRes.rows.map(a => `${a.name} (${a.bank}): ₹${parseFloat(a.balance).toLocaleString()}`).join(', ') || 'None'}
+
+RECENT TRANSACTIONS:
+${recentTxns || 'No transactions yet.'}
+`.trim();
+
+    // ── 3. System prompt with strict finance guard ─────────────────────────
+    const systemPrompt = `You are the AI CFO Assistant for this company. You have access to the company's real financial data shown below. Answer ONLY finance, accounting, tax, cash flow, budgeting, and business performance questions. For ANY non-finance question, respond exactly: "I can only assist with finance-related questions about your business data."
+
+Keep answers concise (2–3 sentences max). Use ₹ for currency. Reference actual numbers from the data. Do not make up data.
+
+${financialContext}`;
+
+    // ── 4. Race LLM against 3-second timeout ──────────────────────────────
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('TIMEOUT')), 8000)
+    );
+
+    let reply;
+    try {
+      reply = await Promise.race([
+        generateResponse(message, systemPrompt, false),
+        timeoutPromise
+      ]);
+    } catch (err) {
+      if (err.message === 'TIMEOUT') {
+        return res.json({
+          reply: 'The analysis is taking longer than expected. Please try a simpler question or try again shortly.'
+        });
+      }
+      throw err;
+    }
+
+    res.json({ reply: reply.trim() });
+  } catch (error) {
+    console.error('Chat CFO Error:', error);
+    res.status(500).json({ error: 'Failed to process your question' });
+  }
+};
+
 module.exports = {
   categorizeTransactions,
   complianceReview,
-  parseInvoiceOCR
+  parseInvoiceOCR,
+  chatWithCFO
 };

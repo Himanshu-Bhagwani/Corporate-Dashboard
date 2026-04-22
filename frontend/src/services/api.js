@@ -250,6 +250,14 @@ export const aiAPI = {
       body: formData,
     });
     return handleResponse(response);
+  },
+  chatWithCFO: async (message, companyId) => {
+    const response = await fetch(`${BASE_URL}/ai/chat`, {
+      method: 'POST',
+      headers: getHeaders(companyId),
+      body: JSON.stringify({ message }),
+    });
+    return handleResponse(response);
   }
 };
 
