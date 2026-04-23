@@ -1,44 +1,50 @@
 import React, { useState } from 'react';
-import { DollarSign, TrendingUp, PieChart, FileText, BarChart3, Download } from 'lucide-react';
+import { DollarSign, TrendingUp, PieChart, FileText, BarChart3, Download, Calendar } from 'lucide-react';
 import ExportButtons from './ExportButtons';
 import ReportViewer from './ReportViewer';
 import { fetchReport, exportReport } from '../../services/reportsService';
 import { useAuth } from '../../context/AuthContext';
 
+const REPORTS = [
+  { id: 1, title: 'Profit & Loss',  key: 'pnl',           description: 'Revenue & expense breakdown with margins',   icon: DollarSign, color: '#1d4ed8' },
+  { id: 2, title: 'Balance Sheet',  key: 'balance-sheet',  description: 'Assets, liabilities & equity snapshot',      icon: PieChart,   color: '#7c3aed' },
+  { id: 3, title: 'Cash Flow',      key: 'cash-flow',      description: 'Monthly inflow, outflow & running balance',   icon: TrendingUp, color: '#059669' },
+  { id: 4, title: 'Tax Summary',    key: 'tax',            description: 'Corporate tax, surcharge, cess & GST',       icon: FileText,   color: '#f59e0b' },
+  { id: 5, title: 'GST Report',     key: 'gst',            description: 'GSTR-3B output vs input tax breakdown',      icon: BarChart3,  color: '#f97316' },
+];
+
 const ReportsDashboard = () => {
   const { currentCompany } = useAuth();
-  const [activeReport, setActiveReport] = useState(null);
-  const [reportData, setReportData] = useState(null);
-  const [hoveredCard, setHoveredCard] = useState(null);
+  const [activeReport, setActiveReport]   = useState(null);
+  const [reportData, setReportData]       = useState(null);
+  const [loading, setLoading]             = useState(false);
+  const [includeAI, setIncludeAI]         = useState(false);
+  const [isExporting, setIsExporting]     = useState(false);
+  const [dateFrom, setDateFrom]           = useState('');
+  const [dateTo, setDateTo]               = useState('');
 
-  const reportTypes = [
-    { id: 1, title: 'Profit & Loss', key: 'pnl', description: 'Detailed breakdown of credits and debits', icon: DollarSign, gradient: 'linear-gradient(135deg, #3557ea 0%, #3557ea 100%)' },
-    { id: 2, title: 'Balance Sheet', key: 'balance-sheet', description: 'Snapshot of assets, liabilities, and equity', icon: PieChart, gradient: 'linear-gradient(135deg, #7c3aed 0%, #7c3aed 100%)' },
-    { id: 3, title: 'Cash Flow', key: 'cash-flow', description: 'Track cash movement in and out', icon: TrendingUp, gradient: 'linear-gradient(135deg, #059669 0%, #059669 100%)' },
-    { id: 4, title: 'Tax Summary', key: 'tax', description: 'Estimated tax liabilities', icon: FileText, gradient: 'linear-gradient(135deg, #f59e0b 0%, #f59e0b 100%)' },
-    { id: 5, title: 'GST Report', key: 'gst', description: 'GST input and output breakdown', icon: BarChart3, gradient: 'linear-gradient(135deg, #F76B1C 0%, #F76B1C 100%)' }
-  ];
+  const dateRange = { from: dateFrom || undefined, to: dateTo || undefined };
 
-  const handleGenerateReport = async (report) => {
-    setActiveReport(report.title);
+  const handleGenerate = async (report) => {
+    if (!currentCompany) return;
+    setActiveReport(report);
+    setReportData(null);
+    setLoading(true);
     try {
-      const data = await fetchReport(report.key, currentCompany.id);
+      const data = await fetchReport(report.key, currentCompany.id, dateRange);
       setReportData(data);
     } catch (err) {
-      console.error('Failed to generate report', err);
-      setReportData({ error: 'Failed to load report data' });
+      setReportData({ error: err.message });
+    } finally {
+      setLoading(false);
     }
   };
 
-  const [includeAI, setIncludeAI] = useState(false);
-  const [isExporting, setIsExporting] = useState(false);
-
   const handleExport = async (format) => {
-    if (!activeReport) return alert('Please generate a report first.');
-    const reportTemplate = reportTypes.find(r => r.title === activeReport);
+    if (!activeReport) return;
     setIsExporting(true);
     try {
-      await exportReport(reportTemplate.key, format.toLowerCase(), currentCompany.id, includeAI);
+      await exportReport(activeReport.key, format.toLowerCase(), currentCompany.id, includeAI, dateRange);
     } catch (err) {
       console.error('Export failed', err);
     } finally {
@@ -48,31 +54,56 @@ const ReportsDashboard = () => {
 
   return (
     <>
+      {/* Date range filter */}
+      <div className="reports-date-filter">
+        <div className="rdf-icon"><Calendar size={18} /></div>
+        <span className="rdf-label">Period</span>
+        <div className="rdf-inputs">
+          <div className="rdf-field">
+            <label>From</label>
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+          </div>
+          <div className="rdf-sep">—</div>
+          <div className="rdf-field">
+            <label>To</label>
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+          </div>
+        </div>
+        {(dateFrom || dateTo) && (
+          <button className="rdf-clear" onClick={() => { setDateFrom(''); setDateTo(''); }}>
+            Clear
+          </button>
+        )}
+      </div>
+
+      {/* Report cards */}
       <div className="reports-section">
         <h2 className="section-title-reports">Select a Report</h2>
         <div className="reports-grid">
-          {reportTypes.map((report) => {
-            const IconComponent = report.icon;
+          {REPORTS.map((report) => {
+            const Icon = report.icon;
+            const isActive = activeReport?.key === report.key;
             return (
               <div
                 key={report.id}
-                className={`report-card-premium ${hoveredCard === report.id ? 'hovered' : ''}`}
-                onMouseEnter={() => setHoveredCard(report.id)}
-                onMouseLeave={() => setHoveredCard(null)}
+                className={`report-card-premium ${isActive ? 'active-card' : ''}`}
+                onClick={() => handleGenerate(report)}
               >
-                <div className="report-card-bg" style={{ background: report.gradient }}></div>
+                <div className="report-card-bg" style={{ background: report.color }} />
                 <div className="report-card-content-wrapper">
                   <div className="report-card-header">
-                    <div className="report-icon-badge" style={{ background: report.gradient }}>
-                      <IconComponent size={24} />
+                    <div className="report-icon-badge" style={{ background: report.color }}>
+                      <Icon size={22} />
                     </div>
+                    {isActive && <span className="report-active-chip">Active</span>}
                   </div>
                   <div className="report-card-body">
                     <h3 className="report-card-title">{report.title}</h3>
                     <p className="report-card-description">{report.description}</p>
                   </div>
-                  <button className="btn-generate-report" onClick={() => handleGenerateReport(report)}>
-                    <Download size={18} /> Generate Report
+                  <button className="btn-generate-report" style={{ background: report.color }}>
+                    <Download size={16} />
+                    {loading && isActive ? 'Generating…' : 'Generate Report'}
                   </button>
                 </div>
               </div>
@@ -81,26 +112,33 @@ const ReportsDashboard = () => {
         </div>
       </div>
 
+      {/* Viewer + export */}
       {activeReport && (
-        <React.Fragment>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '1rem', background: 'linear-gradient(to right, #f8fafc, #ffffff)', border: '1px solid #e2e8f0', borderRadius: '8px', marginBottom: '1.5rem', width: 'fit-content' }}>
+        <>
+          <div className="ai-toggle-row">
             <input
               type="checkbox"
               id="ai-toggle"
               checked={includeAI}
-              onChange={(e) => setIncludeAI(e.target.checked)}
-              style={{ width: '16px', height: '16px', accentColor: '#6366f1', cursor: 'pointer' }}
+              onChange={e => setIncludeAI(e.target.checked)}
             />
-            <label htmlFor="ai-toggle" style={{ fontSize: '14px', fontWeight: 500, color: '#334155', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '16px' }}>🪄</span> Include AI Executive Narrative (Beta)
+            <label htmlFor="ai-toggle">
+              <span>🪄</span> Include AI Executive Narrative (Beta)
             </label>
-            <span style={{ fontSize: '12px', color: '#64748b', marginLeft: '12px' }}>
-              Requires local Ollama to be active. Output may take ~10-15s longer.
-            </span>
+            <span className="ai-toggle-note">Requires local Ollama · adds ~15s</span>
           </div>
-          <ExportButtons onExport={handleExport} isGeneratingAI={includeAI} isExporting={isExporting} />
-          <ReportViewer title={activeReport} data={reportData} />
-        </React.Fragment>
+
+          <ExportButtons onExport={handleExport} isExporting={isExporting} />
+
+          {loading ? (
+            <div className="rv-loading">
+              <div className="rv-spinner" />
+              <span>Generating {activeReport.title}…</span>
+            </div>
+          ) : (
+            <ReportViewer reportKey={activeReport.key} data={reportData} />
+          )}
+        </>
       )}
     </>
   );
