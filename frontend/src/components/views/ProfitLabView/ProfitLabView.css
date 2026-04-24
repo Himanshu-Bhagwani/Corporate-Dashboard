@@ -183,3 +183,92 @@
     align-items: flex-start;
   }
 }
+
+/* ─── KPI strip ──────────────────────────────────────────── */
+.pl-kpi-strip {
+  display: flex;
+  gap: 0;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  overflow: hidden;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+.pl-kpi {
+  flex: 1;
+  padding: 1.1rem 1.5rem;
+  border-right: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pl-kpi:last-child { border-right: none; }
+.pl-kpi-label { font-size: 0.72rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em; }
+.pl-kpi-value { font-size: 1.15rem; font-weight: 800; font-variant-numeric: tabular-nums; color: #1a202c; }
+.pl-kpi-value.blue  { color: #1d4ed8; }
+.pl-kpi-value.green { color: #059669; }
+.pl-kpi-value.red   { color: #dc2626; }
+.pl-kpi-value.amber { color: #d97706; }
+
+/* ─── Loading state ─────────────────────────────────────── */
+.pl-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 120px;
+  color: #94a3b8;
+  font-size: 0.875rem;
+  font-style: italic;
+}
+
+/* ─── Legend row ─────────────────────────────────────────── */
+.pl-legend-row {
+  display: flex;
+  gap: 8px;
+  padding: 12px 0 4px;
+  flex-wrap: wrap;
+}
+.pl-legend-chip {
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+/* ─── Cost centre list ───────────────────────────────────── */
+.pl-cost-list { display: flex; flex-direction: column; gap: 10px; padding-top: 4px; }
+.pl-cost-row {
+  display: grid;
+  grid-template-columns: 24px 1fr 120px 44px 90px;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.875rem;
+}
+.pl-cost-rank { width: 24px; height: 24px; border-radius: 50%; background: #f1f5f9; color: #64748b; font-size: 0.72rem; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.pl-cost-name { color: #374151; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-cost-bar-wrap { height: 8px; background: #f1f5f9; border-radius: 4px; overflow: hidden; }
+.pl-cost-bar { height: 100%; border-radius: 4px; transition: width 0.4s; }
+.pl-cost-pct { text-align: right; color: #64748b; font-size: 0.8rem; font-weight: 600; }
+.pl-cost-amt { text-align: right; font-weight: 700; color: #1a202c; font-variant-numeric: tabular-nums; }
+
+/* ─── Heatmap legend ─────────────────────────────────────── */
+.heatmap-legend {
+  display: flex;
+  gap: 8px;
+  padding: 12px 0 0;
+  flex-wrap: wrap;
+}
+.heatmap-legend span {
+  padding: 3px 10px;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+@media (max-width: 768px) {
+  .pl-kpi-strip { flex-wrap: wrap; }
+  .pl-kpi { min-width: calc(50% - 1px); }
+  .pl-cost-row { grid-template-columns: 24px 1fr 60px 36px 80px; }
+}
