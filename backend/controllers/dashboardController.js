@@ -210,15 +210,15 @@ const getInsightsData = async (req, res) => {
       estimatedReturn: idleCash * riskFreeRate
     };
 
-    // 2. Forecasting Data (Last 6 months monthly trend)
+    // 2. Forecasting Data — 12 months of history
     const monthlyTrendRes = await pool.query(`
-      SELECT 
+      SELECT
         TO_CHAR(DATE_TRUNC('month', date), 'Mon YYYY') as month_str,
         DATE_TRUNC('month', date) as month_val,
         type,
         SUM(amount) as total
       FROM transactions
-      WHERE company_id = $1 AND date >= NOW() - INTERVAL '6 months'
+      WHERE company_id = $1 AND date >= NOW() - INTERVAL '12 months'
       GROUP BY month_str, month_val, type
       ORDER BY month_val ASC
     `, [companyId]);
@@ -228,72 +228,182 @@ const getInsightsData = async (req, res) => {
       if (!historicalMonths[r.month_str]) {
         historicalMonths[r.month_str] = { name: r.month_str, revenue: 0, expenses: 0 };
       }
-      if (r.type === 'income') historicalMonths[r.month_str].revenue = parseFloat(r.total);
+      if (r.type === 'income')  historicalMonths[r.month_str].revenue  = parseFloat(r.total);
       if (r.type === 'expense') historicalMonths[r.month_str].expenses = parseFloat(r.total);
     });
-    
-    const historicalData = Object.values(historicalMonths);
-    
-    // Calculate growth rates
-    let revGrowth = 0;
-    let expGrowth = 0;
-    if (historicalData.length >= 2) {
-      const first = historicalData[0];
-      const last = historicalData[historicalData.length - 1];
-      if (first.revenue > 0) revGrowth = (last.revenue - first.revenue) / first.revenue / historicalData.length;
-      if (first.expenses > 0) expGrowth = (last.expenses - first.expenses) / first.expenses / historicalData.length;
+
+    const historicalData = Object.values(historicalMonths).map(m => ({
+      ...m,
+      netProfit: m.revenue - m.expenses,
+      margin: m.revenue > 0 ? ((m.revenue - m.expenses) / m.revenue * 100).toFixed(1) : '0.0'
+    }));
+
+    // Average monthly revenue & expense — use last 3 completed months (exclude current partial month)
+    const completedMonths = historicalData.filter(m => m.revenue > 0 || m.expenses > 0);
+    const recent = completedMonths.slice(-3);
+    const avgMonthlyRevenue = recent.length > 0
+      ? recent.reduce((s, m) => s + m.revenue, 0)  / recent.length : 0;
+    const avgMonthlyExpense = recent.length > 0
+      ? recent.reduce((s, m) => s + m.expenses, 0) / recent.length : 0;
+
+    // True month-over-month growth rate: average of individual MoM changes
+    // This is what gets applied per-month in the compound projection formula.
+    const momRevChanges = [];
+    const momExpChanges = [];
+    for (let i = 1; i < completedMonths.length; i++) {
+      const prev = completedMonths[i - 1];
+      const curr = completedMonths[i];
+      if (prev.revenue  > 0) momRevChanges.push((curr.revenue  - prev.revenue)  / prev.revenue);
+      if (prev.expenses > 0) momExpChanges.push((curr.expenses - prev.expenses) / prev.expenses);
     }
-    
-    const avgMonthlyExpense = historicalData.reduce((sum, m) => sum + m.expenses, 0) / (historicalData.length || 1);
+    // Trim outlier months (top & bottom 10%) when we have enough data
+    const trimmedAvg = (arr) => {
+      if (arr.length < 4) return arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : 0;
+      const sorted = [...arr].sort((a, b) => a - b);
+      const cut = Math.floor(sorted.length * 0.1);
+      const trimmed = sorted.slice(cut, sorted.length - cut);
+      return trimmed.reduce((s, v) => s + v, 0) / trimmed.length;
+    };
+    const momRevGrowth = trimmedAvg(momRevChanges); // e.g. 0.02 = 2% per month
+    const momExpGrowth = trimmedAvg(momExpChanges);
+
+    const runway = avgMonthlyExpense > 0 ? cashInBank / avgMonthlyExpense : 99;
 
     const forecast = {
       historicalData,
-      revGrowthDisplay: (revGrowth * 100).toFixed(1),
-      expGrowthDisplay: (expGrowth * 100).toFixed(1),
+      // true MoM rates sent to frontend for compound projection
+      momRevGrowth,
+      momExpGrowth,
+      // human-readable display (for KPI cards)
+      revGrowthDisplay: (momRevGrowth * 100).toFixed(1),
+      expGrowthDisplay: (momExpGrowth * 100).toFixed(1),
       cashInBank,
+      avgMonthlyRevenue,
       avgMonthlyExpense,
-      totalTax
+      runway: runway.toFixed(1),
+      totalTax,
+      // basis label shown to user
+      projectionBasis: `Avg of last ${recent.length} month${recent.length !== 1 ? 's' : ''}: ₹${Math.round(avgMonthlyRevenue).toLocaleString('en-IN')} revenue / mo`
     };
 
     // 3. Profit Lab Data
-    // Profit by Client Segment (Approximated using Income Categories vs Expenses)
-    // To make it interesting, we'll map Income Categories as "Segments"
+    // All-time segment revenue
     const segmentRes = await pool.query(`
-      SELECT category as name, SUM(amount) as revenue
+      SELECT COALESCE(category,'Uncategorized') as name, SUM(amount) as revenue
       FROM transactions
       WHERE company_id = $1 AND type = 'income'
-      GROUP BY category
-      ORDER BY revenue DESC
+      GROUP BY COALESCE(category,'Uncategorized') ORDER BY revenue DESC
     `, [companyId]);
-    
-    // We'll simulate margin for segments by subtracting a proportional amount of total expense
+
+    // Quarterly income per segment (Indian FY: Q1=Apr-Jun, Q2=Jul-Sep, Q3=Oct-Dec, Q4=Jan-Mar)
+    const qSegmentRes = await pool.query(`
+      SELECT
+        COALESCE(category,'Uncategorized') as segment,
+        CASE
+          WHEN EXTRACT(MONTH FROM date) IN (4,5,6)   THEN 'Q1'
+          WHEN EXTRACT(MONTH FROM date) IN (7,8,9)   THEN 'Q2'
+          WHEN EXTRACT(MONTH FROM date) IN (10,11,12) THEN 'Q3'
+          ELSE 'Q4'
+        END as quarter,
+        SUM(amount) as revenue
+      FROM transactions
+      WHERE company_id = $1 AND type = 'income' AND date >= NOW() - INTERVAL '12 months'
+      GROUP BY COALESCE(category,'Uncategorized'),
+               CASE
+                 WHEN EXTRACT(MONTH FROM date) IN (4,5,6)    THEN 'Q1'
+                 WHEN EXTRACT(MONTH FROM date) IN (7,8,9)    THEN 'Q2'
+                 WHEN EXTRACT(MONTH FROM date) IN (10,11,12) THEN 'Q3'
+                 ELSE 'Q4'
+               END
+    `, [companyId]);
+
+    // Quarterly expenses overall
+    const qExpenseRes = await pool.query(`
+      SELECT
+        CASE
+          WHEN EXTRACT(MONTH FROM date) IN (4,5,6)   THEN 'Q1'
+          WHEN EXTRACT(MONTH FROM date) IN (7,8,9)   THEN 'Q2'
+          WHEN EXTRACT(MONTH FROM date) IN (10,11,12) THEN 'Q3'
+          ELSE 'Q4'
+        END as quarter,
+        SUM(amount) as total
+      FROM transactions
+      WHERE company_id = $1 AND type = 'expense' AND date >= NOW() - INTERVAL '12 months'
+      GROUP BY CASE
+                 WHEN EXTRACT(MONTH FROM date) IN (4,5,6)    THEN 'Q1'
+                 WHEN EXTRACT(MONTH FROM date) IN (7,8,9)    THEN 'Q2'
+                 WHEN EXTRACT(MONTH FROM date) IN (10,11,12) THEN 'Q3'
+                 ELSE 'Q4'
+               END
+    `, [companyId]);
+
+    // Build quarterly revenue totals map
+    const qRevTotals = { Q1: 0, Q2: 0, Q3: 0, Q4: 0 };
+    const qExpTotals = { Q1: 0, Q2: 0, Q3: 0, Q4: 0 };
+    qExpenseRes.rows.forEach(r => { qExpTotals[r.quarter] = parseFloat(r.total); });
+
+    // Per-segment quarterly revenue
+    const segQMap = {}; // { segmentName: { Q1: rev, Q2: rev, ... } }
+    qSegmentRes.rows.forEach(r => {
+      if (!segQMap[r.segment]) segQMap[r.segment] = { Q1: 0, Q2: 0, Q3: 0, Q4: 0 };
+      segQMap[r.segment][r.quarter] = parseFloat(r.revenue);
+      qRevTotals[r.quarter] += parseFloat(r.revenue);
+    });
+
+    // Compute margin per segment per quarter (proportional expense allocation)
     const segments = segmentRes.rows.map(r => {
-      const rev = parseFloat(r.revenue);
-      const revShare = totalRevenue > 0 ? rev / totalRevenue : 0;
-      const allocatedExpense = totalExpense * revShare;
-      const profit = rev - allocatedExpense;
-      const profitMargin = rev > 0 ? (profit / rev) * 100 : 0;
+      const rev       = parseFloat(r.revenue);
+      const revShare  = totalRevenue > 0 ? rev / totalRevenue : 0;
+      const alloc     = totalExpense * revShare;
+      const profit    = rev - alloc;
+      const margin    = rev > 0 ? (profit / rev * 100) : 0;
+      const qData     = segQMap[r.name] || { Q1: 0, Q2: 0, Q3: 0, Q4: 0 };
+
+      const qMargin = (q) => {
+        const qRev = qData[q];
+        if (!qRev || !qRevTotals[q]) return null;
+        const qShare  = qRev / qRevTotals[q];
+        const qExpAll = qExpTotals[q] * qShare;
+        const m       = qRev > 0 ? ((qRev - qExpAll) / qRev * 100) : 0;
+        return parseFloat(m.toFixed(1));
+      };
+
       return {
-        name: r.name || 'Uncategorized',
+        name: r.name,
         revenue: rev,
-        profitMargin: Math.max(0, profitMargin).toFixed(1) // Keep positive for display
+        profitMargin: parseFloat(Math.max(0, margin).toFixed(1)),
+        Q1: qMargin('Q1'),
+        Q2: qMargin('Q2'),
+        Q3: qMargin('Q3'),
+        Q4: qMargin('Q4')
       };
     });
 
-    // Top Expense Categories
+    // Top expense categories with % of total
     const topExpensesRes = await pool.query(`
-      SELECT category as name, SUM(amount) as total
+      SELECT COALESCE(category,'Uncategorized') as name, SUM(amount) as total
       FROM transactions
       WHERE company_id = $1 AND type = 'expense'
-      GROUP BY category
-      ORDER BY total DESC
-      LIMIT 8
+      GROUP BY COALESCE(category,'Uncategorized') ORDER BY total DESC LIMIT 8
     `, [companyId]);
 
+    const topExpenses = topExpensesRes.rows.map(r => ({
+      name:    r.name,
+      total:   parseFloat(r.total),
+      percent: totalExpense > 0 ? ((parseFloat(r.total) / totalExpense) * 100).toFixed(1) : '0.0'
+    }));
+
+    const grossMargin    = totalRevenue > 0 ? ((totalRevenue - totalExpense) / totalRevenue * 100).toFixed(1) : '0.0';
+    const burnRate       = avgMonthlyExpense;
     const profitLab = {
       segments,
-      topExpenses: topExpensesRes.rows,
-      historicalData // Reuse for Profit Trend over time
+      topExpenses,
+      historicalData,
+      grossMargin,
+      burnRate,
+      totalRevenue,
+      totalExpense,
+      netProfit: totalRevenue - totalExpense
     };
 
     res.json({
