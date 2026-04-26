@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(gh pr *)",
-      "Bash(where gh *)",
-      "Bash(node -e \"const f = require\\('C:/Users/Himanshu/Downloads/SODA-Corporate-Dashboard-main/backend/utils/accountingFormulas.js'\\); const r = f.computeAllRatios\\({ revenue: 1000000, expenses: 600000, cash: 250000, receivables: 150000, payables: 80000, interestExpense: 15000, taxExpense: 30000, cogsAmount: 350000 }\\); console.log\\(JSON.stringify\\(r, null, 2\\)\\);\")"
-    ]
-  }
-}
