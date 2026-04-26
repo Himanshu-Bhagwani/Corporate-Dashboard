@@ -289,7 +289,7 @@ const getInsightsData = async (req, res) => {
       estimatedReturn: idleCash * riskFreeRate
     };
 
-    // 2. Forecasting Data — 12 months of history
+    // 2. Forecasting Data — up to 24 months of history (covers CSV imports with older dates)
     const monthlyTrendRes = await pool.query(`
       SELECT
         TO_CHAR(DATE_TRUNC('month', date), 'Mon YYYY') as month_str,
@@ -297,7 +297,7 @@ const getInsightsData = async (req, res) => {
         type,
         SUM(amount) as total
       FROM transactions
-      WHERE company_id = $1 AND date >= NOW() - INTERVAL '12 months'
+      WHERE company_id = $1 AND date >= NOW() - INTERVAL '24 months'
       GROUP BY month_str, month_val, type
       ORDER BY month_val ASC
     `, [companyId]);
@@ -386,7 +386,7 @@ const getInsightsData = async (req, res) => {
         END as quarter,
         SUM(amount) as revenue
       FROM transactions
-      WHERE company_id = $1 AND type = 'income' AND date >= NOW() - INTERVAL '12 months'
+      WHERE company_id = $1 AND type = 'income' AND date >= NOW() - INTERVAL '24 months'
       GROUP BY COALESCE(category,'Uncategorized'),
                CASE
                  WHEN EXTRACT(MONTH FROM date) IN (4,5,6)    THEN 'Q1'
@@ -407,7 +407,7 @@ const getInsightsData = async (req, res) => {
         END as quarter,
         SUM(amount) as total
       FROM transactions
-      WHERE company_id = $1 AND type = 'expense' AND date >= NOW() - INTERVAL '12 months'
+      WHERE company_id = $1 AND type = 'expense' AND date >= NOW() - INTERVAL '24 months'
       GROUP BY CASE
                  WHEN EXTRACT(MONTH FROM date) IN (4,5,6)    THEN 'Q1'
                  WHEN EXTRACT(MONTH FROM date) IN (7,8,9)    THEN 'Q2'
@@ -415,6 +415,22 @@ const getInsightsData = async (req, res) => {
                  ELSE 'Q4'
                END
     `, [companyId]);
+
+    // Per-category expense totals — used for direct cost matching per income segment
+    const expPerCatRes = await pool.query(`
+      SELECT COALESCE(category,'Uncategorized') as name, SUM(amount) as total
+      FROM transactions
+      WHERE company_id = $1 AND type = 'expense'
+      GROUP BY COALESCE(category,'Uncategorized')
+    `, [companyId]);
+    const expPerCat = {};
+    expPerCatRes.rows.forEach(r => { expPerCat[r.name] = parseFloat(r.total); });
+
+    // Sum of expenses that share a category name with an income segment (direct costs)
+    const incomeCategories = new Set(segmentRes.rows.map(r => r.name));
+    const directMatchedExp = Array.from(incomeCategories).reduce((s, cat) => s + (expPerCat[cat] || 0), 0);
+    // Remaining overhead is distributed proportionally across all segments by revenue share
+    const sharedExp = totalExpense - directMatchedExp;
 
     // Build quarterly revenue totals map
     const qRevTotals = { Q1: 0, Q2: 0, Q3: 0, Q4: 0 };
@@ -429,21 +445,26 @@ const getInsightsData = async (req, res) => {
       qRevTotals[r.quarter] += parseFloat(r.revenue);
     });
 
-    // Compute margin per segment per quarter (proportional expense allocation)
+    // Compute margin per segment: direct category-matched costs + proportional share of shared overhead
     const segments = segmentRes.rows.map(r => {
-      const rev       = parseFloat(r.revenue);
-      const revShare  = totalRevenue > 0 ? rev / totalRevenue : 0;
-      const alloc     = totalExpense * revShare;
-      const profit    = rev - alloc;
-      const margin    = rev > 0 ? (profit / rev * 100) : 0;
-      const qData     = segQMap[r.name] || { Q1: 0, Q2: 0, Q3: 0, Q4: 0 };
+      const rev        = parseFloat(r.revenue);
+      const directExp  = expPerCat[r.name] || 0;
+      const revShare   = totalRevenue > 0 ? rev / totalRevenue : 0;
+      const allocExp   = directExp + sharedExp * revShare;
+      const profit     = rev - allocExp;
+      const margin     = rev > 0 ? (profit / rev * 100) : 0;
+      const qData      = segQMap[r.name] || { Q1: 0, Q2: 0, Q3: 0, Q4: 0 };
 
       const qMargin = (q) => {
         const qRev = qData[q];
         if (!qRev || !qRevTotals[q]) return null;
-        const qShare  = qRev / qRevTotals[q];
-        const qExpAll = qExpTotals[q] * qShare;
-        const m       = qRev > 0 ? ((qRev - qExpAll) / qRev * 100) : 0;
+        const qShare = qRev / qRevTotals[q];
+        // Scale annual direct cost to this quarter proportionally by revenue
+        const qDirectAlloc = rev > 0 ? directExp * (qRev / rev) : 0;
+        // Shared overhead for the quarter (excluding direct costs) allocated by revenue share
+        const qSharedFrac = totalExpense > 0 ? sharedExp / totalExpense : 1;
+        const qSharedAlloc = qExpTotals[q] * qSharedFrac * qShare;
+        const m = qRev > 0 ? ((qRev - qDirectAlloc - qSharedAlloc) / qRev * 100) : 0;
         return parseFloat(m.toFixed(1));
       };
 

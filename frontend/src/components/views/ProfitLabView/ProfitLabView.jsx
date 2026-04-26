@@ -132,7 +132,7 @@ const ProfitLabView = () => {
       <div className="profit-card">
         <div className="profit-card-header">
           <h3>Revenue vs Expenses vs Net Profit</h3>
-          <span className="card-subtitle">Last 12 months — actual ₹ amounts</span>
+          <span className="card-subtitle">Historical actuals — ₹ amounts</span>
         </div>
         <div style={{ height: 320 }}>
           {loading ? (
@@ -169,7 +169,7 @@ const ProfitLabView = () => {
         <div className="profit-card span-2">
           <div className="profit-card-header">
             <h3>Income Segment Profitability</h3>
-            <span className="card-subtitle">Revenue &amp; net margin % by income category</span>
+            <span className="card-subtitle">Revenue by income category — bar color indicates net margin %</span>
           </div>
           <div style={{ height: 280 }}>
             {loading ? <div className="pl-loading">Loading…</div> : segments.length === 0 ? (
@@ -179,12 +179,26 @@ const ProfitLabView = () => {
                 <BarChart data={segments.slice(0, 8)} margin={{ top: 10, right: 20, bottom: 0, left: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} />
+                  <YAxis tickFormatter={fmtINR} axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} width={72} />
                   <Tooltip
                     contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0' }}
-                    formatter={(val, name) => [name === 'profitMargin' ? `${val}%` : fmtINR(val), name === 'profitMargin' ? 'Margin %' : 'Revenue']}
+                    formatter={(val, name) => [
+                      name === 'revenue' ? fmtINR(val) : `${val}%`,
+                      name === 'revenue' ? 'Revenue' : 'Net Margin %'
+                    ]}
+                    content={({ active, payload, label }) => {
+                      if (!active || !payload?.length) return null;
+                      const seg = payload[0]?.payload;
+                      return (
+                        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '10px 14px', fontSize: 13 }}>
+                          <p style={{ fontWeight: 600, marginBottom: 4 }}>{label}</p>
+                          <p style={{ color: '#3b82f6', margin: '2px 0' }}>Revenue: {fmtINR(seg?.revenue)}</p>
+                          <p style={{ color: heatColor(seg?.profitMargin), margin: '2px 0' }}>Margin: {seg?.profitMargin}%</p>
+                        </div>
+                      );
+                    }}
                   />
-                  <Bar dataKey="profitMargin" name="profitMargin" radius={[4, 4, 0, 0]}>
+                  <Bar dataKey="revenue" name="revenue" radius={[4, 4, 0, 0]}>
                     {segments.slice(0, 8).map((s, i) => (
                       <Cell key={i} fill={heatColor(s.profitMargin)} />
                     ))}

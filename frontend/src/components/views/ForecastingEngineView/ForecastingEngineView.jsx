@@ -143,7 +143,7 @@ const ForecastingEngineView = () => {
             <CalendarClock size={28} style={{ color: 'var(--primary-color)' }} />
             Forecasting Engine
           </h1>
-          <p className="view-subtitle">Cash runway, revenue trends &amp; scenario planning — based on your last 12 months</p>
+          <p className="view-subtitle">Cash runway, revenue trends &amp; scenario planning — based on your transaction history</p>
         </div>
         <div className="timeframe-toggles">
           {[3, 6, 12].map(t => (
@@ -327,7 +327,7 @@ const ForecastingEngineView = () => {
         <div className="runway-card-header">
           <div>
             <h3>Monthly P&amp;L History</h3>
-            <p className="card-subtitle">Last 12 months — actuals used to compute the projections above</p>
+            <p className="card-subtitle">Historical actuals used to compute the projections above</p>
           </div>
         </div>
         <div style={{ overflowX: 'auto' }}>
