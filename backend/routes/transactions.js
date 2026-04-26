@@ -6,6 +6,7 @@ const {
   bulkCreateTransactions,
   updateTransaction,
   deleteTransaction,
+  deleteAllTransactions,
   getAnalytics,
   uploadCSV,
   upload,
@@ -18,6 +19,7 @@ router.post('/bulk', bulkCreateTransactions);
 router.post('/upload-csv', upload.single('file'), uploadCSV);
 router.post('/upload-statement', upload.single('file'), uploadPdfStatement);
 router.put('/:id', updateTransaction);
+router.delete('/all', deleteAllTransactions);
 router.delete('/:id', deleteTransaction);
 router.get('/analytics', getAnalytics);
 

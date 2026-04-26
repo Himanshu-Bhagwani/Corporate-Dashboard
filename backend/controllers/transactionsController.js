@@ -2,7 +2,6 @@ const { pool } = require('../config/db');
 const multer = require('multer');
 const csvParser = require('csv-parser');
 const { Readable } = require('stream');
-const { generateResponse } = require('../services/aiService');
 
 const upload = multer({ 
   storage: multer.memoryStorage(), 
@@ -283,60 +282,83 @@ const uploadCSV = async (req, res) => {
       return res.status(400).json({ error: 'No valid rows found in CSV' });
     }
 
-    // Smart categorization via AI
-    const EXPENSE_CATEGORIES = [
-      'Salaries', 'Marketing', 'Software', 'Rent', 'Tax', 'Professional Fees', 
-      'Utilities', 'Insurance', 'Travel', 'Training', 'Maintainance', 'Office supplies', 'Misc'
-    ];
+    // Regex-based categorization (instant, no AI call)
+    const autoCategorize = (desc, notes) => {
+      if (!desc && !notes) return 'Misc';
+      const d = ((desc || '') + ' ' + (notes || '')).toLowerCase();
 
-    try {
-      console.log('[CSV Upload] Smart categorizing expenses using Ollama...');
-      const systemPrompt = `You are a corporate financial AI assistant. Your ONLY job is to categorize bank transactions.
-If the transaction is an expense, categorize its "name" and "notes" into EXACTLY ONE of these categories: ${EXPENSE_CATEGORIES.join(', ')}.
-If it is income, use 'Sales', 'Consulting', 'Shares', or 'Misc'.
-You must respond ONLY with a valid JSON array of objects with keys "id" and "category". Do not include markdown formatting or extra text.`;
+      if (d.includes('salary') || d.includes('salaries') || d.includes('payroll') ||
+          d.includes('wages') || d.includes('stipend') || d.includes('payslip') ||
+          d.includes('employee payment') || d.includes('staff payment')) return 'Salaries';
 
-      const promptData = results.map(r => ({ id: r.id, name: r.name, notes: r.notes, type: r.type, original_category: r.category }));
-      const prompt = `Categorize the following transactions. For each, output JSON with "id" and "category".\nTransactions:\n${JSON.stringify(promptData, null, 2)}`;
-      
-      const aiResponseRaw = await generateResponse(prompt, systemPrompt, true);
-      let aiCategories = [];
-      try {
-        aiCategories = JSON.parse(aiResponseRaw);
-        if (!Array.isArray(aiCategories) && aiCategories.transactions) {
-          aiCategories = aiCategories.transactions;
-        }
-      } catch (parseErr) {
-        console.error('[CSV Upload] Failed to parse JSON response:', aiResponseRaw);
-      }
+      if (d.includes('aws') || d.includes('amazon web') || d.includes('gcp') ||
+          d.includes('google cloud') || d.includes('azure') || d.includes('github') ||
+          d.includes('gitlab') || d.includes('software') || d.includes('subscription') ||
+          d.includes('saas') || d.includes('zoom') || d.includes('slack') ||
+          d.includes('notion') || d.includes('figma') || d.includes('adobe') ||
+          d.includes('microsoft') || d.includes('office 365') || d.includes('shopify') ||
+          d.includes('hubspot') || d.includes('razorpay') || d.includes('stripe') ||
+          d.includes('twilio') || d.includes('sendgrid') || d.includes('digitalocean') ||
+          d.includes('heroku') || d.includes('hosting') || d.includes('domain') ||
+          d.includes('licence') || d.includes('license')) return 'Software';
 
-      // Map categories back to results, capitalizing first letter
-      const capitalize = (s) => typeof s === 'string' && s.length > 0 ? s.charAt(0).toUpperCase() + s.slice(1) : s;
-      
-      const catMap = {};
-      (Array.isArray(aiCategories) ? aiCategories : []).forEach(item => {
-        if (item.id && item.category) catMap[item.id] = capitalize(item.category);
-      });
+      if (d.includes('rent') || d.includes('lease') || d.includes('landlord') ||
+          d.includes('premises')) return 'Rent';
 
-      results.forEach(txn => {
-        let aiCat = catMap[txn.id];
-        if (aiCat) {
-          // Normalize to accepted list if expense
-          if (txn.type === 'expense' && !EXPENSE_CATEGORIES.includes(aiCat)) {
-            aiCat = 'Misc';
-          }
-          txn.category = aiCat;
-        } else {
-          txn.category = capitalize(txn.category) || 'Misc';
-        }
-      });
-    } catch(err) {
-      console.error('[CSV Upload] AI Categorization failed, falling back to basic capitalization.', err);
-      const capitalize = (s) => typeof s === 'string' && s.length > 0 ? s.charAt(0).toUpperCase() + s.slice(1) : s;
-      results.forEach(txn => {
-        txn.category = capitalize(txn.category) || 'Misc';
-      });
-    }
+      if (d.includes('income tax') || d.includes('gst') || d.includes('tds') ||
+          d.includes('advance tax') || d.includes('tax payment') || d.includes('cess') ||
+          d.includes('customs') || d.includes('nsdl') || d.includes('challan') ||
+          d.includes('professional tax')) return 'Tax';
+
+      if (d.includes('consulting') || d.includes('advisory') || d.includes('consultant')) return 'Consulting';
+
+      if (d.includes('professional fee') || d.includes('legal fee') || d.includes('lawyer') ||
+          d.includes('advocate') || d.includes('audit fee') || d.includes('chartered accountant') ||
+          d.includes('retainer') || d.includes('law firm') || d.includes('notary')) return 'Professional Fees';
+
+      if (d.includes('flight') || d.includes('airline') || d.includes('hotel') ||
+          d.includes('uber') || d.includes('irctc') || d.includes('makemytrip') ||
+          d.includes('taxi') || d.includes('travel')) return 'Travel';
+
+      if (d.includes('marketing') || d.includes('advertising') || d.includes(' ads') ||
+          d.includes('facebook') || d.includes('google ads') || d.includes('meta ads') ||
+          d.includes('linkedin ads') || d.includes('campaign') || d.includes('branding') ||
+          d.includes('promotion') || d.includes('influencer')) return 'Marketing';
+
+      if (d.includes('electricity') || d.includes('water bill') || d.includes('internet') ||
+          d.includes('broadband') || d.includes('airtel') || d.includes('jio') ||
+          d.includes('telecom') || d.includes('gas bill') || d.includes('utility') ||
+          d.includes('recharge')) return 'Utilities';
+
+      if (d.includes('insurance') || d.includes('lic premium') || d.includes('health cover') ||
+          d.includes('policy') || d.includes('mediclaim') || d.includes('premium payment')) return 'Insurance';
+
+      if (d.includes('training') || d.includes('workshop') || d.includes('seminar') ||
+          d.includes('conference') || d.includes('course') || d.includes('certification') ||
+          d.includes('udemy') || d.includes('coursera') || d.includes('education')) return 'Training';
+
+      if (d.includes('stationery') || d.includes('office supply') || d.includes('supplies') ||
+          d.includes('printer') || d.includes('furniture') || d.includes('equipment') ||
+          d.includes('laptop') || d.includes('computer') || d.includes('hardware') ||
+          d.includes('amazon') || d.includes('flipkart')) return 'Office supplies';
+
+      if (d.includes('maintenance') || d.includes('repair') || d.includes('amc') ||
+          d.includes('housekeeping') || d.includes('cleaning') || d.includes('security')) return 'Maintainance';
+
+      if (d.includes('sales') || d.includes('revenue') || d.includes('invoice') ||
+          d.includes('payment received') || d.includes('collection') || d.includes('refund') ||
+          d.includes('cashback') || d.includes('incoming')) return 'Sales';
+
+      if (d.includes('share') || d.includes('equity') || d.includes('dividend') ||
+          d.includes('mutual fund') || d.includes('zerodha') || d.includes('groww') ||
+          d.includes('stock') || d.includes('investment')) return 'Shares';
+
+      return 'Misc';
+    };
+
+    results.forEach(txn => {
+      txn.category = autoCategorize(txn.name, txn.notes);
+    });
 
     // Bulk insert
     const client = await pool.connect();
@@ -365,12 +387,28 @@ You must respond ONLY with a valid JSON array of objects with keys "id" and "cat
   }
 };
 
+const deleteAllTransactions = async (req, res) => {
+  const companyId = req.headers['x-company-id'];
+  if (!companyId) return res.status(400).json({ error: 'Company ID required' });
+  try {
+    const result = await pool.query(
+      'DELETE FROM transactions WHERE company_id = $1',
+      [companyId]
+    );
+    res.json({ deleted: result.rowCount });
+  } catch (error) {
+    console.error('Delete all transactions error:', error);
+    res.status(500).json({ error: 'Failed to delete transactions' });
+  }
+};
+
 module.exports = {
   getTransactions,
   createTransaction,
   bulkCreateTransactions,
   updateTransaction,
   deleteTransaction,
+  deleteAllTransactions,
   getAnalytics,
   uploadCSV,
   upload,

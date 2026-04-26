@@ -29,13 +29,29 @@ const statusClass = (status) => {
   return 'warn';
 };
 
-const ComplianceView = ({ compliance = [], invoices = [], onMarkFiled, onRunAIAudit, backendScore }) => {
+// Compliance event type definitions with presets
+const COMPLIANCE_TYPES = [
+  { value: 'GST', label: 'GST', presets: ['GSTR-1 Filing', 'GSTR-3B Filing', 'Annual GST Return (GSTR-9)', 'GST Payment', 'GSTR-9C Reconciliation'] },
+  { value: 'TDS', label: 'TDS / TCS', presets: ['TDS Payment', 'TDS Return - Q1', 'TDS Return - Q2', 'TDS Return - Q3', 'TDS Return - Q4', 'TCS Return'] },
+  { value: 'Income Tax', label: 'Income Tax', presets: ['Advance Tax - Q1 (Jun 15)', 'Advance Tax - Q2 (Sep 15)', 'Advance Tax - Q3 (Dec 15)', 'Advance Tax - Q4 (Mar 15)', 'ITR Filing (Oct 31)', 'Tax Audit Report'] },
+  { value: 'ROC', label: 'ROC / Company Law', presets: ['Annual Return Filing (MGT-7)', 'Financial Statements (AOC-4)', 'DIR-3 KYC', 'Annual General Meeting', 'Board Meeting Minutes'] },
+  { value: 'Payroll', label: 'Payroll / PF / ESI', presets: ['PF Payment', 'ESI Payment', 'Professional Tax Return', 'PF Annual Return', 'ESI Annual Return'] },
+  { value: 'Custom', label: 'Custom', presets: [] },
+];
+
+const ComplianceView = ({ compliance = [], invoices = [], onMarkFiled, onAddEvent, onDeleteEvent, onRunAIAudit, backendScore }) => {
   const [activeTab, setActiveTab] = useState('overview');
   const [calendarCursor, setCalendarCursor] = useState(new Date());
   const [documentCategory, setDocumentCategory] = useState('All');
-  
+
   const [aiReport, setAiReport] = useState(null);
   const [isAuditing, setIsAuditing] = useState(false);
+
+  // Add Compliance Event modal
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addForm, setAddForm] = useState({ type: 'GST', title: '', due_date: '', payment_status: 'UNPAID' });
+  const [addSaving, setAddSaving] = useState(false);
+  const [addError, setAddError] = useState('');
 
   const handleRunAudit = async () => {
     if (!onRunAIAudit) return;
@@ -80,50 +96,58 @@ const ComplianceView = ({ compliance = [], invoices = [], onMarkFiled, onRunAIAu
       status: 'Responded',
     },
   ]);
-  const [riskAlerts, setRiskAlerts] = useState([
-    { id: 'ra-1', name: 'TDS Payment - Feb 2026', dueDate: '2026-03-07', status: 'Pending', category: 'TDS', priority: 'High' },
-    { id: 'ra-2', name: 'Advance Tax - Q4', dueDate: '2026-03-15', status: 'Pending', category: 'Income Tax', priority: 'High' },
-    { id: 'ra-3', name: 'GSTR-1 Filing - Mar 2026', dueDate: '2026-04-11', status: 'Pending', category: 'GST', priority: 'Normal' },
-    { id: 'ra-4', name: 'GSTR-3B Filing - Mar 2026', dueDate: '2026-04-20', status: 'Pending', category: 'GST', priority: 'Normal' },
-    { id: 'ra-5', name: 'TDS Payment - Mar 2026', dueDate: '2026-05-07', status: 'Pending', category: 'TDS', priority: 'Normal' },
-    { id: 'ra-6', name: 'ESI/PF Payment - Apr 2026', dueDate: '2026-05-15', status: 'Pending', category: 'Payroll', priority: 'Normal' },
-    { id: 'ra-7', name: 'GSTR-1 Filing - Apr 2026', dueDate: '2026-05-11', status: 'Pending', category: 'GST', priority: 'Normal' },
-    { id: 'ra-8', name: 'GSTR-3B Filing - Apr 2026', dueDate: '2026-05-20', status: 'Pending', category: 'GST', priority: 'Normal' },
-    { id: 'ra-9', name: 'Advance Tax - Q1', dueDate: '2026-06-15', status: 'Pending', category: 'Income Tax', priority: 'Normal' },
-    { id: 'ra-10', name: 'TDS Return - Q1', dueDate: '2026-06-30', status: 'Pending', category: 'TDS', priority: 'Normal' },
-    { id: 'ra-11', name: 'PT Return - Jun 2026', dueDate: '2026-06-10', status: 'Pending', category: 'Payroll', priority: 'Normal' }
-  ]);
-
+  // Build processedRiskAlerts from backend compliance prop
   const processedRiskAlerts = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    return riskAlerts.map(alert => {
-      let currentStatus = alert.status;
-      if (currentStatus !== 'Filed') {
-        const due = new Date(alert.dueDate);
-        due.setHours(0, 0, 0, 0);
-        if (due.getTime() < today.getTime()) {
-          currentStatus = 'Overdue';
-        } else {
-          currentStatus = 'Pending';
-        }
-      }
-      return { ...alert, status: currentStatus };
+    return (compliance || []).map(item => {
+      const isFiled = String(item.status || '').toUpperCase() === 'FILED';
+      const due = item.due_date ? new Date(`${item.due_date}T00:00:00`) : null;
+      const isOverdue = !isFiled && due && due.getTime() < today.getTime();
+      return {
+        id: item.id,
+        name: item.title || 'Untitled',
+        dueDate: item.due_date || '',
+        status: isFiled ? 'Filed' : (isOverdue ? 'Overdue' : 'Pending'),
+        category: item.type || 'Compliance',
+        priority: isOverdue ? 'High' : 'Normal',
+      };
     }).sort((a, b) => {
       if (a.status === 'Filed' && b.status !== 'Filed') return 1;
       if (a.status !== 'Filed' && b.status === 'Filed') return -1;
-      return new Date(a.dueDate) - new Date(b.dueDate);
+      return (a.dueDate || '').localeCompare(b.dueDate || '');
     });
-  }, [riskAlerts]);
+  }, [compliance]);
 
-  const [incomeTaxItems, setIncomeTaxItems] = useState([
-    { id: 'it-1', name: 'TDS Deduction - Feb 2026', dueDate: '2026-03-07', status: 'Pending' },
-    { id: 'it-2', name: 'Advance Tax Q4', dueDate: '2026-03-15', status: 'Pending' },
-    { id: 'it-3', name: 'ITR-6 Filing AY 2025-26', dueDate: '2026-10-31', status: 'Pending' }
-  ]);
+  // Income Tax & TDS items from backend (filtered by type)
+  const incomeTaxItems = useMemo(() =>
+    processedRiskAlerts.filter(a => /tds|tcs|income.?tax|advance.?tax|itr/i.test(a.category + ' ' + a.name)),
+  [processedRiskAlerts]);
 
   const handleMarkRiskAlertFiled = (alertId) => {
-    setRiskAlerts(prev => prev.map(a => a.id === alertId ? { ...a, status: 'Filed' } : a));
+    if (onMarkFiled) onMarkFiled(alertId);
+  };
+
+  const handleDeleteAlert = (alertId) => {
+    if (onDeleteEvent) onDeleteEvent(alertId);
+  };
+
+  const handleAddEventSubmit = async () => {
+    if (!addForm.title || !addForm.due_date) {
+      setAddError('Title and due date are required.');
+      return;
+    }
+    setAddSaving(true);
+    setAddError('');
+    try {
+      await onAddEvent({ type: addForm.type, title: addForm.title, due_date: addForm.due_date, payment_status: addForm.payment_status });
+      setShowAddModal(false);
+      setAddForm({ type: 'GST', title: '', due_date: '', payment_status: 'UNPAID' });
+    } catch (err) {
+      setAddError(err.message || 'Failed to add event.');
+    } finally {
+      setAddSaving(false);
+    }
   };
 
   const deadlineItems = useMemo(() => {
@@ -136,7 +160,7 @@ const ComplianceView = ({ compliance = [], invoices = [], onMarkFiled, onRunAIAu
 
       return {
         id: item.id,
-        name: item.name,
+        name: item.title || item.name || 'Untitled',
         dueDate: toISO(item.due_date),
         status: isFiled ? 'Filed' : (isOverdue ? 'Overdue' : 'Pending'),
         category: item.type || 'Compliance',
@@ -174,44 +198,10 @@ const ComplianceView = ({ compliance = [], invoices = [], onMarkFiled, onRunAIAu
     return { total, paid, pending, overdue };
   }, [invoices]);
 
-  const gstRows = useMemo(() => ([
-    {
-      id: 'g1',
-      returnType: 'GSTR-1',
-      period: 'Feb 2026',
-      dueDate: '2026-03-11',
-      salesAmount: 2847500,
-      netTaxPayable: 512550,
-      status: 'Pending',
-    },
-    {
-      id: 'g2',
-      returnType: 'GSTR-3B',
-      period: 'Feb 2026',
-      dueDate: '2026-03-20',
-      salesAmount: 0,
-      netTaxPayable: 166338,
-      status: 'Pending',
-    },
-    {
-      id: 'g3',
-      returnType: 'GSTR-1',
-      period: 'Jan 2026',
-      dueDate: '2026-02-11',
-      salesAmount: 2720000,
-      netTaxPayable: 489600,
-      status: 'Filed',
-    },
-  ]), []);
-
-  const gstRecon = useMemo(() => {
-    const pendingTax = gstRows.filter((r) => r.status === 'Pending').reduce((sum, r) => sum + r.netTaxPayable, 0);
-    return {
-      salesMatch: 98.5,
-      itcAvailable: 346212,
-      netTaxPayable: pendingTax,
-    };
-  }, [gstRows]);
+  // GST rows derived from backend compliance events of type GST
+  const gstRows = useMemo(() =>
+    processedRiskAlerts.filter(a => /gst/i.test(a.category)),
+  [processedRiskAlerts]);
 
   const filteredDocuments = documents.filter((doc) => documentCategory === 'All' || doc.category === documentCategory);
 
@@ -233,8 +223,25 @@ const ComplianceView = ({ compliance = [], invoices = [], onMarkFiled, onRunAIAu
   const renderOverviewTab = () => (
     <>
       <div className="dashboard-section">
-        <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#1a202c', marginBottom: '4px' }}>Compliance Tracker</h3>
-        <p style={{ fontSize: '13px', color: '#718096', marginBottom: '1.5rem' }}>Due filings & deadlines</p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
+          <div>
+            <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#1a202c', marginBottom: '4px' }}>Compliance Tracker</h3>
+            <p style={{ fontSize: '13px', color: '#718096', margin: 0 }}>Due filings & deadlines</p>
+          </div>
+          <button
+            onClick={() => setShowAddModal(true)}
+            style={{
+              padding: '10px 20px', borderRadius: '10px', border: 'none',
+              background: 'linear-gradient(135deg, #4F46E5, #7C3AED)', color: 'white',
+              fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: '6px',
+              boxShadow: '0 2px 8px rgba(79,70,229,0.3)', transition: 'all 0.2s ease',
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+            Add Compliance Event
+          </button>
+        </div>
 
         <div className="compliance-kpi-grid">
           <div className="compliance-kpi-card">
@@ -272,6 +279,11 @@ const ComplianceView = ({ compliance = [], invoices = [], onMarkFiled, onRunAIAu
         </div>
 
         <h4 style={{ fontSize: '16px', fontWeight: 700, color: '#1a202c', marginBottom: '1rem', marginTop: '2rem' }}>Risk Alerts</h4>
+        {processedRiskAlerts.length === 0 && (
+          <div style={{ textAlign: 'center', color: '#a0aec0', padding: '2rem', fontSize: '14px', background: '#f8fafc', borderRadius: '12px' }}>
+            No compliance events found. Add your first filing above.
+          </div>
+        )}
         <div className="dashboard-risk-alerts" style={{ maxHeight: '350px', overflowY: 'auto', paddingRight: '12px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {processedRiskAlerts.map((alert) => {
             const isFiled = alert.status === 'Filed';
@@ -284,7 +296,10 @@ const ComplianceView = ({ compliance = [], invoices = [], onMarkFiled, onRunAIAu
                   </div>
                   <div>
                     <div className="risk-alert-title">{alert.name}</div>
-                    <div className="risk-alert-meta">Due: {prettyDate(alert.dueDate)}</div>
+                    <div className="risk-alert-meta">
+                      {alert.category && <span style={{ marginRight: '8px', color: '#4F46E5', fontWeight: 600 }}>{alert.category}</span>}
+                      Due: {prettyDate(alert.dueDate)}
+                    </div>
                   </div>
                 </div>
                 <div className="risk-alert-right">
@@ -295,6 +310,17 @@ const ComplianceView = ({ compliance = [], invoices = [], onMarkFiled, onRunAIAu
                       <span className="due-soon-badge" style={isOverdue ? { backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444' } : {}}>{isOverdue ? 'Overdue' : 'Due Soon'}</span>
                       <button className="mark-filed-btn" onClick={() => handleMarkRiskAlertFiled(alert.id)}>Mark as Filed</button>
                     </>
+                  )}
+                  {onDeleteEvent && (
+                    <button
+                      onClick={() => handleDeleteAlert(alert.id)}
+                      title="Delete"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#cbd5e0', padding: '4px', marginLeft: '4px', transition: 'color 0.2s' }}
+                      onMouseOver={e => e.currentTarget.style.color = '#ef4444'}
+                      onMouseOut={e => e.currentTarget.style.color = '#cbd5e0'}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" /></svg>
+                    </button>
                   )}
                 </div>
               </div>
@@ -386,82 +412,137 @@ const ComplianceView = ({ compliance = [], invoices = [], onMarkFiled, onRunAIAu
   const renderGSTTab = () => (
     <>
       <div className="table-container">
-        <div className="cashflow-table-title">GST Filing Tracker</div>
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Return Type</th>
-              <th>Period</th>
-              <th>Due Date</th>
-              <th className="align-right">Sales Amount</th>
-              <th className="align-right">Net Tax Payable</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {gstRows.map((row) => (
-              <tr key={row.id}>
-                <td><span className="table-main-text">{row.returnType}</span></td>
-                <td>{row.period}</td>
-                <td>{prettyDate(row.dueDate)}</td>
-                <td className="align-right">{row.salesAmount > 0 ? formatINR(row.salesAmount) : '-'}</td>
-                <td className="align-right"><span className={row.status === 'Filed' ? 'table-amount positive' : 'table-amount negative'}>{formatINR(row.netTaxPayable)}</span></td>
-                <td><span className={`status-pill ${statusClass(row.status)}`}>{row.status}</span></td>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <div className="cashflow-table-title">GST Filing Tracker</div>
+          <button
+            onClick={() => { setAddForm(f => ({ ...f, type: 'GST' })); setShowAddModal(true); }}
+            style={{
+              padding: '8px 16px', borderRadius: '8px', border: 'none',
+              background: 'linear-gradient(135deg, #10B981, #059669)', color: 'white',
+              fontSize: '13px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+            Add GST Filing
+          </button>
+        </div>
+        {gstRows.length === 0 ? (
+          <div style={{ textAlign: 'center', color: '#a0aec0', padding: '2rem', fontSize: '14px', background: '#f8fafc', borderRadius: '12px' }}>
+            No GST compliance events added yet.
+          </div>
+        ) : (
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Filing</th>
+                <th>Due Date</th>
+                <th>Status</th>
+                <th>Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="financial-health-section" style={{ marginTop: '2rem' }}>
-        <div className="health-header">
-          <div className="health-header-left">
-            <div className="health-icon" style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.2), rgba(16,185,129,0.05))', color: '#10b981' }}>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>
-            </div>
-            <div>
-              <div className="health-title" style={{ fontSize: '18px', fontWeight: 700, color: '#1a202c', marginBottom: '4px' }}>GST Reconciliation Status</div>
-              <div className="health-subtitle" style={{ fontSize: '13px', color: '#718096' }}>Sales matching, ITC and net tax overview</div>
-            </div>
-          </div>
-        </div>
-        <div className="stats-grid-3">
-          <div className="stat-card-simple compliance-tone soft-green">
-            <div className="stat-content-simple">
-              <div className="stat-label-simple">Sales Match</div>
-              <div className="stat-value-simple green">{gstRecon.salesMatch}%</div>
-            </div>
-          </div>
-          <div className="stat-card-simple compliance-tone soft-yellow">
-            <div className="stat-content-simple">
-              <div className="stat-label-simple">ITC Available</div>
-              <div className="stat-value-simple orange">{formatINR(gstRecon.itcAvailable)}</div>
-            </div>
-          </div>
-          <div className="stat-card-simple compliance-tone soft-blue">
-            <div className="stat-content-simple">
-              <div className="stat-label-simple">Net Tax Payable</div>
-              <div className="stat-value-simple blue">{formatINR(gstRecon.netTaxPayable)}</div>
-            </div>
-          </div>
-        </div>
+            </thead>
+            <tbody>
+              {gstRows.map((row) => (
+                <tr key={row.id}>
+                  <td><span className="table-main-text">{row.name}</span></td>
+                  <td>{prettyDate(row.dueDate)}</td>
+                  <td><span className={`status-pill ${statusClass(row.status)}`}>{row.status}</span></td>
+                  <td>
+                    {row.status !== 'Filed' ? (
+                      <button className="link-button" onClick={() => handleMarkRiskAlertFiled(row.id)}>Mark as Filed</button>
+                    ) : '-'}
+                    {onDeleteEvent && (
+                      <button onClick={() => handleDeleteAlert(row.id)} className="link-button" style={{ color: '#ef4444', marginLeft: '8px' }}>Delete</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </>
   );
 
   const renderIncomeTaxTab = () => (
     <>
-      {/* === INCOME TAX & TDS TRACKER === */}
-      <div className="financial-health-section">
-        <div className="health-header">
-          <div className="health-header-left">
-            <div className="health-icon" style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.2), rgba(245,158,11,0.05))', color: '#f59e0b' }}>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
+      <div className="table-container">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: 'linear-gradient(135deg, rgba(245,158,11,0.2), rgba(245,158,11,0.05))', color: '#f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
             </div>
             <div>
-              <div className="health-title">Income Tax & TDS Tracker</div>
-              <div className="health-subtitle">Track TDS, advance tax, and ITR filing deadlines</div>
+              <div className="cashflow-table-title" style={{ marginBottom: '2px' }}>Income Tax & TDS Tracker</div>
+              <div style={{ fontSize: '12px', color: '#718096' }}>Track TDS, advance tax, and ITR filing deadlines</div>
             </div>
           </div>
+          <button
+            onClick={() => { setAddForm(f => ({ ...f, type: 'TDS' })); setShowAddModal(true); }}
+            style={{
+              padding: '8px 16px', borderRadius: '8px', border: 'none',
+              background: 'linear-gradient(135deg, #F59E0B, #D97706)', color: 'white',
+              fontSize: '13px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0,
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+            Add TDS / Tax Filing
+          </button>
+        </div>
+        {incomeTaxItems.length === 0 ? (
+          <div style={{ textAlign: 'center', color: '#a0aec0', padding: '2rem', fontSize: '14px', background: '#f8fafc', borderRadius: '12px', marginTop: '1rem' }}>
+            No Income Tax / TDS events added yet.
+          </div>
+        ) : (
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Compliance</th>
+                <th>Due Date</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {incomeTaxItems.map((item) => (
+                <tr key={item.id}>
+                  <td style={{ fontWeight: 600, color: '#1a202c' }}>{item.name}</td>
+                  <td style={{ color: '#4a5568' }}>{prettyDate(item.dueDate)}</td>
+                  <td>
+                    <span style={{
+                      padding: '4px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: 700,
+                      background: item.status === 'Filed' ? 'rgba(16,185,129,0.15)' : item.status === 'Overdue' ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)',
+                      color: item.status === 'Filed' ? '#10b981' : item.status === 'Overdue' ? '#ef4444' : '#f59e0b'
+                    }}>{item.status}</span>
+                  </td>
+                  <td>
+                    {item.status !== 'Filed' && (
+                      <button className="link-button" onClick={() => handleMarkRiskAlertFiled(item.id)}>Mark as Filed</button>
+                    )}
+                    {onDeleteEvent && (
+                      <button onClick={() => handleDeleteAlert(item.id)} className="link-button" style={{ color: '#ef4444', marginLeft: '8px' }}>Delete</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </>
+  );
+
+  const renderROCTab = () => {
+    const rocItems = deadlineItems.filter((d) => /roc|mgt|aoc|director/i.test(d.name));
+    return (
+      <div className="table-container">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <div className="cashflow-table-title">ROC & Company Law Compliance</div>
+          <button
+            onClick={() => { setAddForm(f => ({ ...f, type: 'ROC' })); setShowAddModal(true); }}
+            style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: 'linear-gradient(135deg, #1E3A8A, #2563EB)', color: 'white', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
+          >
+            + Add ROC Filing
+          </button>
         </div>
         <table className="data-table">
           <thead>
@@ -473,112 +554,75 @@ const ComplianceView = ({ compliance = [], invoices = [], onMarkFiled, onRunAIAu
             </tr>
           </thead>
           <tbody>
-            {incomeTaxItems.map((item) => (
+            {rocItems.length === 0 ? (
+              <tr><td colSpan={4} style={{ textAlign: 'center', padding: '2rem', opacity: 0.5 }}>No ROC filings yet. Click "+ Add ROC Filing" to get started.</td></tr>
+            ) : rocItems.map((item) => (
               <tr key={item.id}>
-                <td style={{ fontWeight: 600, color: '#1a202c' }}>{item.name}</td>
-                <td style={{ color: '#4a5568' }}>{prettyDate(item.dueDate)}</td>
-                <td>
-                  <span style={{
-                    padding: '4px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: 700,
-                    background: item.status === 'Filed' ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)',
-                    color: item.status === 'Filed' ? '#10b981' : '#f59e0b'
-                  }}>{item.status}</span>
-                </td>
-                <td>
-                  {item.status !== 'Filed' ? (
-                    <button
-                      className="link-button"
-                      onClick={() => setIncomeTaxItems(prev => prev.map(it => it.id === item.id ? { ...it, status: 'Filed' } : it))}
-                    >Mark as Filed</button>
+                <td>{item.name}</td>
+                <td>{prettyDate(item.dueDate)}</td>
+                <td><span className={`status-pill ${statusClass(item.status)}`}>{item.status}</span></td>
+                <td style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  {item.source === 'backend' && item.status !== 'Filed' ? (
+                    <button className="link-button" onClick={() => onMarkFiled(item.id)}>Mark as Filed</button>
                   ) : '-'}
+                  {item.source === 'backend' && (
+                    <button className="link-button" style={{ color: '#EF4444' }} onClick={() => handleDeleteAlert(item.id)}>Delete</button>
+                  )}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-
-        {/* Tax Liability Estimate */}
-        <div style={{ marginTop: '2rem' }}>
-          <h4 style={{ fontSize: '16px', fontWeight: 700, color: '#1a202c', marginBottom: '1rem' }}>Tax Liability Estimate</h4>
-          <div className="stats-grid-2">
-            <div className="stat-card-simple soft-blue">
-              <div className="stat-content-simple">
-                <div className="stat-label-simple">Corporate Tax (25%)</div>
-                <div className="stat-value-simple blue">{formatINR(231025)}</div>
-              </div>
-            </div>
-            <div className="stat-card-simple soft-yellow">
-              <div className="stat-content-simple">
-                <div className="stat-label-simple">Advance Tax Paid</div>
-                <div className="stat-value-simple orange">{formatINR(180000)}</div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <div className="compliance-note">Note: Annual General Meeting must be held within 6 months of financial year end.</div>
       </div>
-    </>
-  );
+    );
+  };
 
-  const renderROCTab = () => (
-    <div className="table-container">
-      <div className="cashflow-table-title">ROC & Company Law Compliance</div>
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>Compliance</th>
-            <th>Due Date</th>
-            <th>Status</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {deadlineItems.filter((d) => /roc|mgt|aoc|director/i.test(d.name)).map((item) => (
-            <tr key={item.id}>
-              <td>{item.name}</td>
-              <td>{prettyDate(item.dueDate)}</td>
-              <td><span className={`status-pill ${statusClass(item.status)}`}>{item.status}</span></td>
-              <td>
-                {item.source === 'backend' && item.status !== 'Filed' ? (
-                  <button className="link-button" onClick={() => onMarkFiled(item.id)}>Mark as Filed</button>
-                ) : '-'}
-              </td>
+  const renderPayrollTab = () => {
+    const payrollItems = deadlineItems.filter((d) => /pf|esi|payroll|professional tax/i.test(d.name));
+    return (
+      <div className="table-container">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <div className="cashflow-table-title">Payroll & Labour Compliance</div>
+          <button
+            onClick={() => { setAddForm(f => ({ ...f, type: 'Payroll' })); setShowAddModal(true); }}
+            style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: 'linear-gradient(135deg, #1E3A8A, #2563EB)', color: 'white', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
+          >
+            + Add Payroll Filing
+          </button>
+        </div>
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Compliance</th>
+              <th>Due Date</th>
+              <th>Status</th>
+              <th>Actions</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-      <div className="compliance-note">Upcoming: Annual General Meeting must be held within 6 months of financial year end.</div>
-    </div>
-  );
-
-  const renderPayrollTab = () => (
-    <div className="table-container">
-      <div className="cashflow-table-title">Payroll & Labour Compliance</div>
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>Compliance</th>
-            <th>Due Date</th>
-            <th>Status</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {deadlineItems.filter((d) => /pf|esi|payroll|professional tax/i.test(d.name)).map((item) => (
-            <tr key={item.id}>
-              <td>{item.name}</td>
-              <td>{prettyDate(item.dueDate)}</td>
-              <td><span className={`status-pill ${statusClass(item.status)}`}>{item.status}</span></td>
-              <td>
-                {item.source === 'backend' && item.status !== 'Filed' ? (
-                  <button className="link-button" onClick={() => onMarkFiled(item.id)}>Mark as Filed</button>
-                ) : '-'}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
+          </thead>
+          <tbody>
+            {payrollItems.length === 0 ? (
+              <tr><td colSpan={4} style={{ textAlign: 'center', padding: '2rem', opacity: 0.5 }}>No payroll filings yet. Click "+ Add Payroll Filing" to get started.</td></tr>
+            ) : payrollItems.map((item) => (
+              <tr key={item.id}>
+                <td>{item.name}</td>
+                <td>{prettyDate(item.dueDate)}</td>
+                <td><span className={`status-pill ${statusClass(item.status)}`}>{item.status}</span></td>
+                <td style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  {item.source === 'backend' && item.status !== 'Filed' ? (
+                    <button className="link-button" onClick={() => onMarkFiled(item.id)}>Mark as Filed</button>
+                  ) : '-'}
+                  {item.source === 'backend' && (
+                    <button className="link-button" style={{ color: '#EF4444' }} onClick={() => handleDeleteAlert(item.id)}>Delete</button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
 
   const renderDocumentsTab = () => (
     <div className="table-container">
@@ -707,11 +751,7 @@ const ComplianceView = ({ compliance = [], invoices = [], onMarkFiled, onRunAIAu
         ))}
       </div>
 
-      {activeTab === 'overview' && (
-        <>
-          {renderOverviewTab()}
-        </>
-      )}
+      {activeTab === 'overview' && renderOverviewTab()}
       {activeTab === 'gst' && renderGSTTab()}
       {activeTab === 'incomeTax' && renderIncomeTaxTab()}
       {activeTab === 'roc' && renderROCTab()}
@@ -719,6 +759,99 @@ const ComplianceView = ({ compliance = [], invoices = [], onMarkFiled, onRunAIAu
       {activeTab === 'documents' && renderDocumentsTab()}
       {activeTab === 'notices' && renderNoticesTab()}
       {activeTab === 'calendar' && renderCalendarTab()}
+
+      {/* ── Add Compliance Event Modal ───────────────────────────────────── */}
+      {showAddModal && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+        }}>
+          <div style={{
+            background: 'white', borderRadius: '16px', padding: '2rem',
+            maxWidth: '480px', width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+          }}>
+            <h2 style={{ margin: '0 0 1.5rem', fontSize: '20px', fontWeight: 700, color: '#1a202c' }}>Add Compliance Event</h2>
+
+            {/* Type selector */}
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ fontSize: '13px', fontWeight: 600, color: '#4a5568', display: 'block', marginBottom: '6px' }}>Filing Type</label>
+              <select
+                value={addForm.type}
+                onChange={e => setAddForm(f => ({ ...f, type: e.target.value, title: '' }))}
+                style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '14px', outline: 'none' }}
+              >
+                {COMPLIANCE_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </div>
+
+            {/* Preset title buttons */}
+            {(COMPLIANCE_TYPES.find(t => t.value === addForm.type)?.presets || []).length > 0 && (
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ fontSize: '13px', fontWeight: 600, color: '#4a5568', display: 'block', marginBottom: '8px' }}>Quick Presets</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {COMPLIANCE_TYPES.find(t => t.value === addForm.type).presets.map(p => (
+                    <button
+                      key={p}
+                      onClick={() => setAddForm(f => ({ ...f, title: p }))}
+                      style={{
+                        padding: '5px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+                        border: addForm.title === p ? '2px solid #4F46E5' : '1px solid #e2e8f0',
+                        background: addForm.title === p ? 'rgba(79,70,229,0.08)' : '#f8fafc',
+                        color: addForm.title === p ? '#4F46E5' : '#4a5568', transition: 'all 0.15s',
+                      }}
+                    >{p}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Title */}
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ fontSize: '13px', fontWeight: 600, color: '#4a5568', display: 'block', marginBottom: '6px' }}>Title</label>
+              <input
+                type="text" value={addForm.title}
+                onChange={e => setAddForm(f => ({ ...f, title: e.target.value }))}
+                placeholder="e.g. GSTR-1 Filing - May 2026"
+                style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
+              />
+            </div>
+
+            {/* Due Date */}
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ fontSize: '13px', fontWeight: 600, color: '#4a5568', display: 'block', marginBottom: '6px' }}>Due Date</label>
+              <input
+                type="date" value={addForm.due_date}
+                onChange={e => setAddForm(f => ({ ...f, due_date: e.target.value }))}
+                style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
+              />
+            </div>
+
+            {addError && (
+              <div style={{ padding: '10px', background: 'rgba(239,68,68,0.1)', borderRadius: '8px', color: '#ef4444', fontSize: '13px', marginBottom: '1rem' }}>
+                {addError}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => { setShowAddModal(false); setAddError(''); }}
+                disabled={addSaving}
+                style={{ padding: '10px 20px', borderRadius: '10px', border: '1px solid #e2e8f0', background: 'white', color: '#4a5568', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}
+              >Cancel</button>
+              <button
+                onClick={handleAddEventSubmit}
+                disabled={addSaving || !addForm.title || !addForm.due_date}
+                style={{
+                  padding: '10px 20px', borderRadius: '10px', border: 'none',
+                  background: (!addForm.title || !addForm.due_date || addSaving) ? '#e2e8f0' : 'linear-gradient(135deg, #4F46E5, #7C3AED)',
+                  color: (!addForm.title || !addForm.due_date || addSaving) ? '#a0aec0' : 'white',
+                  fontSize: '14px', fontWeight: 600, cursor: (!addForm.title || !addForm.due_date || addSaving) ? 'not-allowed' : 'pointer',
+                }}
+              >{addSaving ? 'Saving...' : 'Add Event'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

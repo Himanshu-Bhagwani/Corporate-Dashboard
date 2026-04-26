@@ -2,6 +2,7 @@ const { pool } = require('../config/db');
 const { generateResponse, generateStreamResponse } = require('../services/aiService');
 const Tesseract = require('tesseract.js');
 const PDFDocument = require('pdfkit');
+const formulas = require('../utils/accountingFormulas');
 
 const CORPORATE_CATEGORIES = [
   'Sales', 'Consulting', 'Salaries', 'Marketing', 'Software', 'Rent', 'Tax',
@@ -217,17 +218,45 @@ const buildFinancialContext = async (companyId) => {
     .map(t => `${t.date} ${t.type} ₹${parseFloat(t.amount).toLocaleString()} ${t.name} [${t.category || '-'}]`)
     .join('\n');
 
+  const totalReceivables = parseFloat(receivablesRes.rows[0].total);
+  const totalPayables = parseFloat(payablesRes.rows[0].total);
+
+  // Compute accounting formula ratios from real data
+  const ratios = formulas.computeAllRatios({
+    revenue: totalRevenue,
+    expenses: totalExpenses,
+    cash: cashInBank,
+    receivables: totalReceivables,
+    payables: totalPayables,
+  });
+
   return `
 COMPANY FINANCIAL SNAPSHOT:
 • Total Revenue: ₹${totalRevenue.toLocaleString()}
 • Total Expenses: ₹${totalExpenses.toLocaleString()}
-• Net Profit: ₹${netProfit.toLocaleString()}
+• Net Profit (Net Income): ₹${netProfit.toLocaleString()}
 • Cash in Bank: ₹${cashInBank.toLocaleString()}
-• Receivables: ₹${parseFloat(receivablesRes.rows[0].total).toLocaleString()} (${receivablesRes.rows[0].count} pending)
-• Payables: ₹${parseFloat(payablesRes.rows[0].total).toLocaleString()}
+• Receivables: ₹${totalReceivables.toLocaleString()} (${receivablesRes.rows[0].count} pending)
+• Payables: ₹${totalPayables.toLocaleString()}
 • Top Expenses: ${topExpenses || 'None'}
 • 6-Month Trend: ${trendStr || 'No data'}
 • Accounts: ${accountsRes.rows.map(a => `${a.name} (${a.bank}): ₹${parseFloat(a.balance).toLocaleString()}`).join(', ') || 'None'}
+
+ACCOUNTING RATIOS (computed from real data):
+• Net Profit Margin: ${ratios.netProfitMargin}%
+• Gross Profit Margin: ${ratios.grossProfitMargin}%
+• Working Capital: ₹${ratios.workingCapital.toLocaleString()}
+• Current Ratio: ${ratios.currentRatio} (healthy: 1.5–3.0)
+• Quick Ratio: ${ratios.quickRatio}
+• Cash Ratio: ${ratios.cashRatio}
+• Return on Assets (ROA): ${ratios.roa}%
+• Return on Equity (ROE): ${ratios.roe}%
+• Debt-to-Equity Ratio: ${ratios.debtToEquity}
+• Debt Ratio: ${ratios.debtRatio}
+• AR Turnover: ${ratios.arTurnover}x
+• Days Sales Outstanding (DSO): ${ratios.daysSalesOutstanding} days
+• Total Asset Turnover: ${ratios.totalAssetTurnover}x
+• Operating Cash Flow: ₹${ratios.operatingCashFlow.toLocaleString()}
 
 RECENT TRANSACTIONS:
 ${recentTxns || 'No transactions yet.'}

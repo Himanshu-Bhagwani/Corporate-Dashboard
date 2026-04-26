@@ -236,6 +236,19 @@ const MainLayout = () => {
     }
   };
 
+  // --- Clear All Transactions Handler ---
+  const handleClearAllTransactions = async () => {
+    try {
+      await transactionsAPI.deleteAll(currentCompany.id);
+      fetchTransactions();
+      fetchAccounts();
+      fetchDashboardData();
+    } catch (err) {
+      console.error('Failed to clear transactions:', err);
+      throw err;
+    }
+  };
+
   // --- PDF Upload Handler ---
   const handleUploadPDF = async (file) => {
     try {
@@ -291,13 +304,33 @@ const MainLayout = () => {
     }
   };
 
-  // --- Compliance Handler ---
+  // --- Compliance Handlers ---
   const handleMarkFiled = async (id) => {
     try {
       await complianceAPI.markFiled(id, currentCompany.id);
       fetchDashboardData();
     } catch (err) {
       console.error('Failed to mark filing:', err);
+    }
+  };
+
+  const handleAddCompliance = async (event) => {
+    try {
+      await complianceAPI.create(event, currentCompany.id);
+      fetchDashboardData();
+    } catch (err) {
+      console.error('Failed to add compliance event:', err);
+      throw err;
+    }
+  };
+
+  const handleDeleteCompliance = async (id) => {
+    try {
+      await complianceAPI.delete(id, currentCompany.id);
+      fetchDashboardData();
+    } catch (err) {
+      console.error('Failed to delete compliance event:', err);
+      throw err;
     }
   };
 
@@ -467,6 +500,7 @@ const MainLayout = () => {
               compliance={compliance}
               onCreateInvoice={handleCreateInvoice}
               onMarkFiled={handleMarkFiled}
+              onAddComplianceEvent={handleAddCompliance}
               setActiveView={setActiveView}
             />
           )}
@@ -493,6 +527,7 @@ const MainLayout = () => {
               onDelete={handleDeleteTransaction}
               onUploadCSV={handleUploadCSV}
               onUploadPDF={handleUploadPDF}
+              onClearAll={handleClearAllTransactions}
               navigateTarget={navigateTarget}
               accounts={accounts}
             />
@@ -534,6 +569,8 @@ const MainLayout = () => {
               compliance={compliance}
               invoices={invoices}
               onMarkFiled={handleMarkFiled}
+              onAddEvent={handleAddCompliance}
+              onDeleteEvent={handleDeleteCompliance}
               onRunAIAudit={handleRunAIAudit}
               backendScore={complianceScore}
             />

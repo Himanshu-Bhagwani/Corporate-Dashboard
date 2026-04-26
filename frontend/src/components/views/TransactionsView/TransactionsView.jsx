@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './TransactionsView.css';
 import EmbeddedHeader from '../../layout/EmbeddedHeader/EmbeddedHeader';
-import { TrendingUp, TrendingDown, Calendar, Search, PlusCircle, Trash2, Pencil, Check, X, ChevronLeft, ChevronRight, Upload } from 'lucide-react';
+import { TrendingUp, TrendingDown, Calendar, Search, PlusCircle, Trash2, Pencil, Check, X, ChevronLeft, ChevronRight, Upload, AlertTriangle } from 'lucide-react';
 
 const CORPORATE_CATEGORIES = [
   'All Categories',
@@ -45,6 +45,7 @@ const TransactionsView = ({
   onDelete,
   onUploadCSV,
   onUploadPDF,
+  onClearAll,
   navigateTarget,
   accounts = [],
 }) => {
@@ -62,6 +63,8 @@ const TransactionsView = ({
   const itemsPerPage = 25;
   const [uploadErrorMessage, setUploadErrorMessage] = useState('');
   const [expandedTransactions, setExpandedTransactions] = useState(new Set());
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const fileInputRef = useRef(null);
 
   const toggleExpand = (id) => {
@@ -261,6 +264,30 @@ const TransactionsView = ({
           >
             <Upload size={16} />
             Upload Statement
+          </button>
+          <button
+            onClick={() => setShowClearConfirm(true)}
+            title="Delete all transactions"
+            style={{
+              background: 'none',
+              border: '1px solid rgba(239,68,68,0.25)',
+              color: '#EF4444',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px',
+              fontSize: '13px',
+              fontWeight: 500,
+              padding: '6px 10px',
+              borderRadius: '7px',
+              opacity: 0.75,
+              transition: 'opacity 0.2s, border-color 0.2s',
+            }}
+            onMouseOver={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.borderColor = '#EF4444'; }}
+            onMouseOut={e => { e.currentTarget.style.opacity = '0.75'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.25)'; }}
+          >
+            <Trash2 size={14} />
+            Clear All
           </button>
           <button className="btn-primary btn-add-short" onClick={() => setShowAddModal(true)}>
             <PlusCircle size={18} />
@@ -640,6 +667,59 @@ const TransactionsView = ({
               }}>
                 {uploading ? (uploadFile?.name?.endsWith('.pdf') ? 'Reconstructing Layout...' : 'Uploading...') : 'Upload & Import'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Clear All Confirmation Modal */}
+      {showClearConfirm && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
+        }}>
+          <div style={{
+            background: 'white', borderRadius: '16px', padding: '2rem',
+            maxWidth: '420px', width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.15)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '1rem' }}>
+              <div style={{ background: 'rgba(239,68,68,0.1)', borderRadius: '10px', padding: '10px', display: 'flex' }}>
+                <AlertTriangle size={24} color="#EF4444" />
+              </div>
+              <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#1a202c' }}>Clear All Transactions</h2>
+            </div>
+            <p style={{ color: '#4a5568', fontSize: '14px', lineHeight: 1.6, marginBottom: '1.5rem' }}>
+              This will permanently delete <strong>all transactions</strong> for this company. This action cannot be undone.
+            </p>
+            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowClearConfirm(false)}
+                disabled={clearing}
+                style={{
+                  padding: '10px 20px', borderRadius: '10px', border: '1px solid #e2e8f0',
+                  background: 'white', color: '#4a5568', fontSize: '14px', fontWeight: 600, cursor: 'pointer'
+                }}
+              >Cancel</button>
+              <button
+                disabled={clearing}
+                onClick={async () => {
+                  setClearing(true);
+                  try {
+                    await onClearAll();
+                    setShowClearConfirm(false);
+                  } catch (err) {
+                    // error handled upstream
+                  } finally {
+                    setClearing(false);
+                  }
+                }}
+                style={{
+                  padding: '10px 20px', borderRadius: '10px', border: 'none',
+                  background: clearing ? '#e2e8f0' : 'linear-gradient(135deg, #EF4444, #DC2626)',
+                  color: clearing ? '#a0aec0' : 'white',
+                  fontSize: '14px', fontWeight: 600, cursor: clearing ? 'not-allowed' : 'pointer'
+                }}
+              >{clearing ? 'Clearing...' : 'Clear All'}</button>
             </div>
           </div>
         </div>

@@ -70,10 +70,13 @@ const EmptyData = () => (
   <div className="rv-empty">No data available for this period.</div>
 );
 
+const pct = (n) => `${Number(n || 0).toFixed(2)}%`;
+const ratio = (n) => Number(n || 0).toFixed(2);
+
 // ─── P&L ─────────────────────────────────────────────────────────────────────
 
 const PnLReport = ({ data }) => {
-  const { period, revenue, expenses, netProfit, netMargin } = data;
+  const { period, revenue, expenses, netProfit, netMargin, grossProfit, grossProfitMargin, netProfitMargin, ebit, interestCoverage } = data;
   const isProfit = netProfit >= 0;
   return (
     <div className="rv-doc">
@@ -90,12 +93,30 @@ const PnLReport = ({ data }) => {
         {expenses?.items?.length
           ? <LineTable rows={expenses.items} totalLabel="Total Expenses" totalAmount={expenses.total} color="#dc2626" />
           : <EmptyData />}
+
+        {grossProfit !== undefined && (
+          <>
+            <div className="rv-spacer" />
+            <SecHead label="KEY PROFITABILITY RATIOS" color="#059669" />
+            <table className="rv-table">
+              <tbody>
+                <tr className="rv-row"><td className="rv-row-name">Gross Profit (Revenue − COGS)</td><td className="rv-row-amt rv-green">{fmt(grossProfit)}</td></tr>
+                <tr className="rv-row rv-row-alt"><td className="rv-row-name">Gross Profit Margin</td><td className="rv-row-amt rv-green">{pct(grossProfitMargin)}</td></tr>
+                {ebit !== undefined && <tr className="rv-row"><td className="rv-row-name">EBIT (Earnings Before Interest &amp; Tax)</td><td className={`rv-row-amt ${ebit >= 0 ? 'rv-green' : 'rv-red'}`}>{fmt(ebit)}</td></tr>}
+                <tr className="rv-row rv-row-alt"><td className="rv-row-name">Net Profit Margin</td><td className={`rv-row-amt ${netProfitMargin >= 0 ? 'rv-green' : 'rv-red'}`}>{pct(netProfitMargin)}</td></tr>
+                {interestCoverage !== undefined && <tr className="rv-row"><td className="rv-row-name">Interest Coverage (EBIT ÷ Interest)</td><td className={`rv-row-amt ${interestCoverage >= 2 ? 'rv-green' : 'rv-red'}`}>{ratio(interestCoverage)}×</td></tr>}
+              </tbody>
+            </table>
+          </>
+        )}
       </div>
 
       <KpiFooter items={[
-        { label: 'Total Revenue',    value: fmt(revenue?.total || 0),    variant: 'blue' },
-        { label: 'Total Expenses',   value: fmt(expenses?.total || 0),   variant: 'red' },
-        { label: 'Net Profit / Loss',value: fmt(netProfit),              variant: isProfit ? 'green' : 'red', sub: `${isProfit ? '+' : ''}${netMargin}% margin` },
+        { label: 'Total Revenue',      value: fmt(revenue?.total || 0),     variant: 'blue' },
+        { label: 'Gross Profit',       value: fmt(grossProfit || 0),         variant: 'green' },
+        { label: 'EBIT',               value: fmt(ebit || 0),                variant: (ebit || 0) >= 0 ? 'green' : 'red' },
+        { label: 'Net Profit / Loss',  value: fmt(netProfit),                variant: isProfit ? 'green' : 'red', sub: `${isProfit ? '+' : ''}${netMargin}% margin` },
+        { label: 'Net Margin',         value: pct(netProfitMargin),          variant: isProfit ? 'green' : 'red' },
       ]} />
     </div>
   );
@@ -104,7 +125,7 @@ const PnLReport = ({ data }) => {
 // ─── Balance Sheet ────────────────────────────────────────────────────────────
 
 const BalanceSheetReport = ({ data }) => {
-  const { asOf, assets, liabilities, equity, totalLiabilitiesAndEquity } = data;
+  const { asOf, assets, liabilities, equity, totalLiabilitiesAndEquity, workingCapital, currentRatio, quickRatio, debtRatio, debtToEquity } = data;
   const balanced = Math.abs((assets?.total || 0) - ((liabilities?.total || 0) + (equity?.total || 0))) < 1;
   return (
     <div className="rv-doc">
@@ -140,11 +161,28 @@ const BalanceSheetReport = ({ data }) => {
         </div>
       </div>
 
+      {workingCapital !== undefined && (
+        <div className="rv-body" style={{ marginTop: '1rem' }}>
+          <SecHead label="KEY FINANCIAL RATIOS" color="#7c3aed" />
+          <table className="rv-table">
+            <tbody>
+              <tr className="rv-row"><td className="rv-row-name">Working Capital</td><td className={`rv-row-amt ${workingCapital >= 0 ? 'rv-green' : 'rv-red'}`}>{fmt(workingCapital)}</td></tr>
+              <tr className="rv-row rv-row-alt"><td className="rv-row-name">Current Ratio</td><td className={`rv-row-amt ${currentRatio >= 1.5 ? 'rv-green' : 'rv-red'}`}>{ratio(currentRatio)}</td></tr>
+              <tr className="rv-row"><td className="rv-row-name">Quick Ratio</td><td className={`rv-row-amt ${quickRatio >= 1 ? 'rv-green' : 'rv-red'}`}>{ratio(quickRatio)}</td></tr>
+              <tr className="rv-row rv-row-alt"><td className="rv-row-name">Debt Ratio</td><td className="rv-row-amt">{pct(debtRatio)}</td></tr>
+              <tr className="rv-row"><td className="rv-row-name">Debt-to-Equity</td><td className="rv-row-amt">{ratio(debtToEquity)}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+
       <KpiFooter items={[
-        { label: 'Total Assets',              value: fmt(assets?.total || 0),               variant: 'blue' },
-        { label: 'Total Liabilities',         value: fmt(liabilities?.total || 0),          variant: 'red' },
-        { label: 'Total Equity',              value: fmt(equity?.total || 0),               variant: 'green' },
-        { label: 'Liabilities + Equity',      value: fmt(totalLiabilitiesAndEquity || 0),   variant: balanced ? 'green' : 'red', sub: balanced ? 'Balanced ✓' : 'Check entries' },
+        { label: 'Total Assets',         value: fmt(assets?.total || 0),              variant: 'blue' },
+        { label: 'Total Liabilities',    value: fmt(liabilities?.total || 0),         variant: 'red' },
+        { label: 'Total Equity',         value: fmt(equity?.total || 0),              variant: 'green' },
+        { label: 'Working Capital',      value: fmt(workingCapital || 0),             variant: (workingCapital || 0) >= 0 ? 'green' : 'red' },
+        { label: 'Current Ratio',        value: ratio(currentRatio),                  variant: (currentRatio || 0) >= 1.5 ? 'green' : 'amber' },
+        { label: 'Debt-to-Equity',       value: ratio(debtToEquity),                  variant: 'blue' },
       ]} />
     </div>
   );

@@ -119,6 +119,15 @@ export const transactionsAPI = {
     return handleResponse(response);
   },
 
+  // Delete all transactions for the company
+  deleteAll: async (companyId) => {
+    const response = await fetch(`${BASE_URL}/transactions/all`, {
+      method: 'DELETE',
+      headers: getHeaders(companyId),
+    });
+    return handleResponse(response);
+  },
+
   // Get analytics data
   getAnalytics: async (companyId) => {
     const response = await fetch(`${BASE_URL}/transactions/analytics`, {
@@ -219,8 +228,26 @@ export const complianceAPI = {
   },
 
   markFiled: async (id, companyId) => {
-    const response = await fetch(`${BASE_URL}/compliance/${id}/filed`, {
+    const response = await fetch(`${BASE_URL}/compliance/${id}`, {
       method: 'PUT',
+      headers: getHeaders(companyId),
+      body: JSON.stringify({ status: 'FILED', payment_status: 'PAID' }),
+    });
+    return handleResponse(response);
+  },
+
+  create: async (event, companyId) => {
+    const response = await fetch(`${BASE_URL}/compliance`, {
+      method: 'POST',
+      headers: getHeaders(companyId),
+      body: JSON.stringify(event),
+    });
+    return handleResponse(response);
+  },
+
+  delete: async (id, companyId) => {
+    const response = await fetch(`${BASE_URL}/compliance/${id}`, {
+      method: 'DELETE',
       headers: getHeaders(companyId),
     });
     return handleResponse(response);

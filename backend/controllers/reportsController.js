@@ -2,6 +2,7 @@ const { pool } = require('../config/db');
 const ExcelJS = require('exceljs');
 const PDFDocument = require('pdfkit');
 const { generateResponse } = require('../services/aiService');
+const formulas = require('../utils/accountingFormulas');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -162,7 +163,34 @@ const fetchPnLData = async (companyId, dateSQL, baseParams) => {
   ]);
   const totalRev = revR.rows.reduce((s, r) => s + parseFloat(r.total), 0);
   const totalExp = expR.rows.reduce((s, r) => s + parseFloat(r.total), 0);
-  return { revenue: revR.rows, expenses: expR.rows, totalRev, totalExp, net: totalRev - totalExp };
+
+  // Isolate interest & tax for accurate EBIT and gross profit
+  const interestExp = expR.rows
+    .filter(r => /interest|bank charge|finance|loan/i.test(r.cat))
+    .reduce((s, r) => s + parseFloat(r.total), 0);
+  const taxExp = expR.rows
+    .filter(r => /tax|gst|tds|cess/i.test(r.cat))
+    .reduce((s, r) => s + parseFloat(r.total), 0);
+  const cogsExp = expR.rows
+    .filter(r => /purchase|cogs|cost of goods|raw material|direct|inventory/i.test(r.cat))
+    .reduce((s, r) => s + parseFloat(r.total), 0);
+
+  // COGS: use categorised direct costs, or fall back to 60% of expenses proxy
+  const cogsVal = cogsExp > 0 ? cogsExp : totalExp * 0.6;
+  const net = formulas.netIncome(totalRev, totalExp);
+  const gp = formulas.grossProfit(totalRev, cogsVal);
+  // EBIT = Revenue − (Total Expenses − Interest − Tax)
+  const ebitVal = formulas.ebit(totalRev, totalExp, interestExp, taxExp);
+  return {
+    revenue: revR.rows, expenses: expR.rows, totalRev, totalExp,
+    net,
+    grossProfit: gp,
+    grossProfitMargin: formulas.grossProfitMargin(gp, totalRev),
+    netProfitMargin: formulas.netProfitMargin(net, totalRev),
+    ebit: ebitVal,
+    operatingProfit: ebitVal,   // Operating Profit ≈ EBIT
+    interestCoverage: formulas.interestCoverage(ebitVal, Math.max(1, interestExp)),
+  };
 };
 
 const fetchCashFlowData = async (companyId, dateSQL, baseParams) => {
@@ -248,14 +276,23 @@ const fetchBalanceSheetData = async (companyId, dateSQL, baseParams) => {
     }
   });
 
+  const cash = Math.max(0, bankOpening + inc - exp);
+  const receivables = parseFloat(recv.rows[0]?.t || 0);
+  const payables = parseFloat(pay.rows[0]?.t || 0);
+  const retainedEarnings = inc - exp;
+  const currentA = formulas.currentAssetsTotal(cash, receivables);
+  const currentL = payables;
   return {
-    cash:             Math.max(0, bankOpening + inc - exp),
-    receivables:      parseFloat(recv.rows[0]?.t || 0),
-    payables:         parseFloat(pay.rows[0]?.t || 0),
-    retainedEarnings: inc - exp,
-    coaAssets:        coaByType.Asset.filter(a => a.amount > 0),
-    coaLiabilities:   coaByType.Liability.filter(a => a.amount > 0),
-    coaEquity:        coaByType.Equity.filter(a => a.amount !== 0)
+    cash, receivables, payables, retainedEarnings,
+    coaAssets:      coaByType.Asset.filter(a => a.amount > 0),
+    coaLiabilities: coaByType.Liability.filter(a => a.amount > 0),
+    coaEquity:      coaByType.Equity.filter(a => a.amount !== 0),
+    // Formula ratios
+    workingCapital:  formulas.workingCapital(currentA, currentL),
+    currentRatio:    formulas.currentRatio(currentA, currentL),
+    quickRatio:      formulas.quickRatio(currentA, 0, currentL),
+    debtRatio:       formulas.debtRatio(currentL, currentA),
+    debtToEquity:    formulas.debtToEquity(currentL, Math.max(1, retainedEarnings)),
   };
 };
 
@@ -273,7 +310,14 @@ const getPnL = async (req, res) => {
       revenue:  { items: d.revenue.map(r => ({ category: r.cat, amount: parseFloat(r.total) })), total: d.totalRev },
       expenses: { items: d.expenses.map(r => ({ category: r.cat, amount: parseFloat(r.total) })), total: d.totalExp },
       netProfit: d.net,
-      netMargin: d.totalRev > 0 ? ((d.net / d.totalRev) * 100).toFixed(1) : '0.0'
+      netMargin: d.totalRev > 0 ? ((d.net / d.totalRev) * 100).toFixed(1) : '0.0',
+      // Formula-computed metrics (Standard Accounting Formulas Guide)
+      grossProfit: d.grossProfit,
+      grossProfitMargin: d.grossProfitMargin,
+      netProfitMargin: d.netProfitMargin,
+      ebit: d.ebit,
+      operatingProfit: d.operatingProfit,
+      interestCoverage: d.interestCoverage,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 };
@@ -310,7 +354,13 @@ const getBalanceSheet = async (req, res) => {
       assets:      { current: { items: currentAssets, total: totalCurrentAssets }, total: totalCurrentAssets },
       liabilities: { current: { items: currentLiabilities, total: totalLiabilities }, total: totalLiabilities },
       equity:      { items: equityItems, total: totalEquity },
-      totalLiabilitiesAndEquity: totalLiabilities + totalEquity
+      totalLiabilitiesAndEquity: totalLiabilities + totalEquity,
+      // Formula-computed ratios (Standard Accounting Formulas Guide)
+      workingCapital:  d.workingCapital,
+      currentRatio:    d.currentRatio,
+      quickRatio:      d.quickRatio,
+      debtRatio:       d.debtRatio,
+      debtToEquity:    d.debtToEquity,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 };

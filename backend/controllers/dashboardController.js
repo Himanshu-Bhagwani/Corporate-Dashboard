@@ -1,6 +1,7 @@
 const { pool } = require('../config/db');
+const formulas = require('../utils/accountingFormulas');
 
-// GET /api/dashboard/summary — 8 KPI cards
+// GET /api/dashboard/summary — 8 KPI cards + formula-computed ratios
 const getSummary = async (req, res) => {
   try {
     const companyId = req.headers['x-company-id'];
@@ -85,21 +86,99 @@ const getSummary = async (req, res) => {
     const avgMonthlyExpense = parseFloat(avgExpenses.rows[0].avg_expense || 1);
     const cashRunway = avgMonthlyExpense > 0 ? (cashInBank / avgMonthlyExpense).toFixed(1) : 0;
 
+    const totalReceivables = parseFloat(receivables.rows[0].total);
+    const totalPayables = parseFloat(payables.rows[0].total);
+
+    // ── Pull interest & tax expenses for accurate EBIT computation ────────────
+    // EBIT = Revenue − Operating Expenses (before Interest & Taxes)
+    // Interest Expense: bank charges, loan interest, finance costs
+    const interestExpQ = await pool.query(
+      `SELECT COALESCE(SUM(amount), 0) as total FROM transactions
+       WHERE company_id = $1 AND type = 'expense'
+         AND (category ILIKE '%interest%' OR category ILIKE '%bank charge%'
+              OR category ILIKE '%finance%' OR category ILIKE '%loan%')`,
+      [companyId]
+    );
+    // Tax Expense: income tax, GST, TDS, advance tax
+    const taxExpQ = await pool.query(
+      `SELECT COALESCE(SUM(amount), 0) as total FROM transactions
+       WHERE company_id = $1 AND type = 'expense'
+         AND (category ILIKE '%tax%' OR category ILIKE '%gst%'
+              OR category ILIKE '%tds%' OR category ILIKE '%cess%')`,
+      [companyId]
+    );
+    // COGS / Direct costs: purchases, raw materials, direct labour, cost of goods
+    const cogsQ = await pool.query(
+      `SELECT COALESCE(SUM(amount), 0) as total FROM transactions
+       WHERE company_id = $1 AND type = 'expense'
+         AND (category ILIKE '%purchase%' OR category ILIKE '%cogs%'
+              OR category ILIKE '%cost of goods%' OR category ILIKE '%raw material%'
+              OR category ILIKE '%direct%' OR category ILIKE '%inventory%')`,
+      [companyId]
+    );
+    const interestExpense = parseFloat(interestExpQ.rows[0].total);
+    const taxExpense      = parseFloat(taxExpQ.rows[0].total);
+    const cogsAmount      = parseFloat(cogsQ.rows[0].total) || null; // null triggers auto-proxy
+
+    // ── Formula-computed ratios (Standard Accounting Formulas Guide) ──────────
+    const ratios = formulas.computeAllRatios({
+      revenue: totalRevenue,
+      expenses: totalExpenses,
+      cash: cashInBank,
+      receivables: totalReceivables,
+      payables: totalPayables,
+      interestExpense,
+      taxExpense,
+      cogsAmount,
+    });
+
     res.json({
+      // ── Core 8 KPI cards ────────────────────────────────────────────────────
       totalRevenue,
       totalExpenses,
-      netProfit,
+      netProfit,                                                  // Net Income = Revenue − All Expenses
       cashInBank,
-      totalReceivables: parseFloat(receivables.rows[0].total),
+      totalReceivables,
       receivablesCount: parseInt(receivables.rows[0].count),
-      totalPayables: parseFloat(payables.rows[0].total),
+      totalPayables,
       overdueInvoices: parseInt(overdue.rows[0].count),
       overdueAmount: parseFloat(overdue.rows[0].total),
       cashRunway: parseFloat(cashRunway),
+      // ── Month-over-month % changes ─────────────────────────────────────────
       revenueChange: pctChange(curRevenue, prevRevenue),
       expensesChange: pctChange(curExpenses, prevExpenses),
       profitChange: pctChange(curRevenue - curExpenses, prevRevenue - prevExpenses),
-      cashChange: 0, // Simplified
+      cashChange: 0,
+      // ── Accounting-formula ratios (real-time from user data) ───────────────
+      // Income Statement
+      cogs: ratios.cogs,                                // 3.1
+      grossProfit: ratios.grossProfit,                  // 3.2
+      grossProfitMargin: ratios.grossProfitMargin,      // 3.3
+      ebit: ratios.ebit,                                // 3.4 Earnings Before Interest & Taxes
+      netProfitMargin: ratios.netProfitMargin,          // 5.1
+      // Balance Sheet / Working Capital
+      workingCapital: ratios.workingCapital,            // 4.1
+      // Liquidity
+      currentRatio: ratios.currentRatio,                // 6.1
+      quickRatio: ratios.quickRatio,                    // 6.2
+      cashRatioVal: ratios.cashRatio,                   // 6.3
+      // Profitability
+      roa: ratios.roa,                                  // 5.2
+      roe: ratios.roe,                                  // 5.3
+      // Leverage / Solvency
+      debtToEquity: ratios.debtToEquity,                // 7.1
+      debtRatio: ratios.debtRatio,                      // 7.2
+      equityMultiplier: ratios.equityMultiplier,        // 7.3
+      interestCoverage: ratios.interestCoverage,        // 7.4 EBIT / Interest Expense
+      // Efficiency
+      arTurnover: ratios.arTurnover,                    // 8.3
+      daysSalesOutstanding: ratios.daysSalesOutstanding,// 8.4
+      totalAssetTurnover: ratios.totalAssetTurnover,    // 8.5
+      // Cash Flow
+      operatingCashFlow: ratios.operatingCashFlow,      // 4.2
+      freeCashFlow: ratios.freeCashFlow,                // 4.3
+      // DuPont Analysis
+      dupontROE: ratios.dupontROE,                      // 10
     });
   } catch (error) {
     console.error('Dashboard summary error:', error);

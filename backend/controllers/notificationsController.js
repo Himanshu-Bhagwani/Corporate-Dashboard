@@ -34,16 +34,16 @@ const getNotifications = async (req, res) => {
       // Table may not exist yet, that's fine
     }
 
-    // ─── 1. UPCOMING INVOICES (due within 7 days, not paid) ───
+    // ─── 1. UPCOMING INVOICES (receivables due within 30 days) ───────────────
     const upcomingInvoices = await pool.query(
       `SELECT id, invoice_number, client_name, vendor_name, amount, type,
               TO_CHAR(due_date, 'YYYY-MM-DD') as due_date, status
-       FROM invoices 
-       WHERE company_id = $1 
+       FROM invoices
+       WHERE company_id = $1
          AND type = 'receivable'
          AND status IN ('pending')
-         AND due_date >= CURRENT_DATE 
-         AND due_date <= CURRENT_DATE + INTERVAL '7 days'
+         AND due_date >= CURRENT_DATE
+         AND due_date <= CURRENT_DATE + INTERVAL '30 days'
        ORDER BY due_date ASC`,
       [companyId]
     );
@@ -53,26 +53,58 @@ const getNotifications = async (req, res) => {
       if (dismissedKeys.has(key)) continue;
       const dueDate = new Date(inv.due_date);
       const daysLeft = Math.ceil((dueDate - now) / (1000 * 60 * 60 * 24));
+      const urgency = daysLeft <= 3 ? 'critical' : daysLeft <= 7 ? 'warning' : 'info';
+      const dueDateLabel = daysLeft === 0 ? 'today' : daysLeft === 1 ? 'tomorrow' : `in ${daysLeft} days`;
       notifications.push({
         id: key,
         type: 'invoice',
-        severity: daysLeft <= 2 ? 'warning' : 'info',
-        title: `Receivable ${inv.invoice_number} due ${daysLeft === 0 ? 'today' : daysLeft === 1 ? 'tomorrow' : `in ${daysLeft} days`}`,
-        description: `${inv.client_name || inv.vendor_name || 'Unknown'} — ₹${Number(inv.amount).toLocaleString('en-IN')}`,
+        severity: urgency,
+        title: `Invoice ${inv.invoice_number} due ${dueDateLabel}`,
+        description: `${inv.client_name || inv.vendor_name || 'Client'} — ₹${Number(inv.amount).toLocaleString('en-IN')}`,
         date: inv.due_date,
-        category: 'Receivables',
+        category: 'Upcoming Invoices',
         actionView: 'invoices',
       });
     }
 
-    // ─── 2. UPCOMING COMPLIANCE (due within 14 days, PENDING) ───
+    // ─── 2. OVERDUE RECEIVABLE INVOICES (all-time, with days overdue) ─────────
+    const overdueInvoices = await pool.query(
+      `SELECT id, invoice_number, client_name, vendor_name, amount, type,
+              TO_CHAR(due_date, 'YYYY-MM-DD') as due_date, status
+       FROM invoices
+       WHERE company_id = $1
+         AND type = 'receivable'
+         AND status NOT IN ('paid')
+         AND due_date < CURRENT_DATE
+       ORDER BY due_date ASC`,
+      [companyId]
+    );
+
+    for (const inv of overdueInvoices.rows) {
+      const key = `overdue-invoice-${inv.id}`;
+      if (dismissedKeys.has(key)) continue;
+      const dueDate = new Date(inv.due_date);
+      const daysOverdue = Math.ceil((now - dueDate) / (1000 * 60 * 60 * 24));
+      notifications.push({
+        id: key,
+        type: 'invoice',
+        severity: daysOverdue > 30 ? 'critical' : 'warning',
+        title: `Invoice ${inv.invoice_number} overdue by ${daysOverdue} day${daysOverdue !== 1 ? 's' : ''}`,
+        description: `${inv.client_name || inv.vendor_name || 'Client'} — ₹${Number(inv.amount).toLocaleString('en-IN')} — was due ${inv.due_date}`,
+        date: inv.due_date,
+        category: 'Overdue Invoices',
+        actionView: 'invoices',
+      });
+    }
+
+    // ─── 3. UPCOMING COMPLIANCE (due within 30 days, not filed) ──────────────
     const upcomingCompliance = await pool.query(
       `SELECT id, type, title, TO_CHAR(due_date, 'YYYY-MM-DD') as due_date, status
-       FROM compliance_events 
-       WHERE company_id = $1 
-         AND status = 'PENDING'
-         AND due_date >= CURRENT_DATE 
-         AND due_date <= CURRENT_DATE + INTERVAL '14 days'
+       FROM compliance_events
+       WHERE company_id = $1
+         AND LOWER(status) != 'filed'
+         AND due_date >= CURRENT_DATE
+         AND due_date <= CURRENT_DATE + INTERVAL '30 days'
        ORDER BY due_date ASC`,
       [companyId]
     );
@@ -82,24 +114,28 @@ const getNotifications = async (req, res) => {
       if (dismissedKeys.has(key)) continue;
       const dueDate = new Date(ev.due_date);
       const daysLeft = Math.ceil((dueDate - now) / (1000 * 60 * 60 * 24));
+      const urgency = daysLeft <= 3 ? 'critical' : daysLeft <= 7 ? 'warning' : 'info';
+      const dueDateLabel = daysLeft === 0 ? 'today' : daysLeft === 1 ? 'tomorrow' : `in ${daysLeft} days`;
+      const typeLabel = ev.type ? `[${ev.type}] ` : '';
       notifications.push({
         id: key,
         type: 'compliance',
-        severity: daysLeft <= 3 ? 'warning' : 'info',
-        title: `${ev.title} due ${daysLeft === 0 ? 'today' : daysLeft === 1 ? 'tomorrow' : `in ${daysLeft} days`}`,
-        description: `Compliance filing deadline — ${ev.due_date}`,
+        severity: urgency,
+        title: `${typeLabel}${ev.title} due ${dueDateLabel}`,
+        description: `Filing deadline — ${ev.due_date}`,
         date: ev.due_date,
-        category: 'Compliance',
+        category: 'Upcoming Compliance',
         actionView: 'compliance',
       });
     }
 
-    // ─── 3. PENDING/OVERDUE COMPLIANCE ───
+    // ─── 4. OVERDUE COMPLIANCE (all-time — due_date < today AND not filed) ───
     const overdueCompliance = await pool.query(
       `SELECT id, type, title, TO_CHAR(due_date, 'YYYY-MM-DD') as due_date, status
-       FROM compliance_events 
-       WHERE company_id = $1 
-         AND status = 'OVERDUE'
+       FROM compliance_events
+       WHERE company_id = $1
+         AND LOWER(status) != 'filed'
+         AND due_date < CURRENT_DATE
        ORDER BY due_date ASC`,
       [companyId]
     );
@@ -108,62 +144,81 @@ const getNotifications = async (req, res) => {
       const key = `overdue-compliance-${ev.id}`;
       if (dismissedKeys.has(key)) continue;
       const dueDate = new Date(ev.due_date);
-      const daysPending = Math.ceil((now - dueDate) / (1000 * 60 * 60 * 24));
+      const daysOverdue = Math.ceil((now - dueDate) / (1000 * 60 * 60 * 24));
+      const typeLabel = ev.type ? `[${ev.type}] ` : '';
       notifications.push({
         id: key,
         type: 'compliance',
-        severity: 'critical',
-        title: `${ev.title} — ${daysPending} day${daysPending !== 1 ? 's' : ''} overdue`,
+        severity: daysOverdue > 30 ? 'critical' : 'warning',
+        title: `${typeLabel}${ev.title} — ${daysOverdue} day${daysOverdue !== 1 ? 's' : ''} overdue`,
         description: `Was due on ${ev.due_date}. File urgently to avoid penalties.`,
         date: ev.due_date,
-        category: 'Compliance',
+        category: 'Overdue Compliance',
         actionView: 'compliance',
       });
     }
 
-    // ─── 4. UPCOMING/PENDING PAYABLES ───
+    // ─── 5. UPCOMING PAYABLES (due within 30 days) ────────────────────────────
     const payables = await pool.query(
       `SELECT id, invoice_number, vendor_name, client_name, amount, type,
               TO_CHAR(due_date, 'YYYY-MM-DD') as due_date, status
-       FROM invoices 
-       WHERE company_id = $1 
+       FROM invoices
+       WHERE company_id = $1
          AND type = 'payable'
-         AND status IN ('pending', 'overdue')
+         AND status IN ('pending')
+         AND due_date >= CURRENT_DATE
+         AND due_date <= CURRENT_DATE + INTERVAL '30 days'
        ORDER BY due_date ASC`,
       [companyId]
     );
 
     for (const inv of payables.rows) {
-      const key = `payable-${inv.id}`;
+      const key = `payable-upcoming-${inv.id}`;
       if (dismissedKeys.has(key)) continue;
       const dueDate = new Date(inv.due_date);
       const diff = Math.ceil((dueDate - now) / (1000 * 60 * 60 * 24));
-      
-      if (diff < 0) {
-        // Overdue payable
-        notifications.push({
-          id: key,
-          type: 'payable',
-          severity: 'critical',
-          title: `Payable ${inv.invoice_number} — ${Math.abs(diff)} day${Math.abs(diff) !== 1 ? 's' : ''} overdue`,
-          description: `${inv.vendor_name || inv.client_name || 'Vendor'} — ₹${Number(inv.amount).toLocaleString('en-IN')}`,
-          date: inv.due_date,
-          category: 'Payables',
-          actionView: 'invoices',
-        });
-      } else if (diff <= 7) {
-        // Upcoming payable
-        notifications.push({
-          id: key,
-          type: 'payable',
-          severity: diff <= 2 ? 'warning' : 'info',
-          title: `Payable ${inv.invoice_number} due ${diff === 0 ? 'today' : diff === 1 ? 'tomorrow' : `in ${diff} days`}`,
-          description: `${inv.vendor_name || inv.client_name || 'Vendor'} — ₹${Number(inv.amount).toLocaleString('en-IN')}`,
-          date: inv.due_date,
-          category: 'Payables',
-          actionView: 'invoices',
-        });
-      }
+      const urgency = diff <= 3 ? 'critical' : diff <= 7 ? 'warning' : 'info';
+      const dueDateLabel = diff === 0 ? 'today' : diff === 1 ? 'tomorrow' : `in ${diff} days`;
+      notifications.push({
+        id: key,
+        type: 'payable',
+        severity: urgency,
+        title: `Payable ${inv.invoice_number} due ${dueDateLabel}`,
+        description: `${inv.vendor_name || inv.client_name || 'Vendor'} — ₹${Number(inv.amount).toLocaleString('en-IN')}`,
+        date: inv.due_date,
+        category: 'Upcoming Payables',
+        actionView: 'invoices',
+      });
+    }
+
+    // ─── 6. OVERDUE PAYABLES (all-time) ──────────────────────────────────────
+    const overduePayables = await pool.query(
+      `SELECT id, invoice_number, vendor_name, client_name, amount, type,
+              TO_CHAR(due_date, 'YYYY-MM-DD') as due_date, status
+       FROM invoices
+       WHERE company_id = $1
+         AND type = 'payable'
+         AND status NOT IN ('paid')
+         AND due_date < CURRENT_DATE
+       ORDER BY due_date ASC`,
+      [companyId]
+    );
+
+    for (const inv of overduePayables.rows) {
+      const key = `payable-overdue-${inv.id}`;
+      if (dismissedKeys.has(key)) continue;
+      const dueDate = new Date(inv.due_date);
+      const daysOverdue = Math.ceil((now - dueDate) / (1000 * 60 * 60 * 24));
+      notifications.push({
+        id: key,
+        type: 'payable',
+        severity: daysOverdue > 30 ? 'critical' : 'warning',
+        title: `Payable ${inv.invoice_number} overdue by ${daysOverdue} day${daysOverdue !== 1 ? 's' : ''}`,
+        description: `${inv.vendor_name || inv.client_name || 'Vendor'} — ₹${Number(inv.amount).toLocaleString('en-IN')} — was due ${inv.due_date}`,
+        date: inv.due_date,
+        category: 'Overdue Payables',
+        actionView: 'invoices',
+      });
     }
 
     // ─── 5. HIGH CASH OUTFLOW / LOW CASH RUNWAY ≤ 2.5 months ───

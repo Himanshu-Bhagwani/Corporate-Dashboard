@@ -65,6 +65,7 @@ const DashboardView = ({
   compliance = [],
   onCreateInvoice,
   onMarkFiled,
+  onAddComplianceEvent,
   setActiveView,
 }) => {
   const [activeExpenseIndex, setActiveExpenseIndex] = useState(0);
@@ -72,61 +73,7 @@ const DashboardView = ({
   const [invoiceForm, setInvoiceForm] = useState({ client_name: '', amount: '', due_date: '', type: 'receivable' });
   const [revenueTimeframe, setRevenueTimeframe] = useState(6);
 
-  // Local state for Income Tax & TDS items
-  const [incomeTaxItems, setIncomeTaxItems] = useState([
-    { id: 'tds-q4', name: 'TDS Return - Q4 FY25-26', dueDate: '2026-03-31', status: 'Pending' },
-    { id: 'tds-pay', name: 'TDS Payment - Feb 2026', dueDate: '2026-03-07', status: 'Pending' },
-    { id: 'adv-tax', name: 'Advance Tax - Q4', dueDate: '2026-03-15', status: 'Pending' },
-    { id: 'itr', name: 'ITR Filing - AY 2025-26', dueDate: '2026-07-31', status: 'Pending' },
-  ]);
-
-  // 10 hardcoded risk alerts for compliance
-  const [dashboardAlerts, setDashboardAlerts] = useState([
-    { id: 'ra-1', name: 'GSTR-1 Filing - Feb 2026', due_date: '2026-03-11', status: 'Pending' },
-    { id: 'ra-2', name: 'GSTR-3B Filing - Feb 2026', due_date: '2026-03-20', status: 'Pending' },
-    { id: 'ra-3', name: 'Annual GST Return - FY 2025-26', due_date: '2026-12-31', status: 'Pending' },
-    { id: 'ra-4', name: 'TDS Return - Q4 FY25-26', due_date: '2026-03-31', status: 'Pending' },
-    { id: 'ra-5', name: 'TDS Payment - Feb 2026', due_date: '2026-03-07', status: 'Pending' },
-    { id: 'ra-6', name: 'Advance Tax - Q4', due_date: '2026-03-15', status: 'Pending' },
-    { id: 'ra-7', name: 'GSTR-1 Filing - Mar 2026', due_date: '2026-04-11', status: 'Pending' },
-    { id: 'ra-8', name: 'GSTR-3B Filing - Mar 2026', due_date: '2026-04-20', status: 'Pending' },
-    { id: 'ra-9', name: 'TDS Payment - Mar 2026', due_date: '2026-04-07', status: 'Pending' },
-    { id: 'ra-10', name: 'ITR Filing - AY 2025-26', due_date: '2026-07-31', status: 'Pending' },
-  ]);
-
-  // GST Reconciliation data
-  const gstRecon = useMemo(() => ({
-    salesMatch: 98.5,
-    itcAvailable: 346212,
-    netTaxPayable: 166338,
-  }), []);
-
   const formatINR = (value) => `₹${(Number(value) || 0).toLocaleString('en-IN')}`;
-
-  // Handle marking a dashboard alert as filed
-  const handleMarkAlertFiled = (alertId) => {
-    setDashboardAlerts(prev => prev.map(a => a.id === alertId ? { ...a, status: 'Filed' } : a));
-  };
-
-  // Dashboard alert stats computed from dashboardAlerts local state
-  const dashboardAlertStats = useMemo(() => {
-    const total = dashboardAlerts.length;
-    const filed = dashboardAlerts.filter(a => a.status === 'Filed').length;
-    const score = total > 0 ? Math.round((filed / total) * 100) : 0;
-    const pending = dashboardAlerts.filter(a => a.status !== 'Filed').length;
-    const overdue = dashboardAlerts.filter(a => {
-      if (a.status === 'Filed') return false;
-      const d = new Date(a.due_date);
-      return d.getTime() < Date.now();
-    }).length;
-    const upcoming30 = dashboardAlerts.filter(a => {
-      if (a.status === 'Filed') return false;
-      const d = new Date(a.due_date);
-      const diff = Math.floor((d.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-      return diff >= 0 && diff <= 30;
-    }).length;
-    return { score, pending, overdue, upcoming30 };
-  }, [dashboardAlerts]);
 
   // KPI data from backend summary
   const summary = dashboardSummary || {};
@@ -337,6 +284,11 @@ const DashboardView = ({
               {summary.profitChange > 0 && <span className="stat-change positive">+{summary.profitChange}%</span>}
             </div>
             <div className="stat-value-new">{formatCurrency(summary.netProfit || stats.netTotal || 0)}</div>
+            {summary.netProfitMargin !== undefined && (
+              <div style={{ fontSize: '11px', color: '#718096', marginTop: '2px' }}>
+                Net Margin: <strong style={{ color: (summary.netProfitMargin || 0) >= 0 ? '#10b981' : '#ef4444' }}>{summary.netProfitMargin}%</strong>
+              </div>
+            )}
           </div>
         </div>
 
@@ -354,6 +306,11 @@ const DashboardView = ({
               <span className="stat-label-new">Cash in Bank</span>
             </div>
             <div className="stat-value-new">{formatCurrency(summary.cashInBank || 0)}</div>
+            {summary.workingCapital !== undefined && (
+              <div style={{ fontSize: '11px', color: '#718096', marginTop: '2px' }}>
+                Working Capital: <strong style={{ color: (summary.workingCapital || 0) >= 0 ? '#10b981' : '#ef4444' }}>{formatCurrency(Math.abs(summary.workingCapital || 0))}</strong>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -369,6 +326,11 @@ const DashboardView = ({
               <span className="stat-change positive">{summary.receivablesCount || 0} invoices</span>
             </div>
             <div className="stat-value-new">{formatCurrency(summary.totalReceivables || 0)}</div>
+            {summary.currentRatio !== undefined && (
+              <div style={{ fontSize: '11px', color: '#718096', marginTop: '2px' }}>
+                Current Ratio: <strong style={{ color: (summary.currentRatio || 0) >= 1.5 ? '#10b981' : '#f59e0b' }}>{summary.currentRatio}x</strong>
+              </div>
+            )}
           </div>
         </div>
 
@@ -704,40 +666,40 @@ const DashboardView = ({
           </div>
         </div>
 
-        {/* Compliance Tracker */}
+        {/* Compliance Tracker — real backend data */}
         <div className="dashboard-section">
           <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#1a202c', marginBottom: '4px' }}>Compliance Tracker</h3>
           <p style={{ fontSize: '13px', color: '#718096', marginBottom: '1.5rem' }}>Due filings & deadlines</p>
 
-          {/* Compliance KPI Cards */}
           <div className="compliance-kpi-grid">
             <div className="compliance-kpi-card">
               <div className="compliance-kpi-label">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
                 Compliance Score
               </div>
-              <div className="compliance-kpi-value">{dashboardAlertStats.score}/100</div>
-              <div className="compliance-kpi-sub">{dashboardAlertStats.score < 50 ? 'Needs Attention' : dashboardAlertStats.score < 80 ? 'Improving' : 'Good Standing'}</div>
+              <div className="compliance-kpi-value">{complianceStats.score}/100</div>
+              <div className="compliance-kpi-sub">{complianceStats.score < 50 ? 'Needs Attention' : complianceStats.score < 80 ? 'Improving' : 'Good Standing'}</div>
             </div>
           </div>
 
-          {/* Risk Alerts - scrollable, show 4 visible */}
-          <h4 style={{ fontSize: '15px', fontWeight: 700, color: '#1a202c', marginBottom: '0.75rem' }}>Risk Alerts</h4>
+          <h4 style={{ fontSize: '15px', fontWeight: 700, color: '#1a202c', marginBottom: '0.75rem', marginTop: '1.25rem' }}>Risk Alerts</h4>
           <div className="dashboard-risk-alerts" style={{ maxHeight: '320px', overflowY: 'auto', paddingRight: '4px' }}>
-            {dashboardAlerts.sort((a, b) => {
-              if (a.status === 'Filed' && b.status !== 'Filed') return 1;
-              if (a.status !== 'Filed' && b.status === 'Filed') return -1;
-              return new Date(a.due_date) - new Date(b.due_date);
-            }).map((alert) => {
-              const isFiled = alert.status === 'Filed';
+            {riskAlerts.length === 0 && (
+              <div style={{ textAlign: 'center', color: '#a0aec0', padding: '2rem', fontSize: '14px' }}>
+                No pending filings. All up to date!
+              </div>
+            )}
+            {riskAlerts.map((alert) => {
+              const isFiled = String(alert.status || '').toLowerCase() === 'filed';
+              const isOverdue = toRiskDate(alert.due_date).getTime() < today.getTime();
               return (
                 <div key={alert.id} className={`dashboard-risk-alert-row ${isFiled ? 'filed' : ''}`}>
                   <div className="risk-alert-left">
-                    <div className={`risk-alert-icon ${isFiled ? 'filed' : ''}`}>
-                      {isFiled ? '✓' : '⏰'}
+                    <div className={`risk-alert-icon ${isFiled ? 'filed' : ''}`} style={isOverdue && !isFiled ? { color: '#ef4444', backgroundColor: 'rgba(239,68,68,0.15)' } : {}}>
+                      {isFiled ? '✓' : isOverdue ? '!' : '⏰'}
                     </div>
                     <div>
-                      <div className="risk-alert-title">{alert.name}</div>
+                      <div className="risk-alert-title">{alert.title || alert.name || 'Filing'}</div>
                       <div className="risk-alert-meta">Due: {formatDateShort(alert.due_date)}</div>
                     </div>
                   </div>
@@ -746,8 +708,10 @@ const DashboardView = ({
                       <span className="filed-badge">Filed</span>
                     ) : (
                       <>
-                        <span className="due-soon-badge">Due Soon</span>
-                        <button className="mark-filed-btn" onClick={() => handleMarkAlertFiled(alert.id)}>Mark as Filed</button>
+                        <span className="due-soon-badge" style={isOverdue ? { backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444' } : {}}>
+                          {isOverdue ? 'Overdue' : 'Due Soon'}
+                        </span>
+                        <button className="mark-filed-btn" onClick={() => onMarkFiled && onMarkFiled(alert.id)}>Mark as Filed</button>
                       </>
                     )}
                   </div>
