@@ -15,6 +15,8 @@ const reportsRoutes = require('./routes/reports');
 const aiRoutes = require('./routes/ai');
 const accountingRoutes = require('./routes/accounting');
 const notificationsRoutes = require('./routes/notifications');
+const documentsRoutes = require('./routes/documents');
+const noticesRoutes = require('./routes/notices');
 const app = express();
 
 // Middleware
@@ -90,6 +92,52 @@ connectDB().then(() => {
     `)
     .catch((err) => console.error('Notification dismissals table init failed:', err.message));
 
+  // Drop and widen the compliance_events type CHECK constraint to allow all category values
+  pool
+    .query(`
+      ALTER TABLE compliance_events DROP CONSTRAINT IF EXISTS compliance_events_type_check;
+      ALTER TABLE compliance_events ADD CONSTRAINT compliance_events_type_check
+        CHECK (type IN ('GST','TDS','INCOME_TAX','OTHER','Income Tax','ROC','Payroll','Custom'));
+    `)
+    .catch((err) => console.error('Compliance type constraint update failed:', err.message));
+
+  // Ensure compliance extension tables and columns exist
+  pool
+    .query(`
+      ALTER TABLE compliance_events ADD COLUMN IF NOT EXISTS sales_amount NUMERIC DEFAULT 0;
+      ALTER TABLE compliance_events ADD COLUMN IF NOT EXISTS net_tax_payable NUMERIC DEFAULT 0;
+      ALTER TABLE compliance_events ADD COLUMN IF NOT EXISTS itc_available NUMERIC DEFAULT 0;
+      ALTER TABLE compliance_events ADD COLUMN IF NOT EXISTS advance_tax_paid NUMERIC DEFAULT 0;
+
+      CREATE TABLE IF NOT EXISTS compliance_documents (
+        id SERIAL PRIMARY KEY,
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        category VARCHAR(100) NOT NULL DEFAULT 'Other',
+        file_path VARCHAR(500) NOT NULL,
+        file_size VARCHAR(50),
+        mime_type VARCHAR(100),
+        expiry_date DATE,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS compliance_notices (
+        id SERIAL PRIMARY KEY,
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        title VARCHAR(255) NOT NULL,
+        department VARCHAR(255) NOT NULL,
+        due_date DATE NOT NULL,
+        description TEXT DEFAULT '',
+        priority VARCHAR(50) DEFAULT 'Medium',
+        status VARCHAR(50) DEFAULT 'Open',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_compliance_documents_company ON compliance_documents(company_id);
+      CREATE INDEX IF NOT EXISTS idx_compliance_notices_company ON compliance_notices(company_id);
+    `)
+    .catch((err) => console.error('Compliance extensions init failed:', err.message));
+
   // Ensure chat_history table exists
   pool
     .query(`
@@ -118,6 +166,8 @@ app.use('/api/reports', reportsRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/accounting', accountingRoutes);
 app.use('/api/notifications', notificationsRoutes);
+app.use('/api/compliance-documents', documentsRoutes);
+app.use('/api/compliance-notices', noticesRoutes);
 app.get('/', (req, res) => {
   res.send('Backend is running');
 });

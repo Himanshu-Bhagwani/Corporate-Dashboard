@@ -254,3 +254,150 @@
   color: #991b1b;
   background: #fee2e2;
 }
+
+/* ── GST Reconciliation ── */
+.gst-recon-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+
+@media (max-width: 640px) {
+  .gst-recon-grid { grid-template-columns: 1fr; }
+}
+
+.gst-recon-card {
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  border: 1px solid #e2e8f0;
+}
+
+.gst-recon-card.green { background: #f0fdf4; border-color: #86efac; }
+.gst-recon-card.yellow { background: #fffbeb; border-color: #fde68a; }
+.gst-recon-card.blue { background: #eff6ff; border-color: #bfdbfe; }
+
+.gst-recon-label {
+  font-size: 12px;
+  color: #6b7280;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.gst-recon-value {
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.gst-recon-value.green { color: #16a34a; }
+.gst-recon-value.yellow { color: #d97706; }
+.gst-recon-value.blue { color: #1e40af; }
+
+/* ── Tax Liability ── */
+.tax-liability-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+}
+
+.tax-liability-card {
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  border: 1px solid #e2e8f0;
+}
+
+.tax-liability-card.blue { background: #eff6ff; border-color: #bfdbfe; }
+.tax-liability-card.yellow { background: #fffbeb; border-color: #fde68a; }
+.tax-liability-card.red { background: #fef2f2; border-color: #fca5a5; }
+
+.tax-liability-label {
+  font-size: 12px;
+  color: #6b7280;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.tax-liability-value {
+  font-size: 22px;
+  font-weight: 800;
+  color: #1e40af;
+}
+
+.tax-liability-value.yellow { color: #d97706; }
+.tax-liability-value.red { color: #dc2626; }
+
+.tax-liability-sub {
+  font-size: 11px;
+  color: #9ca3af;
+  margin-top: 4px;
+}
+
+/* ── Notice card overdue ── */
+.notice-card.overdue {
+  background: #fef2f2;
+  border-color: #fca5a5;
+}
+
+/* ── Calendar enhancements ── */
+.calendar-day-num {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 4px;
+}
+
+.cal-status-icon {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.calendar-events-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.cal-event-tag {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cal-event-tag.ok { background: #dcfce7; color: #166534; }
+.cal-event-tag.warn { background: #fef9c3; color: #854d0e; }
+.cal-event-tag.danger { background: #fee2e2; color: #991b1b; }
+
+.cal-event-more {
+  font-size: 9px;
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+/* Bigger calendar cells to fit event tags */
+.calendar-cell {
+  min-height: 80px;
+  height: auto;
+}
+
+/* ── File drop zone ── */
+.file-drop-zone {
+  border: 2px dashed #e2e8f0;
+  border-radius: 12px;
+  padding: 2rem;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  background: #f8fafc;
+}
+
+.file-drop-zone:hover {
+  border-color: #4F46E5;
+  background: rgba(79, 70, 229, 0.04);
+}

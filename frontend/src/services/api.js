@@ -424,6 +424,90 @@ export const notificationsAPI = {
   },
 };
 
+export const documentsAPI = {
+  getAll: async (companyId) => {
+    const response = await fetch(`${BASE_URL}/compliance-documents`, {
+      headers: getHeaders(companyId),
+    });
+    return handleResponse(response);
+  },
+
+  upload: async (file, name, category, expiryDate, companyId) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('name', name);
+    formData.append('category', category);
+    if (expiryDate) formData.append('expiry_date', expiryDate);
+
+    const response = await fetch(`${BASE_URL}/compliance-documents/upload`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        'x-company-id': companyId,
+      },
+      body: formData,
+    });
+    return handleResponse(response);
+  },
+
+  getViewUrl: (id, companyId) =>
+    `${BASE_URL}/compliance-documents/${id}/view?token=${localStorage.getItem('token')}&company=${companyId}`,
+
+  download: async (id, companyId) => {
+    const response = await fetch(`${BASE_URL}/compliance-documents/${id}/download`, {
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        'x-company-id': companyId,
+      },
+    });
+    if (!response.ok) throw new Error('Download failed');
+    return response;
+  },
+
+  delete: async (id, companyId) => {
+    const response = await fetch(`${BASE_URL}/compliance-documents/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders(companyId),
+    });
+    return handleResponse(response);
+  },
+};
+
+export const noticesAPI = {
+  getAll: async (companyId) => {
+    const response = await fetch(`${BASE_URL}/compliance-notices`, {
+      headers: getHeaders(companyId),
+    });
+    return handleResponse(response);
+  },
+
+  create: async (notice, companyId) => {
+    const response = await fetch(`${BASE_URL}/compliance-notices`, {
+      method: 'POST',
+      headers: getHeaders(companyId),
+      body: JSON.stringify(notice),
+    });
+    return handleResponse(response);
+  },
+
+  updateStatus: async (id, status, companyId) => {
+    const response = await fetch(`${BASE_URL}/compliance-notices/${id}`, {
+      method: 'PUT',
+      headers: getHeaders(companyId),
+      body: JSON.stringify({ status }),
+    });
+    return handleResponse(response);
+  },
+
+  delete: async (id, companyId) => {
+    const response = await fetch(`${BASE_URL}/compliance-notices/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders(companyId),
+    });
+    return handleResponse(response);
+  },
+};
+
 export const companiesAPI = {
   upgradePlan: async (companyId, plan) => {
     const response = await fetch(`${BASE_URL}/companies/${companyId}/plan`, {

@@ -425,6 +425,49 @@ const getNotifications = async (req, res) => {
       console.error('Margin warning notification error:', e.message);
     }
 
+    // ─── 10. NOTICES — Open or Overdue ────────────────────────────────────────
+    try {
+      // Auto-mark overdue notices
+      await pool.query(
+        `UPDATE compliance_notices SET status = 'Overdue'
+         WHERE company_id = $1 AND status = 'Open' AND due_date < CURRENT_DATE`,
+        [companyId]
+      );
+
+      const openNotices = await pool.query(
+        `SELECT id, title, department, TO_CHAR(due_date, 'YYYY-MM-DD') as due_date, priority, status
+         FROM compliance_notices
+         WHERE company_id = $1 AND status IN ('Open', 'Overdue')
+         ORDER BY due_date ASC`,
+        [companyId]
+      );
+
+      for (const notice of openNotices.rows) {
+        const key = `notice-${notice.id}`;
+        if (dismissedKeys.has(key)) continue;
+        const dueDate = new Date(notice.due_date);
+        const isOverdue = notice.status === 'Overdue';
+        const daysLeft = Math.ceil((dueDate - now) / (1000 * 60 * 60 * 24));
+        const severity = isOverdue || notice.priority === 'High' ? 'critical'
+          : notice.priority === 'Medium' ? 'warning' : 'info';
+        const dueDateLabel = isOverdue
+          ? `overdue since ${notice.due_date}`
+          : daysLeft === 0 ? 'due today' : daysLeft === 1 ? 'due tomorrow' : `due in ${daysLeft} days`;
+        notifications.push({
+          id: key,
+          type: 'notice',
+          severity,
+          title: `${notice.title} — ${dueDateLabel}`,
+          description: `${notice.department} | Priority: ${notice.priority}`,
+          date: notice.due_date,
+          category: 'Notices',
+          actionView: 'compliance',
+        });
+      }
+    } catch (e) {
+      // compliance_notices may not exist yet
+    }
+
     // Sort by severity (critical > warning > info) then by date
     const severityOrder = { critical: 0, warning: 1, info: 2 };
     notifications.sort((a, b) => {

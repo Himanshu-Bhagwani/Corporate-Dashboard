@@ -17,6 +17,14 @@ const CATEGORY_ICONS = {
   Compliance: <Shield size={14} />,
   Payables: <DollarSign size={14} />,
   'Financial Health': <TrendingDown size={14} />,
+  Notices: <AlertTriangle size={14} />,
+  'Upcoming Invoices': <FileText size={14} />,
+  'Overdue Invoices': <FileText size={14} />,
+  'Upcoming Compliance': <Shield size={14} />,
+  'Overdue Compliance': <Shield size={14} />,
+  'Upcoming Payables': <DollarSign size={14} />,
+  'Overdue Payables': <DollarSign size={14} />,
+  'AI CFO Insight': <BrainCircuit size={14} />,
 };
 
 const EmbeddedHeader = ({ onSearch }) => {
