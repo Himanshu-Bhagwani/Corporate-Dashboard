@@ -30,6 +30,22 @@ const toMonthLabel = (key) => {
   return `${MONTHS[parseInt(m, 10) - 1]} ${y}`;
 };
 
+// Indian FY runs April 1 → March 31; returns two most recently completed FYs
+const getFYRanges = () => {
+  const now = new Date();
+  const month = now.getMonth();
+  const year = now.getFullYear();
+  const fy1EndYear = month >= 3 ? year : year - 1;
+  return {
+    fy1Start: `${fy1EndYear - 1}-04-01`,
+    fy1End:   `${fy1EndYear}-03-31`,
+    fy2Start: `${fy1EndYear - 2}-04-01`,
+    fy2End:   `${fy1EndYear - 1}-03-31`,
+    fy1Label: `31 March ${fy1EndYear}`,
+    fy2Label: `31 March ${fy1EndYear - 1}`
+  };
+};
+
 // ─── PDF helpers ──────────────────────────────────────────────────────────────
 
 const M = 50;
@@ -64,7 +80,6 @@ const drawTable = (doc, { headers, rows, colWidths, startY, rowH = 26 }) => {
   const totalW = colWidths.reduce((s, w) => s + w, 0);
   let y = startY;
 
-  // Header row
   doc.rect(startX, y, totalW, rowH).fill(BLUE);
   let x = startX;
   headers.forEach((h, i) => {
@@ -164,7 +179,6 @@ const fetchPnLData = async (companyId, dateSQL, baseParams) => {
   const totalRev = revR.rows.reduce((s, r) => s + parseFloat(r.total), 0);
   const totalExp = expR.rows.reduce((s, r) => s + parseFloat(r.total), 0);
 
-  // Isolate interest & tax for accurate EBIT and gross profit
   const interestExp = expR.rows
     .filter(r => /interest|bank charge|finance|loan/i.test(r.cat))
     .reduce((s, r) => s + parseFloat(r.total), 0);
@@ -175,11 +189,9 @@ const fetchPnLData = async (companyId, dateSQL, baseParams) => {
     .filter(r => /purchase|cogs|cost of goods|raw material|direct|inventory/i.test(r.cat))
     .reduce((s, r) => s + parseFloat(r.total), 0);
 
-  // COGS: use categorised direct costs, or fall back to 60% of expenses proxy
   const cogsVal = cogsExp > 0 ? cogsExp : totalExp * 0.6;
   const net = formulas.netIncome(totalRev, totalExp);
   const gp = formulas.grossProfit(totalRev, cogsVal);
-  // EBIT = Revenue − (Total Expenses − Interest − Tax)
   const ebitVal = formulas.ebit(totalRev, totalExp, interestExp, taxExp);
   return {
     revenue: revR.rows, expenses: expR.rows, totalRev, totalExp,
@@ -188,7 +200,7 @@ const fetchPnLData = async (companyId, dateSQL, baseParams) => {
     grossProfitMargin: formulas.grossProfitMargin(gp, totalRev),
     netProfitMargin: formulas.netProfitMargin(net, totalRev),
     ebit: ebitVal,
-    operatingProfit: ebitVal,   // Operating Profit ≈ EBIT
+    operatingProfit: ebitVal,
     interestCoverage: formulas.interestCoverage(ebitVal, Math.max(1, interestExp)),
   };
 };
@@ -287,7 +299,6 @@ const fetchBalanceSheetData = async (companyId, dateSQL, baseParams) => {
     coaAssets:      coaByType.Asset.filter(a => a.amount > 0),
     coaLiabilities: coaByType.Liability.filter(a => a.amount > 0),
     coaEquity:      coaByType.Equity.filter(a => a.amount !== 0),
-    // Formula ratios
     workingCapital:  formulas.workingCapital(currentA, currentL),
     currentRatio:    formulas.currentRatio(currentA, currentL),
     quickRatio:      formulas.quickRatio(currentA, 0, currentL),
@@ -298,69 +309,187 @@ const fetchBalanceSheetData = async (companyId, dateSQL, baseParams) => {
 
 // ─── API endpoints ────────────────────────────────────────────────────────────
 
+// Returns statutory two-FY format consumed by the P&L viewer
 const getPnL = async (req, res) => {
   try {
     const companyId = getCompanyId(req);
-    const { from, to } = req.query;
-    const { sql, params } = buildDateFilter(from, to);
-    const base = [companyId, ...params];
-    const d = await fetchPnLData(companyId, sql, base);
+    const { fy1Start, fy1End, fy2Start, fy2End, fy1Label, fy2Label } = getFYRanges();
+
+    const companyRes = await pool.query(`SELECT name FROM companies WHERE id = $1`, [companyId]);
+    const companyName = companyRes.rows[0]?.name || '';
+
+    const revRes = await pool.query(`
+      SELECT
+        COALESCE(SUM(CASE WHEN date >= $2 AND date <= $3 THEN amount END), 0) as fy1,
+        COALESCE(SUM(CASE WHEN date >= $4 AND date <= $5 THEN amount END), 0) as fy2
+      FROM transactions WHERE company_id = $1 AND type = 'income'
+    `, [companyId, fy1Start, fy1End, fy2Start, fy2End]);
+
+    const allRevRes = await pool.query(
+      `SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE company_id = $1 AND type = 'income'`,
+      [companyId]
+    );
+    const allExpRes = await pool.query(
+      `SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE company_id = $1 AND type = 'expense'`,
+      [companyId]
+    );
+
+    const expRes = await pool.query(`
+      SELECT
+        COALESCE(category, 'Other') as category,
+        COALESCE(SUM(CASE WHEN date >= $2 AND date <= $3 THEN amount END), 0) as fy1,
+        COALESCE(SUM(CASE WHEN date >= $4 AND date <= $5 THEN amount END), 0) as fy2
+      FROM transactions
+      WHERE company_id = $1 AND type = 'expense'
+      GROUP BY COALESCE(category, 'Other')
+    `, [companyId, fy1Start, fy1End, fy2Start, fy2End]);
+
+    const buckets = { cogs: [0, 0], employee: [0, 0], finance: [0, 0], depreciation: [0, 0], other: [0, 0] };
+    expRes.rows.forEach(r => {
+      const cat = (r.category || '').toLowerCase();
+      const v1 = parseFloat(r.fy1 || 0);
+      const v2 = parseFloat(r.fy2 || 0);
+      let bucket;
+      if (/salary|salaries|payroll|wages|stipend|employee/.test(cat))                bucket = 'employee';
+      else if (/purchase|cogs|cost of goods|raw material|direct|inventory/.test(cat)) bucket = 'cogs';
+      else if (/interest|bank charge|finance|loan/.test(cat))                         bucket = 'finance';
+      else if (/depreciation|amortization/.test(cat))                                 bucket = 'depreciation';
+      else                                                                             bucket = 'other';
+      buckets[bucket][0] += v1;
+      buckets[bucket][1] += v2;
+    });
+
+    const revFY1 = parseFloat(revRes.rows[0]?.fy1 || 0);
+    const revFY2 = parseFloat(revRes.rows[0]?.fy2 || 0);
+
     res.json({
-      period: { from: from || null, to: to || null },
-      revenue:  { items: d.revenue.map(r => ({ category: r.cat, amount: parseFloat(r.total) })), total: d.totalRev },
-      expenses: { items: d.expenses.map(r => ({ category: r.cat, amount: parseFloat(r.total) })), total: d.totalExp },
-      netProfit: d.net,
-      netMargin: d.totalRev > 0 ? ((d.net / d.totalRev) * 100).toFixed(1) : '0.0',
-      // Formula-computed metrics (Standard Accounting Formulas Guide)
-      grossProfit: d.grossProfit,
-      grossProfitMargin: d.grossProfitMargin,
-      netProfitMargin: d.netProfitMargin,
-      ebit: d.ebit,
-      operatingProfit: d.operatingProfit,
-      interestCoverage: d.interestCoverage,
+      companyName,
+      fy1Label,
+      fy2Label,
+      revenue: {
+        fromOperations: [revFY1, revFY2],
+        otherIncome:    [0, 0]
+      },
+      expenses: {
+        cogs:             buckets.cogs,
+        employeeBenefits: buckets.employee,
+        financeCosts:     buckets.finance,
+        depreciation:     buckets.depreciation,
+        other:            buckets.other
+      },
+      income:    parseFloat(allRevRes.rows[0]?.total || 0),
+      expense:   parseFloat(allExpRes.rows[0]?.total || 0),
+      netProfit: parseFloat(allRevRes.rows[0]?.total || 0) - parseFloat(allExpRes.rows[0]?.total || 0)
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 };
 
+// Returns statutory two-FY format consumed by the Balance Sheet viewer
 const getBalanceSheet = async (req, res) => {
   try {
     const companyId = getCompanyId(req);
-    const { from, to } = req.query;
-    const { sql, params } = buildDateFilter(from, to);
-    const base = [companyId, ...params];
-    const d = await fetchBalanceSheetData(companyId, sql, base);
+    const { fy1Start, fy1End, fy2Start, fy2End, fy1Label, fy2Label } = getFYRanges();
 
-    const currentAssets = [
-      { name: 'Cash & Bank Balances', amount: d.cash },
-      { name: 'Accounts Receivable',  amount: d.receivables },
-      ...d.coaAssets
-    ];
-    const totalCurrentAssets = currentAssets.reduce((s, r) => s + r.amount, 0);
+    const companyRes = await pool.query(`SELECT name FROM companies WHERE id = $1`, [companyId]);
+    const companyName = companyRes.rows[0]?.name || '';
 
-    const currentLiabilities = [
-      { name: 'Accounts Payable', amount: d.payables },
-      ...d.coaLiabilities
-    ].filter(r => r.amount > 0);
-    const totalLiabilities = currentLiabilities.reduce((s, r) => s + r.amount, 0);
+    const profitRes = await pool.query(`
+      SELECT
+        COALESCE(SUM(CASE WHEN type = 'income' AND date >= $2 AND date <= $3 THEN amount
+                          WHEN type = 'expense' AND date >= $2 AND date <= $3 THEN -amount END), 0) as fy1_net,
+        COALESCE(SUM(CASE WHEN type = 'income' AND date >= $4 AND date <= $5 THEN amount
+                          WHEN type = 'expense' AND date >= $4 AND date <= $5 THEN -amount END), 0) as fy2_net
+      FROM transactions WHERE company_id = $1
+    `, [companyId, fy1Start, fy1End, fy2Start, fy2End]);
 
-    const equityItems = [
-      { name: 'Retained Earnings', amount: d.retainedEarnings },
-      ...d.coaEquity
-    ];
-    const totalEquity = equityItems.reduce((s, r) => s + r.amount, 0);
+    const fy1Net = parseFloat(profitRes.rows[0]?.fy1_net || 0);
+    const fy2Net = parseFloat(profitRes.rows[0]?.fy2_net || 0);
+
+    const accountsRes = await pool.query(
+      `SELECT COALESCE(SUM(opening_balance), 0) as total FROM accounts WHERE company_id = $1`,
+      [companyId]
+    );
+    const allTimeNetRes = await pool.query(`
+      SELECT COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE -amount END), 0) as net
+      FROM transactions WHERE company_id = $1
+    `, [companyId]);
+
+    const openingBal = parseFloat(accountsRes.rows[0]?.total || 0);
+    const allTimeNet = parseFloat(allTimeNetRes.rows[0]?.net || 0);
+    const cashFY1    = openingBal + allTimeNet;
+    const cashFY2    = cashFY1 - fy1Net;
+
+    const recRes = await pool.query(`
+      SELECT COALESCE(SUM(amount), 0) as total FROM invoices
+      WHERE company_id = $1 AND type = 'receivable' AND status IN ('pending', 'overdue')
+    `, [companyId]);
+    const tradeRec = parseFloat(recRes.rows[0]?.total || 0);
+
+    const payRes = await pool.query(`
+      SELECT COALESCE(SUM(amount), 0) as total FROM invoices
+      WHERE company_id = $1 AND type = 'payable' AND status IN ('pending', 'overdue')
+    `, [companyId]);
+    const tradePay = parseFloat(payRes.rows[0]?.total || 0);
+
+    const totalAssetsFY1 = cashFY1 + tradeRec;
+    const totalAssetsFY2 = cashFY2;
+    const partnersFY1    = totalAssetsFY1 - tradePay - fy1Net;
+    const partnersFY2    = totalAssetsFY2 - fy2Net;
+
+    const acctRes = await pool.query(`
+      SELECT a.id, a.name, a.type, a.opening_balance,
+        COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE -t.amount END), 0) as net
+      FROM accounts a
+      LEFT JOIN transactions t ON a.id = t.account_id AND t.company_id = $1
+      WHERE a.company_id = $1
+      GROUP BY a.id, a.name, a.type, a.opening_balance
+    `, [companyId]);
 
     res.json({
-      asOf: to || new Date().toISOString().split('T')[0],
-      assets:      { current: { items: currentAssets, total: totalCurrentAssets }, total: totalCurrentAssets },
-      liabilities: { current: { items: currentLiabilities, total: totalLiabilities }, total: totalLiabilities },
-      equity:      { items: equityItems, total: totalEquity },
-      totalLiabilitiesAndEquity: totalLiabilities + totalEquity,
-      // Formula-computed ratios (Standard Accounting Formulas Guide)
-      workingCapital:  d.workingCapital,
-      currentRatio:    d.currentRatio,
-      quickRatio:      d.quickRatio,
-      debtRatio:       d.debtRatio,
-      debtToEquity:    d.debtToEquity,
+      companyName,
+      fy1Label,
+      fy2Label,
+      equity: {
+        partnersContribution:   [Math.max(0, partnersFY1), Math.max(0, partnersFY2)],
+        partnersCurrentAccount: [0, 0],
+        reservesAndSurplus:     [fy1Net, fy2Net]
+      },
+      nonCurrentLiabilities: {
+        longTermBorrowings:       [0, 0],
+        deferredTaxLiabilities:   [0, 0],
+        otherLongTermLiabilities: [0, 0],
+        longTermProvisions:       [0, 0]
+      },
+      currentLiabilities: {
+        shortTermBorrowings:     [0, 0],
+        tradePayables:           [tradePay, 0],
+        otherCurrentLiabilities: [0, 0],
+        shortTermProvisions:     [0, 0]
+      },
+      nonCurrentAssets: {
+        ppe:                   [0, 0],
+        intangibleAssets:      [0, 0],
+        capitalWIP:            [0, 0],
+        intangibleUnderDev:    [0, 0],
+        nonCurrentInvestments: [0, 0],
+        deferredTaxAssets:     [0, 0],
+        longTermLoans:         [0, 0],
+        otherNonCurrent:       [0, 0]
+      },
+      currentAssets: {
+        currentInvestments: [0, 0],
+        inventories:        [0, 0],
+        tradeReceivables:   [tradeRec, 0],
+        cashAndBank:        [cashFY1, cashFY2],
+        shortTermLoans:     [0, 0],
+        otherCurrent:       [0, 0]
+      },
+      assets: acctRes.rows.map(r => ({
+        name: r.name,
+        balance: parseFloat(r.opening_balance) + parseFloat(r.net)
+      })),
+      liabilities:   [],
+      equity_legacy: []
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 };
@@ -371,8 +500,12 @@ const getCashFlow = async (req, res) => {
     const { from, to } = req.query;
     const { sql, params } = buildDateFilter(from, to);
     const base = [companyId, ...params];
-    const months = await fetchCashFlowData(companyId, sql, base);
+    const [months, companyRes] = await Promise.all([
+      fetchCashFlowData(companyId, sql, base),
+      pool.query(`SELECT name FROM companies WHERE id = $1`, [companyId])
+    ]);
     res.json({
+      companyName: companyRes.rows[0]?.name || '',
       period: { from: from || null, to: to || null },
       months,
       totals: {
@@ -389,8 +522,12 @@ const getTax = async (req, res) => {
     const companyId = getCompanyId(req);
     const { from, to } = req.query;
     const { sql, params } = buildDateFilter(from, to);
-    const d = await fetchTaxData(companyId, sql, [companyId, ...params]);
+    const [d, companyRes] = await Promise.all([
+      fetchTaxData(companyId, sql, [companyId, ...params]),
+      pool.query(`SELECT name FROM companies WHERE id = $1`, [companyId])
+    ]);
     res.json({
+      companyName: companyRes.rows[0]?.name || '',
       period: { from: from || null, to: to || null },
       totalRevenue: d.income, totalExpenses: d.expense, netProfit: d.net,
       incomeTax: { baseTax: d.baseTax, rate: '25%', surcharge: d.surcharge, surchargeRate: '7%', cess: d.cess, cessRate: '4%', total: d.totalTax },
@@ -435,15 +572,14 @@ const exportReport = async (req, res) => {
     const periodLabel = from && to ? `${from} to ${to}` : from ? `From ${from}` : to ? `Up to ${to}` : 'All Time';
 
     const TITLE_MAP = {
-      pnl:            'Profit & Loss Statement',
-      'balance-sheet':'Balance Sheet',
-      'cash-flow':    'Cash Flow Statement',
-      tax:            'Tax Summary',
-      gst:            'GST Report'
+      pnl:             'Profit & Loss Statement',
+      'balance-sheet': 'Balance Sheet',
+      'cash-flow':     'Cash Flow Statement',
+      tax:             'Tax Summary',
+      gst:             'GST Report'
     };
     const reportTitle = TITLE_MAP[reportType] || reportType.toUpperCase();
 
-    // AI narrative
     let aiNarrative = null;
     if (req.query.ai === 'true') {
       const sysPrompt = `You are a Chartered Accountant writing a board-ready Executive Summary. Write exactly 2 concise paragraphs in plain text. No Markdown, no headers. Use Rs. for rupees. Sound like a seasoned financial advisor.`;
@@ -502,7 +638,7 @@ const exportReport = async (req, res) => {
         drawTable(doc, {
           headers: ['Summary', 'Value'],
           rows: [
-            { _hl: true,  cells: ['NET PROFIT / (LOSS)', `₹${fmtINR(d.net)}`] },
+            { _hl: true, cells: ['NET PROFIT / (LOSS)', `₹${fmtINR(d.net)}`] },
             { cells: ['Net Profit Margin', margin] }
           ],
           colWidths: [370, 140], startY: y
@@ -587,8 +723,8 @@ const exportReport = async (req, res) => {
         y = drawTable(doc, {
           headers: ['Component', 'Rate', 'Amount (₹)'],
           rows: [
-            { cells: ['Output GST (Revenue)',           '18%', `₹${fmtINR(d.outputGST)}`] },
-            { cells: ['Input GST Credit (Expenses)',    '18%', `₹${fmtINR(d.inputGST)}`] },
+            { cells: ['Output GST (Revenue)',        '18%', `₹${fmtINR(d.outputGST)}`] },
+            { cells: ['Input GST Credit (Expenses)', '18%', `₹${fmtINR(d.inputGST)}`] },
             { _sep: true },
             { _total: true, cells: ['Net GST Payable', '', `₹${fmtINR(d.netGST)}`] }
           ],
@@ -610,10 +746,10 @@ const exportReport = async (req, res) => {
         y = drawTable(doc, {
           headers: ['Component', 'CGST (₹)', 'SGST (₹)', 'Total (₹)'],
           rows: [
-            { cells: ['Output GST (Sales)',              `₹${fmtINR(totOut/2)}`, `₹${fmtINR(totOut/2)}`, `₹${fmtINR(totOut)}`] },
-            { cells: ['Input GST Credit (Purchases)',    `₹${fmtINR(totIn/2)}`,  `₹${fmtINR(totIn/2)}`,  `₹${fmtINR(totIn)}`] },
+            { cells: ['Output GST (Sales)',           `₹${fmtINR(totOut/2)}`, `₹${fmtINR(totOut/2)}`, `₹${fmtINR(totOut)}`] },
+            { cells: ['Input GST Credit (Purchases)', `₹${fmtINR(totIn/2)}`,  `₹${fmtINR(totIn/2)}`,  `₹${fmtINR(totIn)}`] },
             { _sep: true },
-            { _total: true, cells: ['Net GST Payable',  `₹${fmtINR(totNet/2)}`, `₹${fmtINR(totNet/2)}`, `₹${fmtINR(totNet)}`] }
+            { _total: true, cells: ['Net GST Payable', `₹${fmtINR(totNet/2)}`, `₹${fmtINR(totNet/2)}`, `₹${fmtINR(totNet)}`] }
           ],
           colWidths: [180, 110, 110, 110], startY: y
         });
@@ -647,9 +783,9 @@ const exportReport = async (req, res) => {
       if (aiNarrative) {
         const ai = wb.addWorksheet('AI Summary');
         xlSheetHeader(ai, 'AI Executive Narrative', reportTitle);
-        const row = ai.addRow([aiNarrative]);
-        row.getCell(1).alignment = { wrapText: true };
-        row.height = 120;
+        const aiRow = ai.addRow([aiNarrative]);
+        aiRow.getCell(1).alignment = { wrapText: true };
+        aiRow.height = 120;
         ai.getColumn(1).width = 120;
       }
 

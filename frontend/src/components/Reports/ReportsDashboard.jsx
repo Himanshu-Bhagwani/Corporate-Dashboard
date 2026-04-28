@@ -136,7 +136,7 @@ const ReportsDashboard = () => {
               <span>Generating {activeReport.title}…</span>
             </div>
           ) : (
-            <ReportViewer reportKey={activeReport.key} data={reportData} />
+            <ReportViewer reportKey={activeReport.key} title={activeReport.title} data={reportData} />
           )}
         </>
       )}
