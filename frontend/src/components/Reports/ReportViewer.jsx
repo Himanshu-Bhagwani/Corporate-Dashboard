@@ -3,6 +3,14 @@ import React from 'react';
 const fmt = (n) =>
   n == null ? '-' : Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+const fmtShort = (n) => {
+  if (n == null) return '-';
+  const abs = Math.abs(n);
+  if (abs >= 1e7) return `₹${(n / 1e7).toFixed(2)} Cr`;
+  if (abs >= 1e5) return `₹${(n / 1e5).toFixed(2)} L`;
+  return `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+};
+
 const tableStyle = {
   width: '100%',
   borderCollapse: 'collapse',
@@ -14,7 +22,7 @@ const tableStyle = {
 const thStyle = {
   border: '1px solid #94a3b8',
   padding: '6px 10px',
-  background: '#f8fafc',
+  background: '#f1f5f9',
   fontWeight: 'bold',
   textAlign: 'center',
   whiteSpace: 'nowrap',
@@ -63,120 +71,107 @@ const totalRow = (label, fy1, fy2) => (
   </tr>
 );
 
-const blankRow = () => (
-  <tr key={Math.random()}>
+const blankRow = (key) => (
+  <tr key={key || Math.random()}>
     <td colSpan={4} style={{ ...td(), padding: '3px' }}></td>
   </tr>
 );
 
 // ─── Balance Sheet ──────────────────────────────────────────────────────────
-
-const BalanceSheetTable = ({ data, fy1Label, fy2Label, companyName }) => {
-  const eq = data.equity || {};
+const BalanceSheetTable = ({ data, fy1Label, fy2Label }) => {
+  const eq  = data.equity || {};
   const ncl = data.nonCurrentLiabilities || {};
-  const cl = data.currentLiabilities || {};
+  const cl  = data.currentLiabilities || {};
   const nca = data.nonCurrentAssets || {};
-  const ca = data.currentAssets || {};
+  const ca  = data.currentAssets || {};
 
   const sum = (obj) =>
     Object.values(obj).reduce((acc, arr) => [acc[0] + (arr[0] || 0), acc[1] + (arr[1] || 0)], [0, 0]);
 
-  const eqTot = sum(eq);
-  const nclTot = sum(ncl);
-  const clTot = sum(cl);
+  const eqTot    = sum(eq);
+  const nclTot   = sum(ncl);
+  const clTot    = sum(cl);
   const liabTotal = [eqTot[0] + nclTot[0] + clTot[0], eqTot[1] + nclTot[1] + clTot[1]];
 
-  const ncaTot = sum(nca);
-  const caTot = sum(ca);
+  const ncaTot   = sum(nca);
+  const caTot    = sum(ca);
   const assetTotal = [ncaTot[0] + caTot[0], ncaTot[1] + caTot[1]];
 
   return (
-    <div>
-      <p style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '16px', marginBottom: 2 }}>{companyName}</p>
-      <p style={{ textAlign: 'center', fontSize: '14px', marginBottom: 2 }}>Balance Sheet as at</p>
-      <p style={{ textAlign: 'right', fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>(Amount in Rs.)</p>
+    <table style={tableStyle}>
+      <thead>
+        <tr>
+          <th style={{ ...thStyle, width: '45%', textAlign: 'left' }}>Particulars</th>
+          <th style={{ ...thStyle, width: '8%' }}>Note</th>
+          <th style={thStyle}>{fy1Label}</th>
+          <th style={thStyle}>{fy2Label}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {sectionHead('I.  EQUITY AND LIABILITIES')}
 
-      <table style={tableStyle}>
-        <thead>
-          <tr>
-            <th style={{ ...thStyle, width: '45%', textAlign: 'left' }}>Particulars</th>
-            <th style={{ ...thStyle, width: '8%' }}>Note</th>
-            <th style={thStyle}>{fy1Label}</th>
-            <th style={thStyle}>{fy2Label}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sectionHead('I.  EQUITY AND LIABILITIES')}
+        {subHead('1. Partners\' Funds')}
+        {row('(a) Partners\' Capital Account', '3a', eq.partnersContribution?.[0], eq.partnersContribution?.[1])}
+        {row('(b) Partners\' Contribution', '3b', null, null)}
+        {row('(c) Partners\' Current Account', '3c', eq.partnersCurrentAccount?.[0], eq.partnersCurrentAccount?.[1])}
+        {row('(d) Reserves and Surplus', '4', eq.reservesAndSurplus?.[0], eq.reservesAndSurplus?.[1])}
 
-          {subHead('1. Partners\' Funds')}
-          {row('(a) Partners\' Capital Account', '3a', eq.partnersContribution?.[0], eq.partnersContribution?.[1])}
-          {row('(b) Partners\' Contribution', '3b', null, null)}
-          {row('(c) Partners\' Current Account', '3c', eq.partnersCurrentAccount?.[0], eq.partnersCurrentAccount?.[1])}
-          {row('(d) Reserves and Surplus', '4', eq.reservesAndSurplus?.[0], eq.reservesAndSurplus?.[1])}
+        {subHead('2. Non-current liabilities')}
+        {row('(a) Long-term borrowings', '5', ncl.longTermBorrowings?.[0], ncl.longTermBorrowings?.[1])}
+        {row('(b) Deferred tax liabilities (Net)', '6', ncl.deferredTaxLiabilities?.[0], ncl.deferredTaxLiabilities?.[1])}
+        {row('(c) Other long-term liabilities', '7', ncl.otherLongTermLiabilities?.[0], ncl.otherLongTermLiabilities?.[1])}
+        {row('(d) Long-term provisions', '8', ncl.longTermProvisions?.[0], ncl.longTermProvisions?.[1])}
 
-          {subHead('2. Non-current liabilities')}
-          {row('(a) Long-term borrowings', '5', ncl.longTermBorrowings?.[0], ncl.longTermBorrowings?.[1])}
-          {row('(b) Deferred tax liabilities (Net)', '6', ncl.deferredTaxLiabilities?.[0], ncl.deferredTaxLiabilities?.[1])}
-          {row('(c) Other long-term liabilities', '7', ncl.otherLongTermLiabilities?.[0], ncl.otherLongTermLiabilities?.[1])}
-          {row('(d) Long-term provisions', '8', ncl.longTermProvisions?.[0], ncl.longTermProvisions?.[1])}
+        {subHead('3. Current liabilities')}
+        {row('(a) Short-term borrowings', '5', cl.shortTermBorrowings?.[0], cl.shortTermBorrowings?.[1])}
+        {row('(b) Trade payables', '10', cl.tradePayables?.[0], cl.tradePayables?.[1])}
+        {row('(c) Other current liabilities', '9', cl.otherCurrentLiabilities?.[0], cl.otherCurrentLiabilities?.[1])}
+        {row('(d) Short-term provisions', '8', cl.shortTermProvisions?.[0], cl.shortTermProvisions?.[1])}
 
-          {subHead('3. Current liabilities')}
-          {row('(a) Short-term borrowings', '5', cl.shortTermBorrowings?.[0], cl.shortTermBorrowings?.[1])}
-          {row('(b) Trade payables', '10', cl.tradePayables?.[0], cl.tradePayables?.[1])}
-          {row('(c) Other current liabilities', '9', cl.otherCurrentLiabilities?.[0], cl.otherCurrentLiabilities?.[1])}
-          {row('(d) Short-term provisions', '8', cl.shortTermProvisions?.[0], cl.shortTermProvisions?.[1])}
+        {totalRow('Total', liabTotal[0], liabTotal[1])}
+        {blankRow('bs-sep')}
 
-          {totalRow('Total', liabTotal[0], liabTotal[1])}
-          {blankRow()}
+        {sectionHead('II.  ASSETS')}
 
-          {sectionHead('II.  ASSETS')}
+        {subHead('1. Non-current assets')}
+        {row('(a) Property, Plant and Equipment and Intangible assets', '', null, null, 20)}
+        {row('(i)   Property, Plant and Equipment', '11', nca.ppe?.[0], nca.ppe?.[1], 40)}
+        {row('(ii)  Intangible assets', '11', nca.intangibleAssets?.[0], nca.intangibleAssets?.[1], 40)}
+        {row('(iii) Capital work in progress', '11', nca.capitalWIP?.[0], nca.capitalWIP?.[1], 40)}
+        {row('(iv)  Intangible assets under development', '11', nca.intangibleUnderDev?.[0], nca.intangibleUnderDev?.[1], 40)}
+        {row('(b) Non-current investments', '12', nca.nonCurrentInvestments?.[0], nca.nonCurrentInvestments?.[1])}
+        {row('(c) Deferred tax assets', '12', nca.deferredTaxAssets?.[0], nca.deferredTaxAssets?.[1])}
+        {row('(d) Long Term Loans and Advances', '13', nca.longTermLoans?.[0], nca.longTermLoans?.[1])}
+        {row('(e) Other non-current assets', '14', nca.otherNonCurrent?.[0], nca.otherNonCurrent?.[1])}
 
-          {subHead('1. Non-current assets')}
-          {row('(a) Property, Plant and Equipment and Intangible assets', '', null, null, 20)}
-          {row('(i)   Property, Plant and Equipment', '11', nca.ppe?.[0], nca.ppe?.[1], 40)}
-          {row('(ii)  Intangible assets', '11', nca.intangibleAssets?.[0], nca.intangibleAssets?.[1], 40)}
-          {row('(iii) Capital work in progress', '11', nca.capitalWIP?.[0], nca.capitalWIP?.[1], 40)}
-          {row('(iv)  Intangible assets under development', '11', nca.intangibleUnderDev?.[0], nca.intangibleUnderDev?.[1], 40)}
-          {row('(b) Non-current investments', '12', nca.nonCurrentInvestments?.[0], nca.nonCurrentInvestments?.[1])}
-          {row('(c) Deferred tax assets', '12', nca.deferredTaxAssets?.[0], nca.deferredTaxAssets?.[1])}
-          {row('(d) Long Term Loans and Advances', '13', nca.longTermLoans?.[0], nca.longTermLoans?.[1])}
-          {row('(e) Other non-current assets', '14', nca.otherNonCurrent?.[0], nca.otherNonCurrent?.[1])}
+        {subHead('2. Current assets')}
+        {row('(a) Current investments', '12', ca.currentInvestments?.[0], ca.currentInvestments?.[1])}
+        {row('(b) Inventories', '15', ca.inventories?.[0], ca.inventories?.[1])}
+        {row('(c) Trade receivables', '16', ca.tradeReceivables?.[0], ca.tradeReceivables?.[1])}
+        {row('(d) Cash and bank balances', '13', ca.cashAndBank?.[0], ca.cashAndBank?.[1])}
+        {row('(e) Short Term Loans and Advances', '13', ca.shortTermLoans?.[0], ca.shortTermLoans?.[1])}
+        {row('(f) Other current assets', '18', ca.otherCurrent?.[0], ca.otherCurrent?.[1])}
 
-          {subHead('2. Current assets')}
-          {row('(a) Current investments', '12', ca.currentInvestments?.[0], ca.currentInvestments?.[1])}
-          {row('(b) Inventories', '15', ca.inventories?.[0], ca.inventories?.[1])}
-          {row('(c) Trade receivables', '16', ca.tradeReceivables?.[0], ca.tradeReceivables?.[1])}
-          {row('(d) Cash and bank balances', '13', ca.cashAndBank?.[0], ca.cashAndBank?.[1])}
-          {row('(e) Short Term Loans and Advances', '13', ca.shortTermLoans?.[0], ca.shortTermLoans?.[1])}
-          {row('(f) Other current assets', '18', ca.otherCurrent?.[0], ca.otherCurrent?.[1])}
+        {totalRow('Total', assetTotal[0], assetTotal[1])}
+        {blankRow('bs-sep2')}
 
-          {totalRow('Total', assetTotal[0], assetTotal[1])}
-          {blankRow()}
-
-          <tr>
-            <td colSpan={4} style={{ ...td(), fontStyle: 'italic', color: '#64748b', paddingLeft: 10 }}>
-              Brief about the Entity — Note 1
-            </td>
-          </tr>
-          <tr>
-            <td colSpan={4} style={{ ...td(), fontStyle: 'italic', color: '#64748b', paddingLeft: 10 }}>
-              Summary of significant accounting policies — Note 2
-            </td>
-          </tr>
-          <tr>
-            <td colSpan={4} style={{ ...td(), fontStyle: 'italic', color: '#64748b', paddingLeft: 10 }}>
-              The accompanying notes are an integral part of the financial statements
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+        <tr>
+          <td colSpan={4} style={{ ...td(), fontStyle: 'italic', color: '#64748b', paddingLeft: 10 }}>
+            Brief about the Entity — Note 1 &nbsp;|&nbsp; Summary of significant accounting policies — Note 2
+          </td>
+        </tr>
+        <tr>
+          <td colSpan={4} style={{ ...td(), fontStyle: 'italic', color: '#64748b', paddingLeft: 10 }}>
+            The accompanying notes are an integral part of the financial statements
+          </td>
+        </tr>
+      </tbody>
+    </table>
   );
 };
 
 // ─── Profit & Loss ──────────────────────────────────────────────────────────
-
-const PnLTable = ({ data, fy1Label, fy2Label, companyName }) => {
+const PnLTable = ({ data, fy1Label, fy2Label }) => {
   const rev = data.revenue || {};
   const exp = data.expenses || {};
 
@@ -190,136 +185,111 @@ const PnLTable = ({ data, fy1Label, fy2Label, companyName }) => {
   const profitFY2 = revFY2 - totalExpFY2;
 
   return (
-    <div>
-      <p style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '16px', marginBottom: 2 }}>{companyName}</p>
-      <p style={{ textAlign: 'center', fontSize: '14px', marginBottom: 2 }}>Statement of Profit and Loss for the year ended</p>
-      <p style={{ textAlign: 'right', fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>(Amount in Rs.)</p>
+    <table style={tableStyle}>
+      <thead>
+        <tr>
+          <th style={{ ...thStyle, width: '45%', textAlign: 'left' }}>Particulars</th>
+          <th style={{ ...thStyle, width: '8%' }}>Note</th>
+          <th style={thStyle}>{fy1Label}</th>
+          <th style={thStyle}>{fy2Label}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {row('I.   Revenue from operations', '19', rev.fromOperations?.[0], rev.fromOperations?.[1], 10)}
+        {row('II.  Other Income', '20', rev.otherIncome?.[0], rev.otherIncome?.[1], 10)}
+        {totalRow('III. Total Revenue (I+II)', revFY1, revFY2)}
+        {blankRow('pnl-b1')}
 
-      <table style={tableStyle}>
-        <thead>
-          <tr>
-            <th style={{ ...thStyle, width: '45%', textAlign: 'left' }}>Particulars</th>
-            <th style={{ ...thStyle, width: '8%' }}>Note</th>
-            <th style={thStyle}>{fy1Label}</th>
-            <th style={thStyle}>{fy2Label}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {row('I.   Revenue from operations', '19', rev.fromOperations?.[0], rev.fromOperations?.[1], 10)}
-          {row('II.  Other Income', '20', rev.otherIncome?.[0], rev.otherIncome?.[1], 10)}
-          {totalRow('III. Total Revenue (I+II)', revFY1, revFY2)}
-          {blankRow()}
+        {sectionHead('IV.  Expenses:')}
+        {row('(a) Cost of goods sold', '21', exp.cogs?.[0], exp.cogs?.[1])}
+        {row('(b) Employee benefits expense', '22', exp.employeeBenefits?.[0], exp.employeeBenefits?.[1])}
+        {row('(c) Finance costs', '23', exp.financeCosts?.[0], exp.financeCosts?.[1])}
+        {row('(d) Depreciation and amortization expense', '24', exp.depreciation?.[0], exp.depreciation?.[1])}
+        {row('(e) Other expenses', '25', exp.other?.[0], exp.other?.[1])}
+        {totalRow('Total expenses', totalExpFY1, totalExpFY2)}
+        {blankRow('pnl-b2')}
 
-          {sectionHead('IV.  Expenses:')}
-          {row('(a) Cost of goods sold', '21', exp.cogs?.[0], exp.cogs?.[1])}
-          {row('(b) Employee benefits expense', '22', exp.employeeBenefits?.[0], exp.employeeBenefits?.[1])}
-          {row('(c) Finance costs', '23', exp.financeCosts?.[0], exp.financeCosts?.[1])}
-          {row('(d) Depreciation and amortization expense', '24', exp.depreciation?.[0], exp.depreciation?.[1])}
-          {row('(e) Other expenses', '25', exp.other?.[0], exp.other?.[1])}
-          {totalRow('Total expenses', totalExpFY1, totalExpFY2)}
-          {blankRow()}
-
-          {row('V.   Profit/(loss) before exceptional and extraordinary items, partners\' remuneration and tax (III-IV)', '', profitFY1, profitFY2, 10, true)}
-          {blankRow()}
-
-          {row('VI.  Exceptional items (specify nature & provide note—delete if none)', '', null, null, 10)}
-          {blankRow()}
-
-          {row('VII. Profit/(loss) before extraordinary items and tax (V-VI)', '', profitFY1, profitFY2, 10, true)}
-          {blankRow()}
-
-          {row('VIII. Extraordinary items (specify nature & provide note—delete if none)', '', null, null, 10)}
-          {blankRow()}
-
-          {row('IX.  Partners\' Remuneration', '30', null, null, 10)}
-          {blankRow()}
-
-          {row('X.   Profit before Partners\' Remuneration and tax (VII-VIII-IX)', '', profitFY1, profitFY2, 10, true)}
-          {subHead('     Tax expense:')}
-          {row('(a) Current tax', '', null, null)}
-          {row('(b) Excess/ Short provision of tax relating to earlier years', '', null, null)}
-          {row('(c) Deferred tax charge/ (benefit)', '', null, null)}
-          {blankRow()}
-
-          {row('XIII. Profit/(loss) for the period from continuing operations', '', profitFY1, profitFY2, 10, true)}
-          {row('XIV.  Profit/(loss) from discontinuing operations', '', null, null, 10)}
-          {row('XV.   Tax expense of discontinuing operations', '', null, null, 10)}
-          {row('XVI.  Profit/(loss) from discontinuing operations (after tax) (XIV-XV)', '', null, null, 10)}
-          {blankRow()}
-
-          {totalRow('XVII. Profit/(loss) for the year (XIII+XVI)', profitFY1, profitFY2)}
-          {blankRow()}
-
-          <tr>
-            <td colSpan={4} style={{ ...td(), fontStyle: 'italic', color: '#64748b', paddingLeft: 10 }}>
-              The accompanying notes are an integral part of the financial statements
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+        {row('V.   Profit/(loss) before exceptional and extraordinary items, partners\' remuneration and tax (III-IV)', '', profitFY1, profitFY2, 10, true)}
+        {blankRow('pnl-b3')}
+        {row('VI.  Exceptional items (specify nature & provide note — delete if none)', '', null, null, 10)}
+        {blankRow('pnl-b4')}
+        {row('VII. Profit/(loss) before extraordinary items and tax (V-VI)', '', profitFY1, profitFY2, 10, true)}
+        {blankRow('pnl-b5')}
+        {row('VIII. Extraordinary items (specify nature & provide note — delete if none)', '', null, null, 10)}
+        {blankRow('pnl-b6')}
+        {row('IX.  Partners\' Remuneration', '30', null, null, 10)}
+        {blankRow('pnl-b7')}
+        {row('X.   Profit before Partners\' Remuneration and tax (VII-VIII-IX)', '', profitFY1, profitFY2, 10, true)}
+        {subHead('     Tax expense:')}
+        {row('(a) Current tax', '', null, null)}
+        {row('(b) Excess/ Short provision of tax relating to earlier years', '', null, null)}
+        {row('(c) Deferred tax charge/ (benefit)', '', null, null)}
+        {blankRow('pnl-b8')}
+        {row('XIII. Profit/(loss) for the period from continuing operations', '', profitFY1, profitFY2, 10, true)}
+        {row('XIV.  Profit/(loss) from discontinuing operations', '', null, null, 10)}
+        {row('XV.   Tax expense of discontinuing operations', '', null, null, 10)}
+        {row('XVI.  Profit/(loss) from discontinuing operations (after tax) (XIV-XV)', '', null, null, 10)}
+        {blankRow('pnl-b9')}
+        {totalRow('XVII. Profit/(loss) for the year (XIII+XVI)', profitFY1, profitFY2)}
+        {blankRow('pnl-b10')}
+        <tr>
+          <td colSpan={4} style={{ ...td(), fontStyle: 'italic', color: '#64748b', paddingLeft: 10 }}>
+            The accompanying notes are an integral part of the financial statements
+          </td>
+        </tr>
+      </tbody>
+    </table>
   );
 };
 
 // ─── Cash Flow ──────────────────────────────────────────────────────────────
-
-const CashFlowTable = ({ data, companyName }) => {
+const CashFlowTable = ({ data }) => {
   const months = data.months || [];
   const totals = data.totals || {};
   return (
-    <div>
-      <p style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '16px', marginBottom: 2 }}>{companyName}</p>
-      <p style={{ textAlign: 'center', fontSize: '14px', marginBottom: 2 }}>Cash Flow Statement</p>
-      <p style={{ textAlign: 'right', fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>(Amount in Rs.)</p>
-      <table style={tableStyle}>
-        <thead>
-          <tr>
-            <th style={{ ...thStyle, textAlign: 'left', width: '22%' }}>Month</th>
-            <th style={thStyle}>Inflow</th>
-            <th style={thStyle}>Outflow</th>
-            <th style={thStyle}>Net</th>
-            <th style={thStyle}>Running Balance</th>
+    <table style={tableStyle}>
+      <thead>
+        <tr>
+          <th style={{ ...thStyle, textAlign: 'left', width: '22%' }}>Month</th>
+          <th style={thStyle}>Inflow</th>
+          <th style={thStyle}>Outflow</th>
+          <th style={thStyle}>Net</th>
+          <th style={thStyle}>Running Balance</th>
+        </tr>
+      </thead>
+      <tbody>
+        {months.map((m) => (
+          <tr key={m.label}>
+            <td style={td()}>{m.label}</td>
+            <td style={numTd({ color: '#059669' })}>{fmt(m.inflow)}</td>
+            <td style={numTd({ color: '#dc2626' })}>{fmt(m.outflow)}</td>
+            <td style={numTd({ color: m.net >= 0 ? '#059669' : '#dc2626', fontWeight: '600' })}>{fmt(m.net)}</td>
+            <td style={numTd()}>{fmt(m.running)}</td>
           </tr>
-        </thead>
-        <tbody>
-          {months.map((m) => (
-            <tr key={m.label}>
-              <td style={td()}>{m.label}</td>
-              <td style={numTd({ color: '#059669' })}>{fmt(m.inflow)}</td>
-              <td style={numTd({ color: '#dc2626' })}>{fmt(m.outflow)}</td>
-              <td style={numTd({ color: m.net >= 0 ? '#059669' : '#dc2626', fontWeight: '600' })}>{fmt(m.net)}</td>
-              <td style={numTd()}>{fmt(m.running)}</td>
-            </tr>
-          ))}
-          {months.length === 0 && (
-            <tr><td colSpan={5} style={{ ...td(), textAlign: 'center', color: '#94a3b8' }}>No data for selected period</td></tr>
-          )}
-        </tbody>
-        <tfoot>
-          <tr style={{ borderTop: '2px solid #475569', background: '#f1f5f9' }}>
-            <td style={{ ...td(), fontWeight: 'bold' }}>Total</td>
-            <td style={numTd({ fontWeight: 'bold', color: '#059669' })}>{fmt(totals.inflow)}</td>
-            <td style={numTd({ fontWeight: 'bold', color: '#dc2626' })}>{fmt(totals.outflow)}</td>
-            <td style={numTd({ fontWeight: 'bold', color: (totals.net || 0) >= 0 ? '#059669' : '#dc2626' })}>{fmt(totals.net)}</td>
-            <td style={numTd()}></td>
-          </tr>
-        </tfoot>
-      </table>
-    </div>
+        ))}
+        {months.length === 0 && (
+          <tr><td colSpan={5} style={{ ...td(), textAlign: 'center', color: '#94a3b8' }}>No data for selected period</td></tr>
+        )}
+      </tbody>
+      <tfoot>
+        <tr style={{ borderTop: '2px solid #475569', background: '#f1f5f9' }}>
+          <td style={{ ...td(), fontWeight: 'bold' }}>Total</td>
+          <td style={numTd({ fontWeight: 'bold', color: '#059669' })}>{fmt(totals.inflow)}</td>
+          <td style={numTd({ fontWeight: 'bold', color: '#dc2626' })}>{fmt(totals.outflow)}</td>
+          <td style={numTd({ fontWeight: 'bold', color: (totals.net || 0) >= 0 ? '#059669' : '#dc2626' })}>{fmt(totals.net)}</td>
+          <td style={numTd()}></td>
+        </tr>
+      </tfoot>
+    </table>
   );
 };
 
 // ─── Tax Summary ─────────────────────────────────────────────────────────────
-
-const TaxTable = ({ data, companyName }) => {
-  const it = data.incomeTax || {};
+const TaxTable = ({ data }) => {
+  const it  = data.incomeTax || {};
   const gst = data.gst || {};
   return (
     <div>
-      <p style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '16px', marginBottom: 2 }}>{companyName}</p>
-      <p style={{ textAlign: 'center', fontSize: '14px', marginBottom: 2 }}>Tax Summary</p>
-      <p style={{ textAlign: 'right', fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>(Amount in Rs.)</p>
-
       <table style={{ ...tableStyle, marginBottom: '24px' }}>
         <thead>
           <tr>
@@ -382,16 +352,11 @@ const TaxTable = ({ data, companyName }) => {
 };
 
 // ─── GST Report ───────────────────────────────────────────────────────────────
-
-const GSTTable = ({ data, companyName }) => {
-  const s = data.summary || {};
+const GSTTable = ({ data }) => {
+  const s      = data.summary || {};
   const months = data.months || [];
   return (
     <div>
-      <p style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '16px', marginBottom: 2 }}>{companyName}</p>
-      <p style={{ textAlign: 'center', fontSize: '14px', marginBottom: 2 }}>GST Report (GSTR-3B) — Rate: {data.gstRate}</p>
-      <p style={{ textAlign: 'right', fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>(Amount in Rs.)</p>
-
       <table style={{ ...tableStyle, marginBottom: '24px' }}>
         <thead>
           <tr>
@@ -459,8 +424,16 @@ const GSTTable = ({ data, companyName }) => {
   );
 };
 
-// ─── Main component ─────────────────────────────────────────────────────────
+// ─── KPI Card helper ─────────────────────────────────────────────────────────
+const KpiCard = ({ label, value, sub, color = 'blue' }) => (
+  <div className={`rv-kpi-card ${color}`}>
+    <div className="rv-kpi-label">{label}</div>
+    <div className="rv-kpi-value">{value}</div>
+    {sub && <div className="rv-kpi-sub">{sub}</div>}
+  </div>
+);
 
+// ─── Main component ─────────────────────────────────────────────────────────
 const ReportViewer = ({ reportKey, title, data }) => {
   if (!data) {
     return (
@@ -471,54 +444,114 @@ const ReportViewer = ({ reportKey, title, data }) => {
   }
 
   if (data.error) {
-    return (
-      <div style={{ padding: '2rem', textAlign: 'center', color: '#e53e3e' }}>
-        {data.error}
-      </div>
-    );
+    return <div className="rv-error">{data.error}</div>;
   }
 
-  const wrapper = (content) => (
-    <div className="reports-section" style={{ marginTop: '2rem' }}>
-      <h2 className="section-title-reports">{title}</h2>
-      <div style={{ background: '#fff', borderRadius: '12px', padding: '1.5rem 2rem', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', overflowX: 'auto' }}>
+  const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  const companyName = data?.companyName || '';
+  const periodLabel = data?.fy1Label
+    ? `Year ended ${data.fy1Label}`
+    : data?.period?.from || data?.period?.to
+      ? [data.period.from && `From ${data.period.from}`, data.period.to && `To ${data.period.to}`].filter(Boolean).join(' · ')
+      : 'All Time';
+
+  const wrapper = (content, kpiCards = null) => (
+    <div className="rv-doc" style={{ marginTop: '2rem' }}>
+      <div className="rv-header">
+        <div className="rv-header-left">
+          {companyName && <span className="rv-header-co">{companyName}</span>}
+          <div className="rv-header-title">{title}</div>
+          <div className="rv-header-sub">{periodLabel} &nbsp;·&nbsp; Amount in ₹</div>
+        </div>
+        <div className="rv-header-right">
+          <span className="rv-generated">Generated {today}</span>
+        </div>
+      </div>
+      <div className="rv-body" style={{ overflowX: 'auto' }}>
         {content}
       </div>
+      {kpiCards && <div className="rv-kpi-row">{kpiCards}</div>}
     </div>
   );
 
   if (reportKey === 'balance-sheet') {
+    const eq  = data.equity || {};
+    const ncl = data.nonCurrentLiabilities || {};
+    const cl  = data.currentLiabilities || {};
+    const nca = data.nonCurrentAssets || {};
+    const ca  = data.currentAssets || {};
+    const sum = (obj) =>
+      Object.values(obj).reduce((acc, arr) => [acc[0] + (arr[0] || 0), acc[1] + (arr[1] || 0)], [0, 0]);
+    const liabTot  = sum({ ...eq, ...ncl, ...cl });
+    const assetTot = sum({ ...nca, ...ca });
+    const cashFY1  = ca.cashAndBank?.[0] || 0;
+    const recvFY1  = ca.tradeReceivables?.[0] || 0;
+    const payFY1   = cl.tradePayables?.[0] || 0;
+
     return wrapper(
-      <BalanceSheetTable
-        data={data}
-        fy1Label={data.fy1Label}
-        fy2Label={data.fy2Label}
-        companyName={data.companyName}
-      />
+      <BalanceSheetTable data={data} fy1Label={data.fy1Label} fy2Label={data.fy2Label} />,
+      <>
+        <KpiCard label="Total Assets" value={fmtShort(assetTot[0])} color="blue" />
+        <KpiCard label="Cash & Bank" value={fmtShort(cashFY1)} color="green" />
+        <KpiCard label="Trade Receivables" value={fmtShort(recvFY1)} color="amber" />
+        <KpiCard label="Trade Payables" value={fmtShort(payFY1)} color="red" />
+      </>
     );
   }
 
   if (reportKey === 'pnl') {
+    const rev = data.revenue || {};
+    const exp = data.expenses || {};
+    const revFY1 = (rev.fromOperations?.[0] || 0) + (rev.otherIncome?.[0] || 0);
+    const expFY1 = Object.values(exp).reduce((s, a) => s + (a[0] || 0), 0);
+    const profitFY1 = revFY1 - expFY1;
+    const margin = revFY1 > 0 ? ((profitFY1 / revFY1) * 100).toFixed(1) : '0.0';
+
     return wrapper(
-      <PnLTable
-        data={data}
-        fy1Label={data.fy1Label}
-        fy2Label={data.fy2Label}
-        companyName={data.companyName}
-      />
+      <PnLTable data={data} fy1Label={data.fy1Label} fy2Label={data.fy2Label} />,
+      <>
+        <KpiCard label="Revenue" value={fmtShort(revFY1)} color="blue" />
+        <KpiCard label="Total Expenses" value={fmtShort(expFY1)} color="red" />
+        <KpiCard label="Net Profit" value={fmtShort(profitFY1)} color={profitFY1 >= 0 ? 'green' : 'red'} />
+        <KpiCard label="Net Margin" value={`${margin}%`} color="amber" />
+      </>
     );
   }
 
   if (reportKey === 'cash-flow') {
-    return wrapper(<CashFlowTable data={data} companyName={data.companyName} />);
+    const totals = data.totals || {};
+    return wrapper(
+      <CashFlowTable data={data} />,
+      <>
+        <KpiCard label="Total Inflow" value={fmtShort(totals.inflow)} color="green" />
+        <KpiCard label="Total Outflow" value={fmtShort(totals.outflow)} color="red" />
+        <KpiCard label="Net Cash Flow" value={fmtShort(totals.net)} color={(totals.net || 0) >= 0 ? 'green' : 'red'} />
+      </>
+    );
   }
 
   if (reportKey === 'tax') {
-    return wrapper(<TaxTable data={data} companyName={data.companyName} />);
+    return wrapper(
+      <TaxTable data={data} />,
+      <>
+        <KpiCard label="Net Profit (PBT)" value={fmtShort(data.netProfit)} color={(data.netProfit || 0) >= 0 ? 'green' : 'red'} />
+        <KpiCard label="Income Tax" value={fmtShort(data.incomeTax?.total)} color="amber" />
+        <KpiCard label="Net GST Payable" value={fmtShort(data.gst?.netPayable)} color="amber" />
+        <KpiCard label="Total Tax Liability" value={fmtShort(data.totalTaxLiability)} color="red" />
+      </>
+    );
   }
 
   if (reportKey === 'gst') {
-    return wrapper(<GSTTable data={data} companyName={data.companyName} />);
+    const s = data.summary || {};
+    return wrapper(
+      <GSTTable data={data} />,
+      <>
+        <KpiCard label="Output GST" value={fmtShort(s.outputGST)} color="blue" />
+        <KpiCard label="Input GST Credit" value={fmtShort(s.inputGST)} color="green" />
+        <KpiCard label="Net GST Payable" value={fmtShort(s.netPayable)} color={s.netPayable > 0 ? 'red' : 'green'} sub={data.gstRate} />
+      </>
+    );
   }
 
   return wrapper(
