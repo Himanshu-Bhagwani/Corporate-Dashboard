@@ -16,6 +16,16 @@ export const fetchReport = async (type, companyId, { from, to } = {}) => {
   return res.json();
 };
 
+export const fetchReportSuggestions = async (type, metrics, companyId) => {
+  const res = await fetch(`${BASE_URL}/reports/suggestions`, {
+    method: 'POST',
+    headers: getHeaders(companyId),
+    body: JSON.stringify({ type, metrics }),
+  });
+  if (!res.ok) throw new Error('Failed to fetch suggestions');
+  return res.json();
+};
+
 export const exportReport = async (type, format, companyId, includeAI = false, { from, to } = {}) => {
   const qs = new URLSearchParams({ type, format });
   if (includeAI) qs.append('ai', 'true');

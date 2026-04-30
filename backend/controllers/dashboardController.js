@@ -192,6 +192,18 @@ const getInsightsData = async (req, res) => {
     const companyId = req.headers['x-company-id'];
     if (!companyId) return res.status(400).json({ error: 'Company ID required' });
 
+    // Pre-compute revenue & expense totals (reused across AI CFO, growth, and profitLab)
+    const allTime = await pool.query(
+      `SELECT type, COALESCE(SUM(amount), 0) as total FROM transactions
+       WHERE company_id = $1 GROUP BY type`,
+      [companyId]
+    );
+    const getTotal = (rows, type) => parseFloat(rows.find(r => r.type === type)?.total || 0);
+    const totalRevenue  = getTotal(allTime.rows, 'income');
+    const totalExpenses = getTotal(allTime.rows, 'expense');
+    const totalExpense  = totalExpenses;
+    const netProfitAll  = totalRevenue - totalExpenses;
+
     // 1. AI CFO Data
     // Cost Optimization - Top expense category
     const topExpenseRes = await pool.query(`
@@ -204,30 +216,29 @@ const getInsightsData = async (req, res) => {
     `, [companyId]);
     const topExpense = topExpenseRes.rows[0];
 
-    const totalExpenseRes = await pool.query(`
-      SELECT SUM(amount) as total
-      FROM transactions
-      WHERE company_id = $1 AND type = 'expense'
-    `, [companyId]);
-    const totalExpense = parseFloat(totalExpenseRes.rows[0]?.total || 0);
-
     const costOptimization = topExpense ? {
       category: topExpense.category,
       amount: parseFloat(topExpense.total),
-      savings: parseFloat(topExpense.total) * 0.12, // 12% savings
+      savings: parseFloat(topExpense.total) * 0.12,
       percentOfTotal: (parseFloat(topExpense.total) / totalExpense) * 100
     } : null;
 
-    // Tax Optimization
+    // Tax Optimization — use explicit tax transactions; fall back to estimated liability from net profit
     const taxExpenseRes = await pool.query(`
       SELECT SUM(amount) as total
       FROM transactions
       WHERE company_id = $1 AND type = 'expense' AND category ILIKE '%tax%'
     `, [companyId]);
-    const totalTax = parseFloat(taxExpenseRes.rows[0]?.total || 0);
+    let totalTax = parseFloat(taxExpenseRes.rows[0]?.total || 0);
+    if (totalTax === 0 && netProfitAll > 0) {
+      const baseTax = netProfitAll * 0.25;
+      const sc      = baseTax * 0.07;
+      const cess    = (baseTax + sc) * 0.04;
+      totalTax = baseTax + sc + cess;
+    }
     const taxOptimization = {
       totalTax,
-      monthlyAverage: totalTax / 12 // Simplified
+      monthlyAverage: totalTax / 12
     };
 
     // Cash Flow - Avg days between income, longest gap
@@ -258,20 +269,11 @@ const getInsightsData = async (req, res) => {
     };
 
     // Growth - Idle cash (Cash in bank - liabilities)
-    // First get cash in bank
     const accountsResult = await pool.query(
       `SELECT COALESCE(SUM(opening_balance), 0) as total FROM accounts WHERE company_id = $1`,
       [companyId]
     );
-    const allTime = await pool.query(
-      `SELECT type, COALESCE(SUM(amount), 0) as total FROM transactions 
-       WHERE company_id = $1 GROUP BY type`,
-      [companyId]
-    );
-    const getTotal = (rows, type) => parseFloat(rows.find(r => r.type === type)?.total || 0);
-    const totalRevenue = getTotal(allTime.rows, 'income');
-    const totalExpenses = getTotal(allTime.rows, 'expense');
-    const netProfit = totalRevenue - totalExpenses;
+    const netProfit  = netProfitAll;
     const cashInBank = parseFloat(accountsResult.rows[0].total) + netProfit;
     
     // Get payables

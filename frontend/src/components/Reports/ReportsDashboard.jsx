@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { DollarSign, TrendingUp, PieChart, FileText, BarChart3, Download, Calendar } from 'lucide-react';
 import ExportButtons from './ExportButtons';
 import ReportViewer from './ReportViewer';
+import ReportAnalysis from './ReportAnalysis';
 import { fetchReport, exportReport } from '../../services/reportsService';
 import { useAuth } from '../../context/AuthContext';
 
@@ -15,13 +16,12 @@ const REPORTS = [
 
 const ReportsDashboard = () => {
   const { currentCompany } = useAuth();
-  const [activeReport, setActiveReport]   = useState(null);
-  const [reportData, setReportData]       = useState(null);
-  const [loading, setLoading]             = useState(false);
-  const [includeAI, setIncludeAI]         = useState(false);
-  const [isExporting, setIsExporting]     = useState(false);
-  const [dateFrom, setDateFrom]           = useState('');
-  const [dateTo, setDateTo]               = useState('');
+  const [activeReport, setActiveReport] = useState(null);
+  const [reportData,   setReportData]   = useState(null);
+  const [loading,      setLoading]      = useState(false);
+  const [isExporting,  setIsExporting]  = useState(false);
+  const [dateFrom,     setDateFrom]     = useState('');
+  const [dateTo,       setDateTo]       = useState('');
 
   const dateRange = { from: dateFrom || undefined, to: dateTo || undefined };
 
@@ -44,7 +44,7 @@ const ReportsDashboard = () => {
     if (!activeReport) return;
     setIsExporting(true);
     try {
-      await exportReport(activeReport.key, format.toLowerCase(), currentCompany.id, includeAI, dateRange);
+      await exportReport(activeReport.key, format.toLowerCase(), currentCompany.id, false, dateRange);
     } catch (err) {
       console.error('Export failed', err);
     } finally {
@@ -115,19 +115,6 @@ const ReportsDashboard = () => {
       {/* Viewer + export */}
       {activeReport && (
         <>
-          <div className="ai-toggle-row">
-            <input
-              type="checkbox"
-              id="ai-toggle"
-              checked={includeAI}
-              onChange={e => setIncludeAI(e.target.checked)}
-            />
-            <label htmlFor="ai-toggle">
-              <span>🪄</span> Include AI Executive Narrative (Beta)
-            </label>
-            <span className="ai-toggle-note">Requires local Ollama · adds ~15s</span>
-          </div>
-
           <ExportButtons onExport={handleExport} isExporting={isExporting} />
 
           {loading ? (
@@ -136,7 +123,10 @@ const ReportsDashboard = () => {
               <span>Generating {activeReport.title}…</span>
             </div>
           ) : (
-            <ReportViewer reportKey={activeReport.key} data={reportData} />
+            <>
+              <ReportViewer reportKey={activeReport.key} title={activeReport.title} data={reportData} />
+              <ReportAnalysis reportKey={activeReport.key} data={reportData} />
+            </>
           )}
         </>
       )}
