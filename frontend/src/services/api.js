@@ -362,6 +362,42 @@ export const accountingAPI = {
     return handleResponse(response);
   },
 
+  // Ledger Contacts (customer/vendor management)
+  createContact: async (contact, companyId) => {
+    const response = await fetch(`${BASE_URL}/accounting/contacts`, {
+      method: 'POST',
+      headers: getHeaders(companyId),
+      body: JSON.stringify(contact),
+    });
+    return handleResponse(response);
+  },
+
+  updateContact: async (id, contact, companyId) => {
+    const response = await fetch(`${BASE_URL}/accounting/contacts/${id}`, {
+      method: 'PUT',
+      headers: getHeaders(companyId),
+      body: JSON.stringify(contact),
+    });
+    return handleResponse(response);
+  },
+
+  deleteContact: async (id, companyId) => {
+    const response = await fetch(`${BASE_URL}/accounting/contacts/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders(companyId),
+    });
+    return handleResponse(response);
+  },
+
+  toggleImportant: async (name, contact_type, companyId) => {
+    const response = await fetch(`${BASE_URL}/accounting/contacts/toggle-important`, {
+      method: 'PATCH',
+      headers: getHeaders(companyId),
+      body: JSON.stringify({ name, contact_type }),
+    });
+    return handleResponse(response);
+  },
+
   // Chart of Accounts
   getChartOfAccounts: async (companyId) => {
     const response = await fetch(`${BASE_URL}/accounting/chart-of-accounts`, {

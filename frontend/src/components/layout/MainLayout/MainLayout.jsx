@@ -391,6 +391,45 @@ const MainLayout = () => {
     }
   };
 
+  const handleCreateContact = async (contact) => {
+    try {
+      await accountingAPI.createContact(contact, currentCompany.id);
+      fetchLedger({ search: '', filter: 'all' });
+    } catch (err) {
+      console.error('Failed to create contact:', err);
+      throw err;
+    }
+  };
+
+  const handleUpdateContact = async (id, contact) => {
+    try {
+      await accountingAPI.updateContact(id, contact, currentCompany.id);
+      fetchLedger({ search: '', filter: 'all' });
+    } catch (err) {
+      console.error('Failed to update contact:', err);
+      throw err;
+    }
+  };
+
+  const handleDeleteContact = async (id) => {
+    try {
+      await accountingAPI.deleteContact(id, currentCompany.id);
+      fetchLedger({ search: '', filter: 'all' });
+    } catch (err) {
+      console.error('Failed to delete contact:', err);
+      throw err;
+    }
+  };
+
+  const handleToggleImportant = async (name, contact_type) => {
+    try {
+      await accountingAPI.toggleImportant(name, contact_type, currentCompany.id);
+      fetchLedger({ search: '', filter: 'all' });
+    } catch (err) {
+      console.error('Failed to toggle important:', err);
+    }
+  };
+
   // --- Account Handlers ---
   const handleAddAccount = async (newAccount) => {
     try {
@@ -584,6 +623,10 @@ const MainLayout = () => {
               onCreateAccount={handleCreateCoaEntry}
               onUpdateAccount={handleUpdateCoaEntry}
               onDeleteAccount={handleDeleteCoaEntry}
+              onCreateContact={handleCreateContact}
+              onUpdateContact={handleUpdateContact}
+              onDeleteContact={handleDeleteContact}
+              onToggleImportant={handleToggleImportant}
               loading={accountingLoading}
             />
           )}

@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import EmbeddedHeader from '../../layout/EmbeddedHeader/EmbeddedHeader';
 import { documentsAPI, noticesAPI } from '../../../services/api';
 import { useAuth } from '../../../context/AuthContext';
+import { calcComplianceScore } from '../../../utils/compliance';
 import './ComplianceView.css';
 
 const TABS = ['overview', 'gst', 'incomeTax', 'roc', 'payroll', 'documents', 'notices', 'calendar'];
@@ -193,10 +194,8 @@ const ComplianceView = ({ compliance = [], invoices = [], onMarkFiled, onAddEven
   }, [invoices, incomeTaxItems]);
 
   const overviewStats = useMemo(() => {
-    const pending = processedRiskAlerts.filter(d => d.status === 'Pending').length;
-    const overdue = processedRiskAlerts.filter(d => d.status === 'Overdue').length;
-    let score = 100 - (15 * overdue) - (3 * pending);
-    if (score < 0) score = 0;
+    // Use shared formula — identical to DashboardView so both always show the same score.
+    const { score, overdue, dueSoon, pending } = calcComplianceScore(compliance);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const upcoming30 = processedRiskAlerts.filter(d => d.status === 'Pending').filter(d => {
@@ -206,8 +205,8 @@ const ComplianceView = ({ compliance = [], invoices = [], onMarkFiled, onAddEven
       const diff = Math.floor((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
       return diff >= 0 && diff <= 30;
     }).length;
-    return { score, upcoming30, pending, overdue };
-  }, [processedRiskAlerts]);
+    return { score, upcoming30, pending: pending + dueSoon, overdue };
+  }, [compliance, processedRiskAlerts]);
 
   const deadlineItems = useMemo(() => {
     const today = new Date();

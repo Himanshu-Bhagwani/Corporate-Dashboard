@@ -142,6 +142,22 @@ CREATE INDEX IF NOT EXISTS idx_user_companies_company ON user_companies(company_
 CREATE INDEX IF NOT EXISTS idx_compliance_events_company ON compliance_events(company_id);
 CREATE INDEX IF NOT EXISTS idx_chart_of_accounts_company ON chart_of_accounts(company_id);
 
+-- Ledger Contacts (manually added or flagged customers/vendors)
+CREATE TABLE IF NOT EXISTS ledger_contacts (
+  id SERIAL PRIMARY KEY,
+  company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+  name VARCHAR(255) NOT NULL,
+  contact_type VARCHAR(20) NOT NULL CHECK (contact_type IN ('customer', 'vendor')),
+  email VARCHAR(255),
+  phone VARCHAR(50),
+  is_important BOOLEAN DEFAULT false,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(company_id, name, contact_type)
+);
+CREATE INDEX IF NOT EXISTS idx_ledger_contacts_company ON ledger_contacts(company_id);
+
 -- Notification Dismissals
 CREATE TABLE IF NOT EXISTS notification_dismissals (
   id SERIAL PRIMARY KEY,

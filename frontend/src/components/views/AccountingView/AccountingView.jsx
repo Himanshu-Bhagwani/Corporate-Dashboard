@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import EmbeddedHeader from '../../layout/EmbeddedHeader/EmbeddedHeader';
-import { 
-  Search, BookOpen, Users, Truck, ChevronDown, ChevronRight, 
+import {
+  Search, BookOpen, Users, Truck, ChevronDown, ChevronRight,
   Plus, Pencil, Check, X, Trash2, TrendingUp, TrendingDown,
-  DollarSign, Building2, PieChart, ChevronsDown, ChevronsUp, Filter
+  DollarSign, Building2, PieChart, ChevronsDown, ChevronsUp, Filter,
+  Star, UserPlus, Mail, Phone, ChevronUp
 } from 'lucide-react';
 import './AccountingView.css';
 
@@ -27,23 +28,41 @@ const TYPE_COLORS = {
   Expense: { bg: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', gradient: 'linear-gradient(135deg, #f59e0b, #d97706)' },
 };
 
-const AccountingView = ({ 
-  ledgerData, 
-  chartOfAccounts, 
-  onFetchLedger, 
+const INITIAL_SHOW_COUNT = 5;
+
+const AccountingView = ({
+  ledgerData,
+  chartOfAccounts,
+  onFetchLedger,
   onFetchChartOfAccounts,
   onCreateAccount,
   onUpdateAccount,
   onDeleteAccount,
-  loading 
+  onCreateContact,
+  onUpdateContact,
+  onDeleteContact,
+  onToggleImportant,
+  loading
 }) => {
   const [activeTab, setActiveTab] = useState('ledger');
-  
+
   // Ledger state
   const [ledgerSearch, setLedgerSearch] = useState('');
   const [ledgerFilter, setLedgerFilter] = useState('all');
   const [expandedLedger, setExpandedLedger] = useState(new Set());
-  
+  const [showAllCustomers, setShowAllCustomers] = useState(false);
+  const [showAllVendors, setShowAllVendors] = useState(false);
+
+  // Add Contact modal state
+  const [showContactModal, setShowContactModal] = useState(false);
+  const [contactForm, setContactForm] = useState({
+    name: '', contact_type: 'customer', email: '', phone: '', notes: ''
+  });
+  const [contactModalLoading, setContactModalLoading] = useState(false);
+
+  // Delete contact confirmation
+  const [deletingContact, setDeletingContact] = useState(null);
+
   // Chart of Accounts state
   const [coaExpandedTypes, setCoaExpandedTypes] = useState(new Set(ACCOUNT_TYPES));
   const [showAddModal, setShowAddModal] = useState(false);
@@ -99,11 +118,12 @@ const AccountingView = ({
     return groups;
   }, [chartOfAccounts]);
 
-  // Calculate totals per type
   const typeTotals = useMemo(() => {
     const totals = {};
     ACCOUNT_TYPES.forEach(type => {
-      totals[type] = (groupedAccounts[type] || []).reduce((sum, acc) => sum + (parseFloat(acc.live_balance) || parseFloat(acc.opening_balance) || 0), 0);
+      totals[type] = (groupedAccounts[type] || []).reduce(
+        (sum, acc) => sum + (parseFloat(acc.live_balance) || parseFloat(acc.opening_balance) || 0), 0
+      );
     });
     return totals;
   }, [groupedAccounts]);
@@ -114,7 +134,44 @@ const AccountingView = ({
   const totalCustomerInflow = customers.reduce((sum, c) => sum + parseFloat(c.total_amount || 0), 0);
   const totalVendorOutflow = vendors.reduce((sum, v) => sum + parseFloat(v.total_amount || 0), 0);
 
-  // --- Add Account Handler ---
+  // Visible lists (top 5 important first, then show all)
+  const visibleCustomers = showAllCustomers ? customers : customers.slice(0, INITIAL_SHOW_COUNT);
+  const visibleVendors = showAllVendors ? vendors : vendors.slice(0, INITIAL_SHOW_COUNT);
+
+  // ── Handlers ──
+
+  const handleToggleImportant = async (name, contact_type) => {
+    if (onToggleImportant) {
+      await onToggleImportant(name, contact_type);
+    }
+  };
+
+  const handleOpenContactModal = (type = 'customer') => {
+    setContactForm({ name: '', contact_type: type, email: '', phone: '', notes: '' });
+    setShowContactModal(true);
+  };
+
+  const handleSubmitContact = async () => {
+    if (!contactForm.name) return;
+    setContactModalLoading(true);
+    try {
+      await onCreateContact(contactForm);
+      setShowContactModal(false);
+      setContactForm({ name: '', contact_type: 'customer', email: '', phone: '', notes: '' });
+    } catch (err) {
+      console.error('Failed to add contact:', err);
+    } finally {
+      setContactModalLoading(false);
+    }
+  };
+
+  const handleDeleteContact = async (contact) => {
+    if (!contact.contact_info?.id) return;
+    await onDeleteContact(contact.contact_info.id);
+    setDeletingContact(null);
+  };
+
+  // COA handlers
   const handleAddAccount = async () => {
     if (!addForm.name || !addForm.account_type) return;
     try {
@@ -126,7 +183,6 @@ const AccountingView = ({
     }
   };
 
-  // --- Edit Account Handlers ---
   const startEdit = (acc) => {
     setEditingId(acc.id);
     setEditForm({
@@ -160,42 +216,164 @@ const AccountingView = ({
     }
   };
 
+  // ── Ledger Entry Row ──
+  const renderLedgerEntry = (entity, idx, type) => {
+    const key = `${type}-${idx}`;
+    const isExpanded = expandedLedger.has(key);
+    const isCustomer = type === 'customer';
+    const txnCount = parseInt(entity.transaction_count) || 0;
+
+    return (
+      <div key={key} className={`ledger-entry ${isExpanded ? 'expanded' : ''} ${entity.is_important ? 'important' : ''}`}>
+        <div className="ledger-entry-header">
+          {/* Expand button */}
+          <div
+            className="ledger-entry-expand-area"
+            onClick={() => toggleLedgerExpand(key)}
+            style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, cursor: 'pointer', minWidth: 0 }}
+          >
+            <div className="ledger-entry-expand">
+              {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            </div>
+            {entity.is_important && (
+              <Star size={14} fill="#f59e0b" stroke="#f59e0b" style={{ flexShrink: 0 }} />
+            )}
+            <div className={`ledger-entry-avatar ${isCustomer ? 'customer' : 'vendor'}`}>
+              {entity.counterparty?.charAt(0)?.toUpperCase() || (isCustomer ? 'C' : 'V')}
+            </div>
+            <div className="ledger-entry-info" style={{ minWidth: 0 }}>
+              <div className="ledger-entry-name">{entity.counterparty}</div>
+              <div className="ledger-entry-meta">
+                {!isCustomer && entity.service_category && (
+                  <span className="vendor-service-tag">{entity.service_category}</span>
+                )}
+                {entity.contact_info?.email && (
+                  <span style={{ color: '#718096', fontSize: '12px' }}>{entity.contact_info.email}</span>
+                )}
+                {txnCount > 0
+                  ? `${txnCount} transaction${txnCount !== 1 ? 's' : ''} • Last: ${entity.last_transaction_date ? new Date(entity.last_transaction_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}`
+                  : 'No transactions yet'
+                }
+              </div>
+            </div>
+          </div>
+
+          <div className="ledger-entry-right">
+            {txnCount > 0 && (
+              <div className={`ledger-entry-amount ${isCustomer ? 'positive' : 'negative'}`}>
+                {isCustomer ? '+' : '-'}{formatINR(entity.total_amount)}
+              </div>
+            )}
+            {isCustomer && entity.invoices && (
+              <div className="ledger-entry-badge">
+                {entity.invoices.total_outstanding > 0
+                  ? <span className="badge-outstanding">{formatINR(entity.invoices.total_outstanding)} outstanding</span>
+                  : <span className="badge-clear">All invoices paid</span>
+                }
+              </div>
+            )}
+
+            {/* Action buttons */}
+            <div className="ledger-entry-actions" style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, marginLeft: '8px' }}>
+              <button
+                className={`ledger-action-btn star ${entity.is_important ? 'active' : ''}`}
+                title={entity.is_important ? 'Remove from important' : 'Mark as important'}
+                onClick={(e) => { e.stopPropagation(); handleToggleImportant(entity.counterparty, type); }}
+              >
+                <Star size={14} fill={entity.is_important ? '#f59e0b' : 'none'} stroke={entity.is_important ? '#f59e0b' : 'currentColor'} />
+              </button>
+              {entity.contact_info?.id && (
+                <button
+                  className="ledger-action-btn delete"
+                  title="Remove contact"
+                  onClick={(e) => { e.stopPropagation(); setDeletingContact(entity); }}
+                >
+                  <Trash2 size={14} />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {isExpanded && (
+          <div className="ledger-entry-detail">
+            {entity.contact_info && (entity.contact_info.email || entity.contact_info.phone || entity.contact_info.notes) && (
+              <div className="ledger-contact-details">
+                {entity.contact_info.email && (
+                  <span><Mail size={12} /> {entity.contact_info.email}</span>
+                )}
+                {entity.contact_info.phone && (
+                  <span><Phone size={12} /> {entity.contact_info.phone}</span>
+                )}
+                {entity.contact_info.notes && (
+                  <span style={{ color: '#718096' }}>{entity.contact_info.notes}</span>
+                )}
+              </div>
+            )}
+            {(entity.transactions || []).length > 0 ? (
+              <table className="ledger-detail-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Description</th>
+                    <th>Category</th>
+                    <th>Account</th>
+                    <th className="align-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(entity.transactions || []).map((txn) => (
+                    <tr key={txn.id}>
+                      <td className="ledger-detail-date">{txn.date}</td>
+                      <td>{txn.name}</td>
+                      <td><span className="ledger-detail-category">{txn.category}</span></td>
+                      <td className="ledger-detail-account">{txn.account || '-'}</td>
+                      <td className={`align-right ${isCustomer ? 'positive' : 'negative'}`}>
+                        {isCustomer ? '+' : '-'}{formatINR(txn.amount)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div style={{ padding: '1rem', color: '#a0aec0', textAlign: 'center', fontSize: '13px' }}>
+                No transactions recorded yet
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // ─── RENDER LEDGER TAB ──────────────────────────────────────────
   const renderLedger = () => (
     <div className="accounting-ledger">
-      {/* Ledger Stats */}
+      {/* Stats */}
       <div className="ledger-stats-grid">
         <div className="ledger-stat-card">
-          <div className="ledger-stat-icon customer">
-            <Users size={20} />
-          </div>
+          <div className="ledger-stat-icon customer"><Users size={20} /></div>
           <div className="ledger-stat-content">
             <div className="ledger-stat-label">Total Customers</div>
             <div className="ledger-stat-value">{customers.length}</div>
           </div>
         </div>
         <div className="ledger-stat-card">
-          <div className="ledger-stat-icon inflow">
-            <TrendingUp size={20} />
-          </div>
+          <div className="ledger-stat-icon inflow"><TrendingUp size={20} /></div>
           <div className="ledger-stat-content">
             <div className="ledger-stat-label">Total Cash Inflow</div>
             <div className="ledger-stat-value green">{formatINR(totalCustomerInflow)}</div>
           </div>
         </div>
         <div className="ledger-stat-card">
-          <div className="ledger-stat-icon vendor">
-            <Truck size={20} />
-          </div>
+          <div className="ledger-stat-icon vendor"><Truck size={20} /></div>
           <div className="ledger-stat-content">
             <div className="ledger-stat-label">Total Vendors</div>
             <div className="ledger-stat-value">{vendors.length}</div>
           </div>
         </div>
         <div className="ledger-stat-card">
-          <div className="ledger-stat-icon outflow">
-            <TrendingDown size={20} />
-          </div>
+          <div className="ledger-stat-icon outflow"><TrendingDown size={20} /></div>
           <div className="ledger-stat-content">
             <div className="ledger-stat-label">Total Deductions</div>
             <div className="ledger-stat-value red">{formatINR(totalVendorOutflow)}</div>
@@ -230,6 +408,21 @@ const AccountingView = ({
             </button>
           ))}
         </div>
+        {/* Add Customer/Vendor buttons */}
+        <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto' }}>
+          {(ledgerFilter === 'all' || ledgerFilter === 'customer') && (
+            <button className="ledger-add-contact-btn customer" onClick={() => handleOpenContactModal('customer')}>
+              <UserPlus size={14} />
+              Add Customer
+            </button>
+          )}
+          {(ledgerFilter === 'all' || ledgerFilter === 'vendor') && (
+            <button className="ledger-add-contact-btn vendor" onClick={() => handleOpenContactModal('vendor')}>
+              <UserPlus size={14} />
+              Add Vendor
+            </button>
+          )}
+        </div>
       </div>
 
       {loading && <div className="state-message">Loading ledger data...</div>}
@@ -237,156 +430,88 @@ const AccountingView = ({
       {!loading && (
         <>
           {/* Customer Ledger */}
-          {(ledgerFilter === 'all' || ledgerFilter === 'customer') && customers.length > 0 && (
+          {(ledgerFilter === 'all' || ledgerFilter === 'customer') && (
             <div className="ledger-section">
               <div className="ledger-section-header customer-header">
                 <div className="ledger-section-title">
                   <Users size={18} />
                   <span>Customer Ledger — Cash Inflows</span>
+                  {customers.some(c => c.is_important) && (
+                    <span className="important-badge"><Star size={12} fill="currentColor" /> Important first</span>
+                  )}
                 </div>
                 <span className="ledger-section-count">{customers.length} customers</span>
               </div>
 
-              <div className="ledger-entries">
-                {customers.map((customer, idx) => {
-                  const key = `customer-${idx}`;
-                  const isExpanded = expandedLedger.has(key);
-                  return (
-                    <div key={key} className={`ledger-entry ${isExpanded ? 'expanded' : ''}`}>
-                      <div className="ledger-entry-header" onClick={() => toggleLedgerExpand(key)}>
-                        <div className="ledger-entry-left">
-                          <div className="ledger-entry-expand">
-                            {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                          </div>
-                          <div className="ledger-entry-avatar customer">
-                            {customer.counterparty?.charAt(0)?.toUpperCase() || 'C'}
-                          </div>
-                          <div className="ledger-entry-info">
-                            <div className="ledger-entry-name">{customer.counterparty}</div>
-                            <div className="ledger-entry-meta">
-                              {customer.transaction_count} transactions • Last: {customer.last_transaction_date ? new Date(customer.last_transaction_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="ledger-entry-right">
-                          <div className="ledger-entry-amount positive">+{formatINR(customer.total_amount)}</div>
-                          {customer.invoices && (
-                            <div className="ledger-entry-badge">
-                              {customer.invoices.total_outstanding > 0 
-                                ? <span className="badge-outstanding">{formatINR(customer.invoices.total_outstanding)} outstanding</span>
-                                : <span className="badge-clear">All invoices paid</span>
-                              }
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {isExpanded && (
-                        <div className="ledger-entry-detail">
-                          <table className="ledger-detail-table">
-                            <thead>
-                              <tr>
-                                <th>Date</th>
-                                <th>Description</th>
-                                <th>Category</th>
-                                <th>Account</th>
-                                <th className="align-right">Amount</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {(customer.transactions || []).map((txn) => (
-                                <tr key={txn.id}>
-                                  <td className="ledger-detail-date">{txn.date}</td>
-                                  <td>{txn.name}</td>
-                                  <td><span className="ledger-detail-category">{txn.category}</span></td>
-                                  <td className="ledger-detail-account">{txn.account || '-'}</td>
-                                  <td className="align-right positive">+{formatINR(txn.amount)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
+              {customers.length === 0 ? (
+                <div className="ledger-empty-section">
+                  <Users size={32} style={{ color: '#cbd5e0', marginBottom: '8px' }} />
+                  <p>No customers found. Add income transactions with categories like Sales, Consulting, or Commissions, or add a customer manually.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="ledger-entries">
+                    {visibleCustomers.map((customer, idx) => renderLedgerEntry(customer, idx, 'customer'))}
+                  </div>
+                  {customers.length > INITIAL_SHOW_COUNT && (
+                    <div className="ledger-show-more">
+                      <button
+                        className="ledger-show-more-btn"
+                        onClick={() => setShowAllCustomers(prev => !prev)}
+                      >
+                        {showAllCustomers ? (
+                          <><ChevronUp size={14} /> Show less</>
+                        ) : (
+                          <><ChevronDown size={14} /> Show all {customers.length} customers</>
+                        )}
+                      </button>
                     </div>
-                  );
-                })}
-              </div>
+                  )}
+                </>
+              )}
             </div>
           )}
 
           {/* Vendor Ledger */}
-          {(ledgerFilter === 'all' || ledgerFilter === 'vendor') && vendors.length > 0 && (
+          {(ledgerFilter === 'all' || ledgerFilter === 'vendor') && (
             <div className="ledger-section">
               <div className="ledger-section-header vendor-header">
                 <div className="ledger-section-title">
                   <Truck size={18} />
                   <span>Vendor Ledger — Service Deductions</span>
+                  {vendors.some(v => v.is_important) && (
+                    <span className="important-badge"><Star size={12} fill="currentColor" /> Important first</span>
+                  )}
                 </div>
                 <span className="ledger-section-count">{vendors.length} vendors</span>
               </div>
 
-              <div className="ledger-entries">
-                {vendors.map((vendor, idx) => {
-                  const key = `vendor-${idx}`;
-                  const isExpanded = expandedLedger.has(key);
-                  return (
-                    <div key={key} className={`ledger-entry ${isExpanded ? 'expanded' : ''}`}>
-                      <div className="ledger-entry-header" onClick={() => toggleLedgerExpand(key)}>
-                        <div className="ledger-entry-left">
-                          <div className="ledger-entry-expand">
-                            {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                          </div>
-                          <div className="ledger-entry-avatar vendor">
-                            {vendor.counterparty?.charAt(0)?.toUpperCase() || 'V'}
-                          </div>
-                          <div className="ledger-entry-info">
-                            <div className="ledger-entry-name">{vendor.counterparty}</div>
-                            <div className="ledger-entry-meta">
-                              {vendor.service_category && <span className="vendor-service-tag">{vendor.service_category}</span>}
-                              {vendor.transaction_count} transactions • Last: {vendor.last_transaction_date ? new Date(vendor.last_transaction_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="ledger-entry-right">
-                          <div className="ledger-entry-amount negative">-{formatINR(vendor.total_amount)}</div>
-                          {vendor.vendor_info && (
-                            <div className="ledger-entry-badge">
-                              <span className="badge-info">{vendor.vendor_info.email}</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {isExpanded && (
-                        <div className="ledger-entry-detail">
-                          <table className="ledger-detail-table">
-                            <thead>
-                              <tr>
-                                <th>Date</th>
-                                <th>Description</th>
-                                <th>Category</th>
-                                <th>Account</th>
-                                <th className="align-right">Amount</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {(vendor.transactions || []).map((txn) => (
-                                <tr key={txn.id}>
-                                  <td className="ledger-detail-date">{txn.date}</td>
-                                  <td>{txn.name}</td>
-                                  <td><span className="ledger-detail-category">{txn.category}</span></td>
-                                  <td className="ledger-detail-account">{txn.account || '-'}</td>
-                                  <td className="align-right negative">-{formatINR(txn.amount)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
+              {vendors.length === 0 ? (
+                <div className="ledger-empty-section">
+                  <Truck size={32} style={{ color: '#cbd5e0', marginBottom: '8px' }} />
+                  <p>No vendors found. Add expense transactions with categories like Marketing, Software, or Professional Fees, or add a vendor manually.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="ledger-entries">
+                    {visibleVendors.map((vendor, idx) => renderLedgerEntry(vendor, idx, 'vendor'))}
+                  </div>
+                  {vendors.length > INITIAL_SHOW_COUNT && (
+                    <div className="ledger-show-more">
+                      <button
+                        className="ledger-show-more-btn"
+                        onClick={() => setShowAllVendors(prev => !prev)}
+                      >
+                        {showAllVendors ? (
+                          <><ChevronUp size={14} /> Show less</>
+                        ) : (
+                          <><ChevronDown size={14} /> Show all {vendors.length} vendors</>
+                        )}
+                      </button>
                     </div>
-                  );
-                })}
-              </div>
+                  )}
+                </>
+              )}
             </div>
           )}
 
@@ -394,7 +519,7 @@ const AccountingView = ({
             <div className="ledger-empty">
               <BookOpen size={48} />
               <h3>No ledger entries found</h3>
-              <p>Add transactions to see your customer and vendor ledger entries here.</p>
+              <p>Add transactions to see your customer and vendor ledger. You can also add customers and vendors manually using the buttons above.</p>
             </div>
           )}
         </>
@@ -405,7 +530,6 @@ const AccountingView = ({
   // ─── RENDER CHART OF ACCOUNTS TAB ───────────────────────────────
   const renderChartOfAccounts = () => (
     <div className="coa-container">
-      {/* COA Controls */}
       <div className="coa-controls">
         <div className="coa-toggle-buttons">
           <button className="coa-toggle-btn" onClick={expandAllCoa}>
@@ -423,7 +547,6 @@ const AccountingView = ({
         </button>
       </div>
 
-      {/* Summary Metrics */}
       <div className="coa-summary-grid">
         {ACCOUNT_TYPES.map(type => (
           <div key={type} className="coa-summary-card" style={{ borderLeft: `3px solid ${TYPE_COLORS[type].color}` }}>
@@ -441,15 +564,14 @@ const AccountingView = ({
 
       {loading && <div className="state-message">Loading chart of accounts...</div>}
 
-      {/* Account Groups */}
       {!loading && ACCOUNT_TYPES.map(type => {
         const accounts = groupedAccounts[type] || [];
         const isExpanded = coaExpandedTypes.has(type);
 
         return (
           <div key={type} className="coa-group">
-            <div 
-              className="coa-group-header" 
+            <div
+              className="coa-group-header"
               onClick={() => toggleCoaType(type)}
               style={{ borderLeft: `4px solid ${TYPE_COLORS[type].color}` }}
             >
@@ -585,7 +707,131 @@ const AccountingView = ({
       {activeTab === 'ledger' && renderLedger()}
       {activeTab === 'chart-of-accounts' && renderChartOfAccounts()}
 
-      {/* Add Account Modal */}
+      {/* ── Add Contact Modal ── */}
+      {showContactModal && (
+        <div className="modal-overlay" onClick={() => setShowContactModal(false)}>
+          <div className="coa-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="coa-modal-header">
+              <h2>Add {contactForm.contact_type === 'customer' ? 'Customer' : 'Vendor'}</h2>
+              <button className="coa-modal-close" onClick={() => setShowContactModal(false)}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="coa-modal-body">
+              <div className="coa-form-group">
+                <label>Type</label>
+                <div className="coa-type-selector">
+                  {[
+                    { key: 'customer', label: 'Customer', icon: <Users size={14} /> },
+                    { key: 'vendor', label: 'Vendor', icon: <Truck size={14} /> },
+                  ].map(t => (
+                    <button
+                      key={t.key}
+                      className={`coa-type-btn ${contactForm.contact_type === t.key ? 'active' : ''}`}
+                      onClick={() => setContactForm({ ...contactForm, contact_type: t.key })}
+                      style={contactForm.contact_type === t.key ? {
+                        background: t.key === 'customer' ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
+                        color: t.key === 'customer' ? '#10b981' : '#ef4444',
+                        borderColor: t.key === 'customer' ? '#10b981' : '#ef4444',
+                      } : {}}
+                    >
+                      {t.icon}
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="coa-form-group">
+                <label>Name *</label>
+                <input
+                  type="text"
+                  className="coa-form-input"
+                  placeholder="Company or person name"
+                  value={contactForm.name}
+                  onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
+                />
+              </div>
+
+              <div className="coa-form-group">
+                <label>Email (Optional)</label>
+                <input
+                  type="email"
+                  className="coa-form-input"
+                  placeholder="contact@example.com"
+                  value={contactForm.email}
+                  onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
+                />
+              </div>
+
+              <div className="coa-form-group">
+                <label>Phone (Optional)</label>
+                <input
+                  type="text"
+                  className="coa-form-input"
+                  placeholder="+91 98765 43210"
+                  value={contactForm.phone}
+                  onChange={(e) => setContactForm({ ...contactForm, phone: e.target.value })}
+                />
+              </div>
+
+              <div className="coa-form-group">
+                <label>Notes (Optional)</label>
+                <input
+                  type="text"
+                  className="coa-form-input"
+                  placeholder="Any notes about this contact"
+                  value={contactForm.notes}
+                  onChange={(e) => setContactForm({ ...contactForm, notes: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="coa-modal-footer">
+              <button className="coa-modal-cancel" onClick={() => setShowContactModal(false)}>Cancel</button>
+              <button
+                className="coa-modal-submit"
+                onClick={handleSubmitContact}
+                disabled={!contactForm.name || contactModalLoading}
+              >
+                <Plus size={16} />
+                {contactModalLoading ? 'Adding...' : `Add ${contactForm.contact_type === 'customer' ? 'Customer' : 'Vendor'}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete Contact Confirmation ── */}
+      {deletingContact && (
+        <div className="modal-overlay" onClick={() => setDeletingContact(null)}>
+          <div className="coa-modal" style={{ maxWidth: '400px' }} onClick={(e) => e.stopPropagation()}>
+            <div className="coa-modal-header">
+              <h2>Remove Contact</h2>
+              <button className="coa-modal-close" onClick={() => setDeletingContact(null)}><X size={20} /></button>
+            </div>
+            <div className="coa-modal-body">
+              <p style={{ color: '#4a5568', fontSize: '15px' }}>
+                Remove <strong>{deletingContact.counterparty}</strong> from your contacts? Their transactions will remain but they won't appear in the ledger unless they have matching transactions.
+              </p>
+            </div>
+            <div className="coa-modal-footer">
+              <button className="coa-modal-cancel" onClick={() => setDeletingContact(null)}>Cancel</button>
+              <button
+                className="coa-modal-submit"
+                style={{ background: 'linear-gradient(135deg, #ef4444, #dc2626)' }}
+                onClick={() => handleDeleteContact(deletingContact)}
+              >
+                <Trash2 size={16} />
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Add COA Account Modal ── */}
       {showAddModal && (
         <div className="modal-overlay" onClick={() => setShowAddModal(false)}>
           <div className="coa-modal" onClick={(e) => e.stopPropagation()}>
@@ -605,10 +851,10 @@ const AccountingView = ({
                       key={type}
                       className={`coa-type-btn ${addForm.account_type === type ? 'active' : ''}`}
                       onClick={() => setAddForm({ ...addForm, account_type: type })}
-                      style={addForm.account_type === type ? { 
-                        background: TYPE_COLORS[type].bg, 
+                      style={addForm.account_type === type ? {
+                        background: TYPE_COLORS[type].bg,
                         color: TYPE_COLORS[type].color,
-                        borderColor: TYPE_COLORS[type].color 
+                        borderColor: TYPE_COLORS[type].color
                       } : {}}
                     >
                       {TYPE_ICONS[type]}
@@ -641,7 +887,7 @@ const AccountingView = ({
               </div>
 
               <div className="coa-form-group">
-                <label>Opening Balance (₹)</label>
+                <label>Balance (₹)</label>
                 <input
                   type="number"
                   className="coa-form-input"
@@ -654,8 +900,8 @@ const AccountingView = ({
 
             <div className="coa-modal-footer">
               <button className="coa-modal-cancel" onClick={() => setShowAddModal(false)}>Cancel</button>
-              <button 
-                className="coa-modal-submit" 
+              <button
+                className="coa-modal-submit"
                 onClick={handleAddAccount}
                 disabled={!addForm.name}
               >

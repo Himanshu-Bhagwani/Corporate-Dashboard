@@ -6,6 +6,7 @@ import {
 import { ArrowUpRight, ArrowDownLeft } from 'lucide-react';
 import './DashboardView.css';
 import EmbeddedHeader from '../../layout/EmbeddedHeader/EmbeddedHeader';
+import { calcComplianceScore } from '../../../utils/compliance';
 
 const formatCurrency = (val) => {
   if (val >= 10000000) return `₹${(val / 10000000).toFixed(2)}Cr`;
@@ -197,13 +198,8 @@ const DashboardView = ({
   }, [compliance]);
 
   const complianceStats = useMemo(() => {
-    const all = compliance || [];
-    const total = all.length;
-    const filed = all.filter((f) => String(f.status || '').toLowerCase() === 'filed').length;
-    const score = total > 0 ? Math.round((filed / total) * 100) : 0;
-
-    const pending = riskAlerts.filter((f) => toRiskDate(f.due_date).getTime() >= today.getTime()).length;
-    const overdue = riskAlerts.filter((f) => toRiskDate(f.due_date).getTime() < today.getTime()).length;
+    // Score calculated from the live compliance prop — same formula as ComplianceView sidebar.
+    const { score, overdue, dueSoon, pending } = calcComplianceScore(compliance);
 
     const upcoming30 = riskAlerts.filter((f) => {
       const dueMs = toRiskDate(f.due_date).getTime();
@@ -211,7 +207,7 @@ const DashboardView = ({
       return diffDays >= 0 && diffDays <= 30;
     }).length;
 
-    return { score, pending, overdue, upcoming30 };
+    return { score, pending: pending + dueSoon, overdue, upcoming30 };
   }, [compliance, riskAlerts, today]);
 
   // Handle invoice creation
