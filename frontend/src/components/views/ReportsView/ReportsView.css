@@ -985,7 +985,34 @@ recent-report-icon-enhanced.completed {
 }
 .rdf-icon { color: #6366f1; display: flex; align-items: center; }
 .rdf-label { font-size: 0.85rem; font-weight: 700; color: #374151; white-space: nowrap; }
-.rdf-inputs { display: flex; align-items: center; gap: 0.75rem; flex: 1; }
+
+/* FY selector block */
+.rdf-fy-block { display: flex; align-items: center; gap: 0.6rem; }
+.rdf-fy-select {
+  padding: 0.45rem 0.75rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  font-weight: 600;
+  color: #1d4ed8;
+  background: #eff6ff;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.rdf-fy-select:focus { border-color: #6366f1; }
+.rdf-fy-hint { font-size: 0.72rem; color: #94a3b8; white-space: nowrap; }
+
+/* Divider between FY and date-range sections */
+.rdf-divider {
+  width: 1px;
+  height: 36px;
+  background: #e2e8f0;
+  flex-shrink: 0;
+}
+
+.rdf-inputs { display: flex; align-items: center; gap: 0.75rem; }
 .rdf-field { display: flex; flex-direction: column; gap: 2px; }
 .rdf-field label { font-size: 0.72rem; font-weight: 600; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em; }
 .rdf-field input[type="date"] {

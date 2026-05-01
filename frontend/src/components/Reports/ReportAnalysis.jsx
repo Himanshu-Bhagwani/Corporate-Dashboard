@@ -195,22 +195,123 @@ const getConfig = (reportKey, data) => {
         { name: data.fy2Label || 'FY2', Revenue: fy2Rev, Expenses: fy2Exp },
       ];
 
+      const r  = data.ratios  || {};
+      const r2 = data.ratios2 || {};
+      const fy2Net = fy2Rev - fy2Exp;
+      const fmtDelta = (v1, v2) => {
+        if (!v1 && !v2) return null;
+        const d = v1 - v2;
+        return { val: d, label: `${d >= 0 ? '+' : ''}${fmtINR(d)}`, positive: d >= 0 };
+      };
+      const fmtDeltaPct = (v1, v2) => {
+        if (v1 == null || v2 == null) return null;
+        const d = v1 - v2;
+        return { val: d, label: `${d >= 0 ? '+' : ''}${d.toFixed(2)}pp`, positive: d >= 0 };
+      };
+      const ratioRows = [
+        {
+          group: 'Income Statement Metrics',
+          hasFY2: true,
+          items: [
+            {
+              label: 'Revenue',
+              formula: 'Total income from operations',
+              value: fmtINR(fy1Rev), value2: fmtINR(fy2Rev),
+              delta: fmtDelta(fy1Rev, fy2Rev), status: '',
+            },
+            {
+              label: 'Total Expenses',
+              formula: 'Sum of all operating expenses',
+              value: fmtINR(fy1Exp), value2: fmtINR(fy2Exp),
+              delta: fmtDelta(fy1Exp, fy2Exp), status: '',
+            },
+            {
+              label: 'Net Profit / (Loss)',
+              formula: 'Revenue − Total Expenses',
+              value: fmtINR(fy1Net), value2: fmtINR(fy2Net),
+              delta: fmtDelta(fy1Net, fy2Net),
+              status: fy1Net >= 0 ? 'good' : 'danger',
+            },
+            {
+              label: 'Gross Profit',
+              formula: 'Revenue − COGS',
+              value: fmtINR(r.grossProfit), value2: fmtINR(r2.grossProfit),
+              delta: fmtDelta(r.grossProfit, r2.grossProfit), status: '',
+            },
+            {
+              label: 'Gross Profit Margin',
+              formula: 'Gross Profit / Revenue × 100',
+              value: `${r.grossProfitMargin ?? '—'}%`, value2: `${r2.grossProfitMargin ?? '—'}%`,
+              delta: fmtDeltaPct(r.grossProfitMargin, r2.grossProfitMargin),
+              status: r.grossProfitMargin >= 40 ? 'good' : r.grossProfitMargin >= 20 ? 'warning' : 'danger',
+            },
+            {
+              label: 'EBIT',
+              formula: 'Revenue − Operating Expenses (excl. interest & tax)',
+              value: fmtINR(r.ebit), value2: fmtINR(r2.ebit),
+              delta: fmtDelta(r.ebit, r2.ebit),
+              status: r.ebit >= 0 ? 'good' : 'danger',
+            },
+            {
+              label: 'Net Profit Margin',
+              formula: 'Net Income / Revenue × 100',
+              value: `${r.netProfitMargin ?? '—'}%`, value2: `${r2.netProfitMargin ?? '—'}%`,
+              delta: fmtDeltaPct(r.netProfitMargin, r2.netProfitMargin),
+              status: r.netProfitMargin >= 15 ? 'good' : r.netProfitMargin >= 5 ? 'warning' : 'danger',
+            },
+          ],
+        },
+        {
+          group: 'Liquidity & Efficiency',
+          hasFY2: false,
+          items: [
+            { label: 'Working Capital', formula: 'Current Assets − Current Liabilities', value: fmtINR(r.workingCapital), status: r.workingCapital >= 0 ? 'good' : 'danger' },
+            { label: 'Current Ratio', formula: 'Current Assets / Current Liabilities', value: r.currentRatio?.toFixed(2) ?? '—', status: r.currentRatio >= 1.5 ? 'good' : r.currentRatio >= 1 ? 'warning' : 'danger', note: 'Healthy: 1.5–3.0' },
+            { label: 'AR Turnover', formula: 'Net Sales / Average Accounts Receivable', value: `${r.arTurnover ?? '—'}×`, status: '' },
+            { label: 'Days Sales Outstanding', formula: '365 / AR Turnover', value: `${r.daysSalesOutstanding ?? '—'} days`, status: r.daysSalesOutstanding <= 30 ? 'good' : r.daysSalesOutstanding <= 60 ? 'warning' : 'danger' },
+          ],
+        },
+        {
+          group: 'DuPont & Return Analysis',
+          hasFY2: false,
+          items: [
+            { label: 'ROA', formula: 'Net Income / Total Assets × 100', value: `${r.roa ?? '—'}%`, status: r.roa >= 10 ? 'good' : r.roa >= 5 ? 'warning' : 'danger' },
+            { label: 'ROE', formula: 'Net Income / Shareholder\'s Equity × 100', value: `${r.roe ?? '—'}%`, status: r.roe >= 15 ? 'good' : r.roe >= 8 ? 'warning' : 'danger' },
+            { label: 'Asset Turnover', formula: 'Net Sales / Average Total Assets', value: `${r.totalAssetTurnover ?? '—'}×`, status: '' },
+            { label: 'DuPont ROE', formula: 'Net Profit Margin × Asset Turnover × Equity Multiplier', value: `${r.dupontROE ?? '—'}%`, status: '' },
+          ],
+        },
+      ];
+
       return {
         metrics: [
-          { label: 'Revenue', value: fmtINR(fy1Rev), color: 'blue' },
-          { label: 'Total Expenses', value: fmtINR(fy1Exp), color: 'red' },
-          { label: 'Net Profit', value: fmtINR(fy1Net), color: fy1Net >= 0 ? 'green' : 'red' },
+          { label: `Revenue (${data.fy1Label || 'FY1'})`, value: fmtINR(fy1Rev), sub: fy2Rev > 0 ? `Prev: ${fmtINR(fy2Rev)}` : null, color: 'blue' },
+          { label: `Expenses (${data.fy1Label || 'FY1'})`, value: fmtINR(fy1Exp), sub: fy2Exp > 0 ? `Prev: ${fmtINR(fy2Exp)}` : null, color: 'red' },
+          { label: `Net Profit (${data.fy1Label || 'FY1'})`, value: fmtINR(fy1Net), sub: fy2Net !== 0 ? `Prev: ${fmtINR(fy2Net)}` : null, color: fy1Net >= 0 ? 'green' : 'red' },
           { label: 'Net Margin', value: `${margin}%`, color: 'amber' },
-          ...(yoy !== null ? [{ label: 'YoY Revenue', value: `${yoy > 0 ? '+' : ''}${yoy}%`, color: Number(yoy) >= 0 ? 'green' : 'red' }] : []),
+          ...(yoy !== null ? [{ label: 'YoY Revenue Growth', value: `${yoy > 0 ? '+' : ''}${yoy}%`, color: Number(yoy) >= 0 ? 'green' : 'red' }] : []),
+          { label: 'Gross Profit Margin', value: `${r.grossProfitMargin ?? '—'}%`, sub: r2.grossProfitMargin != null ? `Prev: ${r2.grossProfitMargin}%` : null, color: 'purple' },
         ],
         metricsForAI: {
           report_type: 'Profit & Loss',
-          total_revenue: fmtINR(fy1Rev),
-          total_expenses: fmtINR(fy1Exp),
-          net_profit: fmtINR(fy1Net),
+          period: `${data.fy1Label || 'Current FY'} vs ${data.fy2Label || 'Previous FY'}`,
+          [`revenue_${data.fy1Label}`]: fmtINR(fy1Rev),
+          [`revenue_${data.fy2Label}`]: fmtINR(fy2Rev),
+          [`expenses_${data.fy1Label}`]: fmtINR(fy1Exp),
+          [`expenses_${data.fy2Label}`]: fmtINR(fy2Exp),
+          [`net_profit_${data.fy1Label}`]: fmtINR(fy1Net),
+          [`net_profit_${data.fy2Label}`]: fmtINR(fy2Net),
           net_profit_margin: `${margin}%`,
           yoy_revenue_change: yoy !== null ? `${yoy > 0 ? '+' : ''}${yoy}%` : 'N/A',
+          gross_profit_margin: `${r.grossProfitMargin ?? '—'}%`,
+          prev_gross_profit_margin: `${r2.grossProfitMargin ?? '—'}%`,
+          ebit: fmtINR(r.ebit),
+          current_ratio: r.currentRatio?.toFixed(2) ?? '—',
+          roa: `${r.roa ?? '—'}%`,
+          roe: `${r.roe ?? '—'}%`,
+          dupont_roe: `${r.dupontROE ?? '—'}%`,
         },
+        ratioRows,
         charts: [
           {
             title: 'Revenue vs Expenses (Year over Year)',
@@ -262,6 +363,37 @@ const getConfig = (reportKey, data) => {
         },
       ];
 
+      const r = data.ratios || {};
+      const ratioRows = [
+        {
+          group: 'Liquidity Ratios',
+          items: [
+            { label: 'Current Ratio', formula: 'Current Assets / Current Liabilities', value: r.currentRatio?.toFixed(2) ?? '—', status: r.currentRatio >= 1.5 ? 'good' : r.currentRatio >= 1 ? 'warning' : 'danger', note: 'Healthy: 1.5–3.0' },
+            { label: 'Quick Ratio (Acid-Test)', formula: '(Current Assets − Inventory) / Current Liabilities', value: r.quickRatio?.toFixed(2) ?? '—', status: r.quickRatio >= 1 ? 'good' : r.quickRatio >= 0.7 ? 'warning' : 'danger', note: 'Healthy: >1.0' },
+            { label: 'Cash Ratio', formula: 'Cash / Current Liabilities', value: r.cashRatio?.toFixed(2) ?? '—', status: r.cashRatio >= 0.5 ? 'good' : r.cashRatio >= 0.2 ? 'warning' : 'danger', note: 'Healthy: >0.5' },
+            { label: 'Working Capital', formula: 'Current Assets − Current Liabilities', value: fmtINR(r.workingCapital), status: r.workingCapital >= 0 ? 'good' : 'danger' },
+          ]
+        },
+        {
+          group: 'Solvency & Leverage Ratios',
+          items: [
+            { label: 'Debt-to-Equity Ratio', formula: 'Total Liabilities / Shareholder\'s Equity', value: r.debtToEquity?.toFixed(2) ?? '—', status: r.debtToEquity <= 1 ? 'good' : r.debtToEquity <= 2 ? 'warning' : 'danger' },
+            { label: 'Debt Ratio', formula: 'Total Liabilities / Total Assets', value: r.debtRatio?.toFixed(2) ?? '—', status: r.debtRatio <= 0.4 ? 'good' : r.debtRatio <= 0.6 ? 'warning' : 'danger' },
+            { label: 'Equity Multiplier', formula: 'Total Assets / Total Equity', value: r.equityMultiplier?.toFixed(2) ?? '—', status: '' },
+          ]
+        },
+        {
+          group: 'Profitability & Efficiency Ratios',
+          items: [
+            { label: 'ROA', formula: 'Net Income / Average Total Assets × 100', value: `${r.roa ?? '—'}%`, status: r.roa >= 10 ? 'good' : r.roa >= 5 ? 'warning' : 'danger' },
+            { label: 'ROE', formula: 'Net Income / Average Shareholder\'s Equity × 100', value: `${r.roe ?? '—'}%`, status: r.roe >= 15 ? 'good' : r.roe >= 8 ? 'warning' : 'danger' },
+            { label: 'Total Asset Turnover', formula: 'Net Sales / Average Total Assets', value: `${r.totalAssetTurnover ?? '—'}×`, status: '' },
+            { label: 'AR Turnover', formula: 'Net Sales on Credit / Average AR', value: `${r.arTurnover ?? '—'}×`, status: '' },
+            { label: 'Days Sales Outstanding', formula: '365 / AR Turnover', value: `${r.daysSalesOutstanding ?? '—'} days`, status: r.daysSalesOutstanding <= 30 ? 'good' : r.daysSalesOutstanding <= 60 ? 'warning' : 'danger' },
+          ]
+        },
+      ];
+
       return {
         metrics: [
           { label: 'Total Assets', value: fmtINR(fy1Assets), color: 'blue' },
@@ -279,7 +411,12 @@ const getConfig = (reportKey, data) => {
           trade_payables: fmtINR(payFY1),
           working_capital: fmtINR(workingCap),
           current_ratio: curRatio,
+          quick_ratio: r.quickRatio?.toFixed(2) ?? '—',
+          debt_to_equity: r.debtToEquity?.toFixed(2) ?? '—',
+          roa: `${r.roa ?? '—'}%`,
+          roe: `${r.roe ?? '—'}%`,
         },
+        ratioRows,
         charts: [
           {
             title: 'Assets vs Liabilities vs Equity',
@@ -308,6 +445,19 @@ const getConfig = (reportKey, data) => {
       const avgNet  = months.length > 0 ? (totals.net || 0) / months.length : 0;
       const posMonths = months.filter(m => m.net >= 0).length;
 
+      const r = data.ratios || {};
+      const ratioRows = [
+        {
+          group: 'Cash Flow Metrics',
+          items: [
+            { label: 'Operating Cash Flow (OCF)', formula: 'Net Income + Depreciation − ΔCurrent Assets', value: fmtINR(r.operatingCashFlow), status: (r.operatingCashFlow || 0) >= 0 ? 'good' : 'danger' },
+            { label: 'Free Cash Flow (FCF)', formula: 'Operating Cash Flow − Capital Expenditures', value: fmtINR(r.freeCashFlow), status: (r.freeCashFlow || 0) >= 0 ? 'good' : 'danger' },
+            { label: 'Avg Monthly Cash Flow', formula: 'Net Cash Flow / Number of Months', value: fmtINR(r.avgMonthlyCashFlow), status: (r.avgMonthlyCashFlow || 0) >= 0 ? 'good' : 'danger' },
+            { label: 'Positive Cash Months', formula: 'Months with Net Cash Flow > 0', value: `${r.positiveCashMonths || 0} / ${r.totalMonths || 0}`, status: (r.positiveCashMonths || 0) >= Math.ceil((r.totalMonths || 0) / 2) ? 'good' : 'warning' },
+          ]
+        }
+      ];
+
       return {
         metrics: [
           { label: 'Total Inflow', value: fmtINR(totals.inflow), color: 'green' },
@@ -324,7 +474,11 @@ const getConfig = (reportKey, data) => {
           avg_monthly_net: fmtINR(avgNet),
           best_month: best ? `${best.label} (${fmtINR(best.net)})` : 'N/A',
           worst_month: worst ? `${worst.label} (${fmtINR(worst.net)})` : 'N/A',
+          operating_cash_flow: fmtINR(r.operatingCashFlow),
+          free_cash_flow: fmtINR(r.freeCashFlow),
+          positive_cash_months: `${r.positiveCashMonths || 0} / ${r.totalMonths || 0}`,
         },
+        ratioRows,
         charts: [
           {
             title: 'Monthly Inflow vs Outflow',
@@ -368,6 +522,19 @@ const getConfig = (reportKey, data) => {
         { name: 'Net GST', value: gst.netPayable || 0 },
       ];
 
+      const r = data.ratios || {};
+      const ratioRows = [
+        {
+          group: 'Tax Efficiency Metrics',
+          items: [
+            { label: 'Effective Tax Rate', formula: 'Total Tax Liability / Net Profit × 100', value: `${r.effectiveTaxRate ?? '—'}%`, status: r.effectiveTaxRate <= 30 ? 'good' : r.effectiveTaxRate <= 36 ? 'warning' : 'danger' },
+            { label: 'Net Profit Margin', formula: 'Net Income / Revenue × 100', value: `${r.netProfitMargin ?? '—'}%`, status: r.netProfitMargin >= 15 ? 'good' : r.netProfitMargin >= 5 ? 'warning' : 'danger' },
+            { label: 'ITC Utilization Rate', formula: 'Input GST Credit / Output GST × 100', value: `${r.itcUtilizationRate ?? '—'}%`, status: r.itcUtilizationRate >= 80 ? 'good' : r.itcUtilizationRate >= 60 ? 'warning' : 'danger' },
+            { label: 'Tax Burden Ratio', formula: 'Total Tax / Net Profit × 100', value: `${r.taxBurdenRatio ?? '—'}%`, status: '' },
+          ]
+        }
+      ];
+
       return {
         metrics: [
           { label: 'Net Profit (PBT)', value: fmtINR(netP), color: netP >= 0 ? 'green' : 'red' },
@@ -384,7 +551,11 @@ const getConfig = (reportKey, data) => {
           total_tax_liability: fmtINR(ttl),
           effective_tax_rate: `${effRate}%`,
           itc_utilization: itcUtil,
+          effective_tax_rate_computed: `${r.effectiveTaxRate ?? '—'}%`,
+          net_profit_margin: `${r.netProfitMargin ?? '—'}%`,
+          itc_utilization_rate: `${r.itcUtilizationRate ?? '—'}%`,
         },
+        ratioRows,
         charts: [
           {
             title: 'Tax Breakdown',
@@ -408,6 +579,18 @@ const getConfig = (reportKey, data) => {
       const avgOut = months.length > 0 ? (s.outputGST || 0) / months.length : 0;
       const itcUtilRate = s.outputGST > 0 ? pct(s.inputGST || 0, s.outputGST) : '—';
 
+      const r = data.ratios || {};
+      const ratioRows = [
+        {
+          group: 'GST Efficiency Metrics',
+          items: [
+            { label: 'ITC Utilization Rate', formula: 'Input GST / Output GST × 100', value: `${r.itcUtilizationRate ?? '—'}%`, status: r.itcUtilizationRate >= 80 ? 'good' : r.itcUtilizationRate >= 60 ? 'warning' : 'danger', note: 'Higher is better' },
+            { label: 'Avg Monthly Output GST', formula: 'Total Output GST / Months', value: fmtINR(r.avgMonthlyOutput), status: '' },
+            { label: 'Avg Monthly Input Credit', formula: 'Total Input GST / Months', value: fmtINR(r.avgMonthlyInput), status: '' },
+          ]
+        }
+      ];
+
       return {
         metrics: [
           { label: 'Output GST', value: fmtINR(s.outputGST), color: 'blue' },
@@ -423,7 +606,11 @@ const getConfig = (reportKey, data) => {
           net_gst_payable: fmtINR(s.netPayable),
           itc_utilization_rate: itcUtilRate,
           avg_monthly_output_gst: fmtINR(avgOut),
+          itc_utilization_computed: `${r.itcUtilizationRate ?? '—'}%`,
+          avg_monthly_output_computed: fmtINR(r.avgMonthlyOutput),
+          avg_monthly_input_computed: fmtINR(r.avgMonthlyInput),
         },
+        ratioRows,
         charts: [
           {
             title: 'Monthly Output vs Input GST',
@@ -581,6 +768,7 @@ const ReportAnalysis = ({ reportKey, data }) => {
           <div key={i} className={`ra-metric-card ${m.color}`}>
             <div className="ra-metric-label">{m.label}</div>
             <div className="ra-metric-value">{m.value}</div>
+            {m.sub && <div className="ra-metric-sub">{m.sub}</div>}
           </div>
         ))}
       </div>
@@ -598,6 +786,69 @@ const ReportAnalysis = ({ reportKey, data }) => {
           <div className="ra-narrative-box">
             {narrative.map((para, i) => (
               <p key={i} className="ra-narrative-para">{para}</p>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* ── Accounting Ratios ─────────────────────────────────────────────────── */}
+      {config.ratioRows && config.ratioRows.length > 0 && (
+        <>
+          <div className="ra-section-label">Accounting Ratios &amp; Metrics</div>
+          <div className="ra-ratio-groups">
+            {config.ratioRows.map((group, gi) => (
+              <div key={gi} className="ra-ratio-group">
+                <div className="ra-ratio-group-title">{group.group}</div>
+                <table className="ra-ratio-table">
+                  <thead>
+                    <tr>
+                      <th>Metric</th>
+                      <th>Formula</th>
+                      {group.hasFY2 ? (
+                        <>
+                          <th>{data.fy1Label || 'Current FY'}</th>
+                          <th>{data.fy2Label || 'Previous FY'}</th>
+                          <th>Change</th>
+                        </>
+                      ) : (
+                        <th>Value</th>
+                      )}
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {group.items.map((item, ii) => (
+                      <tr key={ii}>
+                        <td className="ra-ratio-label">{item.label}</td>
+                        <td className="ra-ratio-formula">{item.formula}</td>
+                        {group.hasFY2 ? (
+                          <>
+                            <td className="ra-ratio-value">{item.value}</td>
+                            <td className="ra-ratio-value ra-ratio-value--prev">{item.value2 ?? '—'}</td>
+                            <td className="ra-ratio-delta">
+                              {item.delta ? (
+                                <span className={`ra-ratio-delta-val ${item.delta.positive ? 'pos' : 'neg'}`}>
+                                  {item.delta.label}
+                                </span>
+                              ) : '—'}
+                            </td>
+                          </>
+                        ) : (
+                          <td className="ra-ratio-value">{item.value}</td>
+                        )}
+                        <td>
+                          {item.status && (
+                            <span className={`ra-ratio-badge ra-ratio-badge--${item.status}`}>
+                              {item.status === 'good' ? '✓ Good' : item.status === 'warning' ? '⚠ Moderate' : '✗ Poor'}
+                            </span>
+                          )}
+                          {item.note && <span className="ra-ratio-note">{item.note}</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             ))}
           </div>
         </>

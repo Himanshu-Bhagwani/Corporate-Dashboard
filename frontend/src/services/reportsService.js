@@ -6,10 +6,11 @@ const getHeaders = (companyId) => ({
   ...(companyId ? { 'x-company-id': companyId } : {})
 });
 
-export const fetchReport = async (type, companyId, { from, to } = {}) => {
+export const fetchReport = async (type, companyId, { from, to, fy } = {}) => {
   const qs = new URLSearchParams();
   if (from) qs.append('from', from);
   if (to)   qs.append('to', to);
+  if (fy)   qs.append('fy', fy);
   const query = qs.toString() ? `?${qs}` : '';
   const res = await fetch(`${BASE_URL}/reports/${type}${query}`, { headers: getHeaders(companyId) });
   if (!res.ok) throw new Error('Failed to fetch report');
@@ -26,11 +27,12 @@ export const fetchReportSuggestions = async (type, metrics, companyId) => {
   return res.json();
 };
 
-export const exportReport = async (type, format, companyId, includeAI = false, { from, to } = {}) => {
+export const exportReport = async (type, format, companyId, includeAI = false, { from, to, fy } = {}) => {
   const qs = new URLSearchParams({ type, format });
   if (includeAI) qs.append('ai', 'true');
   if (from) qs.append('from', from);
   if (to)   qs.append('to', to);
+  if (fy)   qs.append('fy', fy);
   const res = await fetch(`${BASE_URL}/reports/export?${qs}`, { headers: getHeaders(companyId) });
   if (!res.ok) throw new Error('Failed to export report');
   const blob = await res.blob();

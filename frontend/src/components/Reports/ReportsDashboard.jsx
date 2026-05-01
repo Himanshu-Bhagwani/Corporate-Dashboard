@@ -1,10 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { DollarSign, TrendingUp, PieChart, FileText, BarChart3, Download, Calendar } from 'lucide-react';
 import ExportButtons from './ExportButtons';
 import ReportViewer from './ReportViewer';
 import ReportAnalysis from './ReportAnalysis';
 import { fetchReport, exportReport } from '../../services/reportsService';
 import { useAuth } from '../../context/AuthContext';
+
+const FY_BASED_REPORTS = new Set(['pnl', 'balance-sheet']);
+
+const getCurrentFYEndYear = () => {
+  const now = new Date();
+  return now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+};
+
+const buildFYOptions = () => {
+  const endYear = getCurrentFYEndYear();
+  return Array.from({ length: 6 }, (_, i) => {
+    const y = endYear - i;
+    return { value: y, label: `FY ${y - 1}-${String(y).slice(-2)}` };
+  });
+};
 
 const REPORTS = [
   { id: 1, title: 'Profit & Loss',  key: 'pnl',           description: 'Revenue & expense breakdown with margins',   icon: DollarSign, color: '#1d4ed8' },
@@ -22,8 +37,12 @@ const ReportsDashboard = () => {
   const [isExporting,  setIsExporting]  = useState(false);
   const [dateFrom,     setDateFrom]     = useState('');
   const [dateTo,       setDateTo]       = useState('');
+  const [selectedFY,   setSelectedFY]   = useState(getCurrentFYEndYear());
 
-  const dateRange = { from: dateFrom || undefined, to: dateTo || undefined };
+  const fyOptions = useMemo(() => buildFYOptions(), []);
+  const isFYBased = activeReport ? FY_BASED_REPORTS.has(activeReport.key) : false;
+  const dateRange = { from: dateFrom || undefined, to: dateTo || undefined, fy: undefined };
+  const fyRange   = { fy: selectedFY };
 
   const handleGenerate = async (report) => {
     if (!currentCompany) return;
@@ -31,7 +50,8 @@ const ReportsDashboard = () => {
     setReportData(null);
     setLoading(true);
     try {
-      const data = await fetchReport(report.key, currentCompany.id, dateRange);
+      const params = FY_BASED_REPORTS.has(report.key) ? { fy: selectedFY } : dateRange;
+      const data = await fetchReport(report.key, currentCompany.id, params);
       setReportData(data);
     } catch (err) {
       setReportData({ error: err.message });
@@ -44,7 +64,8 @@ const ReportsDashboard = () => {
     if (!activeReport) return;
     setIsExporting(true);
     try {
-      await exportReport(activeReport.key, format.toLowerCase(), currentCompany.id, false, dateRange);
+      const params = isFYBased ? fyRange : dateRange;
+      await exportReport(activeReport.key, format.toLowerCase(), currentCompany.id, false, params);
     } catch (err) {
       console.error('Export failed', err);
     } finally {
@@ -54,10 +75,29 @@ const ReportsDashboard = () => {
 
   return (
     <>
-      {/* Date range filter */}
+      {/* Filters */}
       <div className="reports-date-filter">
         <div className="rdf-icon"><Calendar size={18} /></div>
-        <span className="rdf-label">Period</span>
+
+        {/* FY selector — for P&L and Balance Sheet */}
+        <div className="rdf-fy-block">
+          <span className="rdf-label">Financial Year</span>
+          <select
+            className="rdf-fy-select"
+            value={selectedFY}
+            onChange={e => setSelectedFY(Number(e.target.value))}
+          >
+            {fyOptions.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+          <span className="rdf-fy-hint">· P&amp;L &amp; Balance Sheet</span>
+        </div>
+
+        <div className="rdf-divider" />
+
+        {/* Date range — for Cash Flow, Tax, GST */}
+        <span className="rdf-label">Date Range</span>
         <div className="rdf-inputs">
           <div className="rdf-field">
             <label>From</label>

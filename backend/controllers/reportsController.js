@@ -30,19 +30,23 @@ const toMonthLabel = (key) => {
   return `${MONTHS[parseInt(m, 10) - 1]} ${y}`;
 };
 
-// Indian FY runs April 1 → March 31; returns two most recently completed FYs
-const getFYRanges = () => {
-  const now = new Date();
-  const month = now.getMonth();
-  const year = now.getFullYear();
-  const fy1EndYear = month >= 3 ? year : year - 1;
+// Indian FY runs April 1 → March 31; returns two FYs ending in fy1EndYear (defaults to most recent completed)
+const getFYRanges = (fyEndYear = null) => {
+  if (!fyEndYear) {
+    const now = new Date();
+    const month = now.getMonth();
+    const year = now.getFullYear();
+    fyEndYear = month >= 3 ? year : year - 1;
+  }
+  const fy1EndYear = fyEndYear;
+  const toShortYear = (y) => String(y).slice(-2);
   return {
     fy1Start: `${fy1EndYear - 1}-04-01`,
     fy1End:   `${fy1EndYear}-03-31`,
     fy2Start: `${fy1EndYear - 2}-04-01`,
     fy2End:   `${fy1EndYear - 1}-03-31`,
-    fy1Label: `31 March ${fy1EndYear}`,
-    fy2Label: `31 March ${fy1EndYear - 1}`
+    fy1Label: `FY ${fy1EndYear - 1}-${toShortYear(fy1EndYear)}`,
+    fy2Label: `FY ${fy1EndYear - 2}-${toShortYear(fy1EndYear - 1)}`
   };
 };
 
@@ -314,9 +318,9 @@ const fetchBalanceSheetData = async (companyId, dateSQL, baseParams) => {
 
 // ─── Shared query helpers (used by GET handlers and export) ──────────────────
 
-const queryPnL = async (companyId) => {
-  const { fy1Start, fy1End, fy2Start, fy2End, fy1Label, fy2Label } = getFYRanges();
-  const [coRes, revRes, allRevRes, allExpRes, expRes] = await Promise.all([
+const queryPnL = async (companyId, fyEndYear = null) => {
+  const { fy1Start, fy1End, fy2Start, fy2End, fy1Label, fy2Label } = getFYRanges(fyEndYear);
+  const [coRes, revRes, allRevRes, allExpRes, expRes, accRes, allNetRes, recRes, payRes] = await Promise.all([
     pool.query(`SELECT name FROM companies WHERE id = $1`, [companyId]),
     pool.query(`SELECT
       COALESCE(SUM(CASE WHEN date >= $2 AND date <= $3 THEN amount END), 0) as fy1,
@@ -331,6 +335,10 @@ const queryPnL = async (companyId) => {
       FROM transactions WHERE company_id = $1 AND type = 'expense'
       GROUP BY COALESCE(category, 'Other')`,
       [companyId, fy1Start, fy1End, fy2Start, fy2End]),
+    pool.query(`SELECT COALESCE(SUM(opening_balance), 0) as total FROM accounts WHERE company_id = $1`, [companyId]),
+    pool.query(`SELECT COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE -amount END), 0) as net FROM transactions WHERE company_id = $1`, [companyId]),
+    pool.query(`SELECT COALESCE(SUM(amount), 0) as total FROM invoices WHERE company_id = $1 AND type = 'receivable' AND status IN ('pending','overdue')`, [companyId]),
+    pool.query(`SELECT COALESCE(SUM(amount), 0) as total FROM invoices WHERE company_id = $1 AND type = 'payable' AND status IN ('pending','overdue')`, [companyId]),
   ]);
   const buckets = { cogs: [0,0], employee: [0,0], finance: [0,0], depreciation: [0,0], other: [0,0] };
   expRes.rows.forEach(r => {
@@ -344,19 +352,46 @@ const queryPnL = async (companyId) => {
     else                                                                             b = 'other';
     buckets[b][0] += v1; buckets[b][1] += v2;
   });
+  const fy1Rev = parseFloat(revRes.rows[0]?.fy1||0);
+  const fy2Rev = parseFloat(revRes.rows[0]?.fy2||0);
+  const fy1ExpTotal = buckets.cogs[0] + buckets.employee[0] + buckets.finance[0] + buckets.depreciation[0] + buckets.other[0];
+  const fy2ExpTotal = buckets.cogs[1] + buckets.employee[1] + buckets.finance[1] + buckets.depreciation[1] + buckets.other[1];
+  const cashFY1 = parseFloat(accRes.rows[0]?.total||0) + parseFloat(allNetRes.rows[0]?.net||0);
+  const receivables = parseFloat(recRes.rows[0]?.total||0);
+  const payables = parseFloat(payRes.rows[0]?.total||0);
+  const ratios = formulas.computeAllRatios({
+    revenue: fy1Rev,
+    expenses: fy1ExpTotal,
+    cash: cashFY1,
+    receivables,
+    payables,
+    cogsAmount: buckets.cogs[0],
+    interestExpense: buckets.finance[0],
+  });
+  // FY2 ratios — income-statement metrics only (no historical balance sheet data available)
+  const fy2Net = fy2Rev - fy2ExpTotal;
+  const ratios2 = {
+    grossProfit:       formulas.grossProfit(fy2Rev, buckets.cogs[1]),
+    grossProfitMargin: formulas.grossProfitMargin(formulas.grossProfit(fy2Rev, buckets.cogs[1]), fy2Rev),
+    ebit:              formulas.ebit(fy2Rev, fy2ExpTotal, buckets.finance[1], 0),
+    netIncome:         fy2Net,
+    netProfitMargin:   formulas.netProfitMargin(fy2Net, fy2Rev),
+  };
   return {
     companyName: coRes.rows[0]?.name || '',
     fy1Label, fy2Label,
-    revenue: { fromOperations: [parseFloat(revRes.rows[0]?.fy1||0), parseFloat(revRes.rows[0]?.fy2||0)], otherIncome: [0, 0] },
+    revenue: { fromOperations: [fy1Rev, fy2Rev], otherIncome: [0, 0] },
     expenses: { cogs: buckets.cogs, employeeBenefits: buckets.employee, financeCosts: buckets.finance, depreciation: buckets.depreciation, other: buckets.other },
     income: parseFloat(allRevRes.rows[0]?.total||0),
     expense: parseFloat(allExpRes.rows[0]?.total||0),
     netProfit: parseFloat(allRevRes.rows[0]?.total||0) - parseFloat(allExpRes.rows[0]?.total||0),
+    ratios,
+    ratios2,
   };
 };
 
-const queryBalanceSheet = async (companyId) => {
-  const { fy1Start, fy1End, fy2Start, fy2End, fy1Label, fy2Label } = getFYRanges();
+const queryBalanceSheet = async (companyId, fyEndYear = null) => {
+  const { fy1Start, fy1End, fy2Start, fy2End, fy1Label, fy2Label } = getFYRanges(fyEndYear);
   const [coRes, profitRes, accountsRes, allTimeNetRes, recRes, payRes, coaRes] = await Promise.all([
     pool.query(`SELECT name FROM companies WHERE id = $1`, [companyId]),
     pool.query(`SELECT
@@ -397,7 +432,10 @@ const queryBalanceSheet = async (companyId) => {
 
 // Returns statutory two-FY format consumed by the P&L viewer
 const getPnL = async (req, res) => {
-  try { res.json(await queryPnL(getCompanyId(req))); }
+  try {
+    const fyEndYear = req.query.fy ? parseInt(req.query.fy, 10) : null;
+    res.json(await queryPnL(getCompanyId(req), fyEndYear));
+  }
   catch (e) { res.status(500).json({ error: e.message }); }
 };
 
@@ -405,7 +443,8 @@ const getPnL = async (req, res) => {
 const getBalanceSheet = async (req, res) => {
   try {
     const companyId = getCompanyId(req);
-    const { fy1Start, fy1End, fy2Start, fy2End, fy1Label, fy2Label } = getFYRanges();
+    const fyEndYear = req.query.fy ? parseInt(req.query.fy, 10) : null;
+    const { fy1Start, fy1End, fy2Start, fy2End, fy1Label, fy2Label } = getFYRanges(fyEndYear);
 
     const companyRes = await pool.query(`SELECT name FROM companies WHERE id = $1`, [companyId]);
     const companyName = companyRes.rows[0]?.name || '';
@@ -462,6 +501,22 @@ const getBalanceSheet = async (req, res) => {
       GROUP BY a.id, a.name, a.type, a.opening_balance
     `, [companyId]);
 
+    const [revQ, expQ] = await Promise.all([
+      pool.query(`SELECT COALESCE(SUM(CASE WHEN date >= $2 AND date <= $3 THEN amount END), 0) as total FROM transactions WHERE company_id = $1 AND type = 'income'`, [companyId, fy1Start, fy1End]),
+      pool.query(`SELECT COALESCE(SUM(CASE WHEN date >= $2 AND date <= $3 THEN amount END), 0) as total FROM transactions WHERE company_id = $1 AND type = 'expense'`, [companyId, fy1Start, fy1End]),
+    ]);
+    const fy1Rev = parseFloat(revQ.rows[0]?.total||0);
+    const fy1Exp = parseFloat(expQ.rows[0]?.total||0);
+    const ratios = formulas.computeAllRatios({
+      revenue: fy1Rev,
+      expenses: fy1Exp,
+      cash: cashFY1,
+      receivables: tradeRec,
+      payables: tradePay,
+      cogsAmount: fy1Exp * 0.6,
+      interestExpense: fy1Exp * 0.05,
+    });
+
     res.json({
       companyName,
       fy1Label,
@@ -506,7 +561,8 @@ const getBalanceSheet = async (req, res) => {
         balance: parseFloat(r.opening_balance) + parseFloat(r.net)
       })),
       liabilities:   [],
-      equity_legacy: []
+      equity_legacy: [],
+      ratios,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 };
@@ -521,15 +577,27 @@ const getCashFlow = async (req, res) => {
       fetchCashFlowData(companyId, sql, base),
       pool.query(`SELECT name FROM companies WHERE id = $1`, [companyId])
     ]);
+    const totals = {
+      inflow:  months.reduce((s, m) => s + m.inflow, 0),
+      outflow: months.reduce((s, m) => s + m.outflow, 0),
+      net:     months.reduce((s, m) => s + m.net, 0)
+    };
+    const totalNet = totals.net;
+    const depAmt = 0; // no depreciation data in cash flow
+    const ocf = formulas.operatingCashFlow(totalNet, depAmt);
+    const fcf = formulas.freeCashFlow(ocf, 0);
     res.json({
       companyName: companyRes.rows[0]?.name || '',
       period: { from: from || null, to: to || null },
       months,
-      totals: {
-        inflow:  months.reduce((s, m) => s + m.inflow, 0),
-        outflow: months.reduce((s, m) => s + m.outflow, 0),
-        net:     months.reduce((s, m) => s + m.net, 0)
-      }
+      totals,
+      ratios: {
+        operatingCashFlow: ocf,
+        freeCashFlow: fcf,
+        avgMonthlyCashFlow: months.length > 0 ? totalNet / months.length : 0,
+        positiveCashMonths: months.filter(m => m.net >= 0).length,
+        totalMonths: months.length,
+      },
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 };
@@ -543,13 +611,22 @@ const getTax = async (req, res) => {
       fetchTaxData(companyId, sql, [companyId, ...params]),
       pool.query(`SELECT name FROM companies WHERE id = $1`, [companyId])
     ]);
+    const effTaxRate = d.net > 0 ? formulas.pct((d.totalTax + d.netGST) / d.net * 100) : 0;
+    const itcUtil = d.outputGST > 0 ? formulas.pct(d.inputGST / d.outputGST * 100) : 0;
+    const npm = d.income > 0 ? formulas.pct(d.net / d.income * 100) : 0;
     res.json({
       companyName: companyRes.rows[0]?.name || '',
       period: { from: from || null, to: to || null },
       totalRevenue: d.income, totalExpenses: d.expense, netProfit: d.net,
       incomeTax: { baseTax: d.baseTax, rate: '25%', surcharge: d.surcharge, surchargeRate: '7%', cess: d.cess, cessRate: '4%', total: d.totalTax },
       gst: { outputGST: d.outputGST, inputGSTCredit: d.inputGST, netPayable: d.netGST },
-      totalTaxLiability: d.totalTax + d.netGST
+      totalTaxLiability: d.totalTax + d.netGST,
+      ratios: {
+        effectiveTaxRate: effTaxRate,
+        itcUtilizationRate: itcUtil,
+        netProfitMargin: npm,
+        taxBurdenRatio: effTaxRate,
+      },
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 };
@@ -563,16 +640,24 @@ const getGST = async (req, res) => {
     const months = await fetchGSTData(companyId, sql, base);
     const totOut = months.reduce((s, m) => s + m.output, 0);
     const totIn  = months.reduce((s, m) => s + m.input, 0);
+    const itcUtil = totOut > 0 ? formulas.pct(totIn / totOut * 100) : 0;
+    const netPay = Math.max(0, totOut - totIn);
     res.json({
       period: { from: from || null, to: to || null },
       gstRate: '18%',
       summary: {
         outputGST: totOut, cgstOut: totOut / 2, sgstOut: totOut / 2,
         inputGST:  totIn,  cgstIn:  totIn / 2,  sgstIn:  totIn / 2,
-        netPayable:    Math.max(0, totOut - totIn),
+        netPayable:    netPay,
         netRefundable: Math.max(0, totIn - totOut)
       },
-      months
+      months,
+      ratios: {
+        itcUtilizationRate: itcUtil,
+        netGSTRate: itcUtil,
+        avgMonthlyOutput: months.length > 0 ? totOut / months.length : 0,
+        avgMonthlyInput: months.length > 0 ? totIn / months.length : 0,
+      },
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 };
@@ -856,11 +941,15 @@ Output ONLY valid JSON with this structure (no markdown, no extra text):
 const exportReport = async (req, res) => {
   try {
     const companyId = getCompanyId(req);
-    const { type = 'pnl', format = 'pdf', from, to } = req.query;
+    const { type = 'pnl', format = 'pdf', from, to, fy } = req.query;
     const reportType  = type.toLowerCase();
+    const fyEndYear   = fy ? parseInt(fy, 10) : null;
     const { sql, params } = buildDateFilter(from, to);
     const baseParams  = [companyId, ...params];
-    const periodLabel = from && to ? `${from} to ${to}` : from ? `From ${from}` : to ? `Up to ${to}` : 'All Time';
+    const fyRanges    = getFYRanges(fyEndYear);
+    const periodLabel = (reportType === 'pnl' || reportType === 'balance-sheet')
+      ? `${fyRanges.fy1Label} vs ${fyRanges.fy2Label}`
+      : from && to ? `${from} to ${to}` : from ? `From ${from}` : to ? `Up to ${to}` : 'All Time';
 
     const TITLE_MAP = {
       pnl:             'Profit & Loss Statement',
@@ -881,7 +970,7 @@ const exportReport = async (req, res) => {
       let y = pdfPageHeader(doc, reportTitle, `Period: ${periodLabel}`);
 
       if (reportType === 'pnl') {
-        const d = await queryPnL(companyId);
+        const d = await queryPnL(companyId, fyEndYear);
         const rev = d.revenue || {};
         const exp = d.expenses || {};
         const revFY1 = (rev.fromOperations?.[0] || 0) + (rev.otherIncome?.[0] || 0);
@@ -929,8 +1018,42 @@ const exportReport = async (req, res) => {
           ]
         });
 
+        // Draw ratios section for P&L PDF
+        const pnlRatios = formulas.computeAllRatios({
+          revenue: revFY1,
+          expenses: totalExpFY1,
+          cash: 0,
+          receivables: 0,
+          payables: 0,
+          cogsAmount: exp.cogs?.[0] || 0,
+          interestExpense: exp.financeCosts?.[0] || 0,
+        });
+        y = doc.y + 14;
+        y = pdfSectionTitle(doc, 'Key Accounting Ratios & Metrics', y + 10);
+        y = drawTable(doc, {
+          headers: ['Metric', 'Formula / Description', 'Value'],
+          colWidths: [185, 210, 100],
+          startY: y,
+          rows: [
+            { cells: ['Gross Profit', 'Revenue − COGS', `Rs.${fmtINR(pnlRatios.grossProfit)}`] },
+            { cells: ['Gross Profit Margin', 'Gross Profit / Revenue × 100', `${pnlRatios.grossProfitMargin}%`] },
+            { cells: ['EBIT (Operating Profit)', 'Revenue − Operating Expenses (excl. interest & tax)', `Rs.${fmtINR(pnlRatios.ebit)}`] },
+            { cells: ['Net Profit Margin', 'Net Income / Revenue × 100', `${pnlRatios.netProfitMargin}%`] },
+            { _sep: true },
+            { cells: ['Working Capital', 'Current Assets − Current Liabilities', `Rs.${fmtINR(pnlRatios.workingCapital)}`] },
+            { cells: ['Current Ratio', 'Current Assets / Current Liabilities', pnlRatios.currentRatio.toString()] },
+            { cells: ['AR Turnover', 'Net Sales / Average Accounts Receivable', `${pnlRatios.arTurnover}×`] },
+            { cells: ['Days Sales Outstanding', '365 / AR Turnover', `${pnlRatios.daysSalesOutstanding} days`] },
+            { _sep: true },
+            { cells: ['ROA', 'Net Income / Total Assets × 100', `${pnlRatios.roa}%`] },
+            { cells: ['ROE', 'Net Income / Shareholder\'s Equity × 100', `${pnlRatios.roe}%`] },
+            { cells: ['Total Asset Turnover', 'Net Sales / Average Total Assets', `${pnlRatios.totalAssetTurnover}×`] },
+            { cells: ['DuPont ROE', 'Net Profit Margin × Asset Turnover × Equity Multiplier', `${pnlRatios.dupontROE}%`] },
+          ],
+        });
+
       } else if (reportType === 'balance-sheet') {
-        const d = await queryBalanceSheet(companyId);
+        const d = await queryBalanceSheet(companyId, fyEndYear);
         const eq  = d.equity || {};
         const ncl = d.nonCurrentLiabilities || {};
         const cl  = d.currentLiabilities || {};
@@ -993,6 +1116,38 @@ const exportReport = async (req, res) => {
             { _blank: true },
             { _total: true, cells: ['Total', '', f(assetTotal[0]), f(assetTotal[1])] },
           ]
+        });
+
+        // Draw ratios section for Balance Sheet PDF
+        const cashBS = ca.cashAndBank?.[0] || 0;
+        const recBS  = ca.tradeReceivables?.[0] || 0;
+        const payBS  = cl.tradePayables?.[0] || 0;
+        const fy1NetBS = eq.reservesAndSurplus?.[0] || 0;
+        const bsRatios = formulas.computeAllRatios({
+          revenue: 0,
+          expenses: 0,
+          cash: cashBS,
+          receivables: recBS,
+          payables: payBS,
+          cogsAmount: 0,
+          interestExpense: 0,
+        });
+        y = doc.y + 14;
+        y = pdfSectionTitle(doc, 'Key Accounting Ratios & Metrics', y + 10);
+        y = drawTable(doc, {
+          headers: ['Metric', 'Formula / Description', 'Value'],
+          colWidths: [185, 210, 100],
+          startY: y,
+          rows: [
+            { cells: ['Current Ratio', 'Current Assets / Current Liabilities', bsRatios.currentRatio.toString()] },
+            { cells: ['Quick Ratio (Acid-Test)', '(Current Assets − Inventory) / Current Liabilities', bsRatios.quickRatio.toString()] },
+            { cells: ['Cash Ratio', 'Cash / Current Liabilities', bsRatios.cashRatio.toString()] },
+            { cells: ['Working Capital', 'Current Assets − Current Liabilities', `Rs.${fmtINR(bsRatios.workingCapital)}`] },
+            { _sep: true },
+            { cells: ['Debt-to-Equity Ratio', 'Total Liabilities / Shareholder\'s Equity', bsRatios.debtToEquity.toString()] },
+            { cells: ['Debt Ratio', 'Total Liabilities / Total Assets', bsRatios.debtRatio.toString()] },
+            { cells: ['Equity Multiplier', 'Total Assets / Total Equity', bsRatios.equityMultiplier.toString()] },
+          ],
         });
 
       } else if (reportType === 'cash-flow') {
@@ -1183,6 +1338,38 @@ const exportReport = async (req, res) => {
         sh.addRow(['Net Profit Margin', d.totalRev > 0 ? `${((d.net/d.totalRev)*100).toFixed(1)}%` : '—'])
           .font = { size: 11, color: { argb: 'FF334155' } };
 
+        // Ratios sheet for P&L Excel
+        const xlPnLRatios = formulas.computeAllRatios({
+          revenue: d.totalRev,
+          expenses: d.totalExp,
+          cash: 0,
+          receivables: 0,
+          payables: 0,
+          cogsAmount: d.expenses.reduce((s, r) => /purchase|cogs|cost of goods|raw material|direct|inventory/i.test(r.cat) ? s + parseFloat(r.total) : s, 0) || d.totalExp * 0.6,
+          interestExpense: d.expenses.reduce((s, r) => /interest|bank charge|finance|loan/i.test(r.cat) ? s + parseFloat(r.total) : s, 0),
+        });
+        const rsh = wb.addWorksheet('Ratios');
+        xlSheetHeader(rsh, 'Key Accounting Ratios & Metrics', `Period: ${periodLabel}`);
+        rsh.columns = [{ key: 'metric', width: 36 }, { key: 'formula', width: 48 }, { key: 'value', width: 20 }];
+        xlHeader(rsh.addRow(['Metric', 'Formula / Description', 'Value']), 3);
+        [
+          ['Gross Profit', 'Revenue − COGS', `Rs.${fmtINR(xlPnLRatios.grossProfit)}`],
+          ['Gross Profit Margin', 'Gross Profit / Revenue × 100', `${xlPnLRatios.grossProfitMargin}%`],
+          ['EBIT (Operating Profit)', 'Revenue − Operating Expenses (excl. interest & tax)', `Rs.${fmtINR(xlPnLRatios.ebit)}`],
+          ['Net Profit Margin', 'Net Income / Revenue × 100', `${xlPnLRatios.netProfitMargin}%`],
+          ['Working Capital', 'Current Assets − Current Liabilities', `Rs.${fmtINR(xlPnLRatios.workingCapital)}`],
+          ['Current Ratio', 'Current Assets / Current Liabilities', xlPnLRatios.currentRatio.toString()],
+          ['AR Turnover', 'Net Sales / Average Accounts Receivable', `${xlPnLRatios.arTurnover}×`],
+          ['Days Sales Outstanding', '365 / AR Turnover', `${xlPnLRatios.daysSalesOutstanding} days`],
+          ['ROA', 'Net Income / Total Assets × 100', `${xlPnLRatios.roa}%`],
+          ['ROE', 'Net Income / Shareholder\'s Equity × 100', `${xlPnLRatios.roe}%`],
+          ['Total Asset Turnover', 'Net Sales / Average Total Assets', `${xlPnLRatios.totalAssetTurnover}×`],
+          ['DuPont ROE', 'Net Profit Margin × Asset Turnover × Equity Multiplier', `${xlPnLRatios.dupontROE}%`],
+        ].forEach((r, i) => {
+          const row = rsh.addRow(r);
+          if (i % 2 === 1) row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+        });
+
       } else if (reportType === 'balance-sheet') {
         const sh = wb.addWorksheet('Balance Sheet');
         xlSheetHeader(sh, 'Balance Sheet', `Period: ${periodLabel}`);
@@ -1202,6 +1389,38 @@ const exportReport = async (req, res) => {
           sec.rows.forEach(r => { const row = sh.addRow(r); row.getCell(2).numFmt = XL_FMT; });
           xlTotal(sh.addRow(sec.total), 2);
           sh.addRow([]);
+        });
+
+        // Ratios sheet for Balance Sheet Excel
+        const xlBSRatios = formulas.computeAllRatios({
+          revenue: 0,
+          expenses: 0,
+          cash: d.cash,
+          receivables: d.receivables,
+          payables: d.payables,
+          cogsAmount: 0,
+          interestExpense: 0,
+        });
+        const bsRsh = wb.addWorksheet('Ratios');
+        xlSheetHeader(bsRsh, 'Key Accounting Ratios & Metrics', `Period: ${periodLabel}`);
+        bsRsh.columns = [{ key: 'metric', width: 36 }, { key: 'formula', width: 48 }, { key: 'value', width: 20 }];
+        xlHeader(bsRsh.addRow(['Metric', 'Formula / Description', 'Value']), 3);
+        [
+          ['Current Ratio', 'Current Assets / Current Liabilities', xlBSRatios.currentRatio.toString()],
+          ['Quick Ratio (Acid-Test)', '(Current Assets − Inventory) / Current Liabilities', xlBSRatios.quickRatio.toString()],
+          ['Cash Ratio', 'Cash / Current Liabilities', xlBSRatios.cashRatio.toString()],
+          ['Working Capital', 'Current Assets − Current Liabilities', `Rs.${fmtINR(xlBSRatios.workingCapital)}`],
+          ['Debt-to-Equity Ratio', 'Total Liabilities / Shareholder\'s Equity', xlBSRatios.debtToEquity.toString()],
+          ['Debt Ratio', 'Total Liabilities / Total Assets', xlBSRatios.debtRatio.toString()],
+          ['Equity Multiplier', 'Total Assets / Total Equity', xlBSRatios.equityMultiplier.toString()],
+          ['ROA', 'Net Income / Total Assets × 100', `${xlBSRatios.roa}%`],
+          ['ROE', 'Net Income / Shareholder\'s Equity × 100', `${xlBSRatios.roe}%`],
+          ['Total Asset Turnover', 'Net Sales / Average Total Assets', `${xlBSRatios.totalAssetTurnover}×`],
+          ['AR Turnover', 'Net Sales on Credit / Average AR', `${xlBSRatios.arTurnover}×`],
+          ['Days Sales Outstanding', '365 / AR Turnover', `${xlBSRatios.daysSalesOutstanding} days`],
+        ].forEach((r, i) => {
+          const row = bsRsh.addRow(r);
+          if (i % 2 === 1) row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
         });
 
       } else if (reportType === 'cash-flow') {

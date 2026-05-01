@@ -79,6 +79,7 @@
 .ra-metric-card.green .ra-metric-value { color: #059669; }
 .ra-metric-card.red   .ra-metric-value { color: #dc2626; }
 .ra-metric-card.blue  .ra-metric-value { color: #1d4ed8; }
+.ra-metric-sub { font-size: 0.72rem; color: #94a3b8; font-weight: 500; margin-top: 0.2rem; }
 .ra-metric-card.amber .ra-metric-value { color: #d97706; }
 .ra-metric-card.purple .ra-metric-value { color: #7c3aed; }
 
@@ -281,4 +282,33 @@
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
+}
+
+/* ── Accounting Ratios Section ── */
+.ra-ratio-groups { display: flex; flex-direction: column; gap: 1.5rem; margin-bottom: 1rem; }
+.ra-ratio-group { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
+.ra-ratio-group-title { padding: 0.75rem 1.25rem; background: linear-gradient(135deg, #1e3a8a, #1d4ed8); color: #fff; font-size: 0.85rem; font-weight: 700; letter-spacing: 0.04em; }
+.ra-ratio-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.ra-ratio-table thead tr { background: #f8fafc; }
+.ra-ratio-table thead th { padding: 0.6rem 1rem; font-size: 0.72rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; text-align: left; border-bottom: 1px solid #e2e8f0; }
+.ra-ratio-table tbody tr { border-bottom: 1px solid #f1f5f9; transition: background 0.15s; }
+.ra-ratio-table tbody tr:last-child { border-bottom: none; }
+.ra-ratio-table tbody tr:hover { background: #f8fafc; }
+.ra-ratio-label { padding: 0.6rem 1rem; font-weight: 600; color: #1a202c; width: 28%; }
+.ra-ratio-formula { padding: 0.6rem 1rem; color: #64748b; font-style: italic; font-size: 0.8rem; width: 40%; }
+.ra-ratio-value { padding: 0.6rem 1rem; font-weight: 700; font-variant-numeric: tabular-nums; color: #1d4ed8; }
+.ra-ratio-value--prev { color: #64748b; font-weight: 600; }
+.ra-ratio-delta { padding: 0.6rem 1rem; }
+.ra-ratio-delta-val { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 5px; font-size: 0.75rem; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ra-ratio-delta-val.pos { background: #dcfce7; color: #15803d; }
+.ra-ratio-delta-val.neg { background: #fee2e2; color: #dc2626; }
+.ra-ratio-badge { display: inline-block; padding: 0.2rem 0.55rem; border-radius: 6px; font-size: 0.72rem; font-weight: 700; white-space: nowrap; }
+.ra-ratio-badge--good { background: #dcfce7; color: #15803d; }
+.ra-ratio-badge--warning { background: #fef9c3; color: #a16207; }
+.ra-ratio-badge--danger { background: #fee2e2; color: #dc2626; }
+.ra-ratio-note { font-size: 0.72rem; color: #94a3b8; margin-left: 0.5rem; }
+@media (max-width: 768px) {
+  .ra-ratio-table { font-size: 0.78rem; }
+  .ra-ratio-formula { display: none; }
+  .ra-ratio-delta { display: none; }
 }
