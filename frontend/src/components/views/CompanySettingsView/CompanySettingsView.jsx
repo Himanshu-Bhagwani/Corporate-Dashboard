@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 
-const ROLES = ['admin', 'editor', 'viewer'];
+const ROLES = ['Admin', 'Finance Manager', 'Accountant', 'Auditor'];
 const INDUSTRIES = [
   'Technology', 'Finance', 'Healthcare', 'Retail', 'Manufacturing',
   'Education', 'Real Estate', 'Hospitality', 'Consulting', 'Other',
@@ -56,7 +56,7 @@ const CompanySettingsView = () => {
   const [teamInvites, setTeamInvites] = useState([]);
   const [teamLoading, setTeamLoading] = useState(false);
   const [newInviteEmail, setNewInviteEmail] = useState('');
-  const [newInviteRole, setNewInviteRole] = useState('viewer');
+  const [newInviteRole, setNewInviteRole] = useState('Accountant');
 
   useEffect(() => {
     if (!currentCompany) return;
@@ -354,7 +354,7 @@ const CompanySettingsView = () => {
                 onChange={e => setNewInviteRole(e.target.value)}
               >
                 {ROLES.map(r => (
-                  <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
+                  <option key={r} value={r}>{r}</option>
                 ))}
               </select>
               <button className="cs-btn-primary" onClick={inviteMember}>
@@ -389,7 +389,7 @@ const CompanySettingsView = () => {
                       </span>
                     </span>
                   </div>
-                  <span className={`cs-role-badge cs-role-${invite.role}`}>{invite.role}</span>
+                  <span className={`cs-role-badge cs-role-${invite.role.toLowerCase().replace(/\s+/g, '-')}`}>{invite.role}</span>
                   <button className="cs-remove-btn" onClick={() => removeInvite(invite.id)} title="Remove">
                     <Trash2 size={15} />
                   </button>

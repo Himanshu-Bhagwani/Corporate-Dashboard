@@ -250,6 +250,21 @@
   color: #475569;
 }
 
+.cs-role-finance-manager {
+  background: rgba(99, 102, 241, 0.12);
+  color: #4f46e5;
+}
+
+.cs-role-accountant {
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+}
+
+.cs-role-auditor {
+  background: rgba(148, 163, 184, 0.15);
+  color: #475569;
+}
+
 .cs-status-pill {
   font-size: 0.72rem;
   font-weight: 600;
