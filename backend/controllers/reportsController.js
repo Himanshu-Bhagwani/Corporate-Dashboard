@@ -320,7 +320,7 @@ const fetchBalanceSheetData = async (companyId, dateSQL, baseParams) => {
 
 const queryPnL = async (companyId, fyEndYear = null) => {
   const { fy1Start, fy1End, fy2Start, fy2End, fy1Label, fy2Label } = getFYRanges(fyEndYear);
-  const [coRes, revRes, allRevRes, allExpRes, expRes, accRes, allNetRes, recRes, payRes] = await Promise.all([
+  const [coRes, revRes, allRevRes, allExpRes, expRes, accRes, recRes, payRes] = await Promise.all([
     pool.query(`SELECT name FROM companies WHERE id = $1`, [companyId]),
     pool.query(`SELECT
       COALESCE(SUM(CASE WHEN date >= $2 AND date <= $3 THEN amount END), 0) as fy1,
@@ -335,8 +335,18 @@ const queryPnL = async (companyId, fyEndYear = null) => {
       FROM transactions WHERE company_id = $1 AND type = 'expense'
       GROUP BY COALESCE(category, 'Other')`,
       [companyId, fy1Start, fy1End, fy2Start, fy2End]),
-    pool.query(`SELECT COALESCE(SUM(opening_balance), 0) as total FROM accounts WHERE company_id = $1`, [companyId]),
-    pool.query(`SELECT COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE -amount END), 0) as net FROM transactions WHERE company_id = $1`, [companyId]),
+    // Cash in bank — per-account balance (opening + linked income − linked expenses)
+    pool.query(`SELECT COALESCE(SUM(
+         a.opening_balance
+         + COALESCE(inc.total_income, 0)
+         - COALESCE(exp.total_expense, 0)
+       ), 0) AS cash_in_bank
+       FROM accounts a
+       LEFT JOIN (SELECT account_id, SUM(amount) AS total_income FROM transactions
+         WHERE company_id = $1 AND type = 'income' AND account_id IS NOT NULL GROUP BY account_id) inc ON inc.account_id = a.id
+       LEFT JOIN (SELECT account_id, SUM(amount) AS total_expense FROM transactions
+         WHERE company_id = $1 AND type = 'expense' AND account_id IS NOT NULL GROUP BY account_id) exp ON exp.account_id = a.id
+       WHERE a.company_id = $1`, [companyId]),
     pool.query(`SELECT COALESCE(SUM(amount), 0) as total FROM invoices WHERE company_id = $1 AND type = 'receivable' AND status IN ('pending','overdue')`, [companyId]),
     pool.query(`SELECT COALESCE(SUM(amount), 0) as total FROM invoices WHERE company_id = $1 AND type = 'payable' AND status IN ('pending','overdue')`, [companyId]),
   ]);
@@ -356,7 +366,7 @@ const queryPnL = async (companyId, fyEndYear = null) => {
   const fy2Rev = parseFloat(revRes.rows[0]?.fy2||0);
   const fy1ExpTotal = buckets.cogs[0] + buckets.employee[0] + buckets.finance[0] + buckets.depreciation[0] + buckets.other[0];
   const fy2ExpTotal = buckets.cogs[1] + buckets.employee[1] + buckets.finance[1] + buckets.depreciation[1] + buckets.other[1];
-  const cashFY1 = parseFloat(accRes.rows[0]?.total||0) + parseFloat(allNetRes.rows[0]?.net||0);
+  const cashFY1 = parseFloat(accRes.rows[0]?.cash_in_bank || 0);
   const receivables = parseFloat(recRes.rows[0]?.total||0);
   const payables = parseFloat(payRes.rows[0]?.total||0);
   const ratios = formulas.computeAllRatios({
@@ -392,24 +402,32 @@ const queryPnL = async (companyId, fyEndYear = null) => {
 
 const queryBalanceSheet = async (companyId, fyEndYear = null) => {
   const { fy1Start, fy1End, fy2Start, fy2End, fy1Label, fy2Label } = getFYRanges(fyEndYear);
-  const [coRes, profitRes, accountsRes, allTimeNetRes, recRes, payRes, coaRes] = await Promise.all([
+  const [coRes, profitRes, accountsRes, recRes, payRes, coaRes] = await Promise.all([
     pool.query(`SELECT name FROM companies WHERE id = $1`, [companyId]),
     pool.query(`SELECT
       COALESCE(SUM(CASE WHEN type='income' AND date>=$2 AND date<=$3 THEN amount WHEN type='expense' AND date>=$2 AND date<=$3 THEN -amount END),0) as fy1_net,
       COALESCE(SUM(CASE WHEN type='income' AND date>=$4 AND date<=$5 THEN amount WHEN type='expense' AND date>=$4 AND date<=$5 THEN -amount END),0) as fy2_net
       FROM transactions WHERE company_id = $1`,
       [companyId, fy1Start, fy1End, fy2Start, fy2End]),
-    pool.query(`SELECT COALESCE(SUM(opening_balance),0) as total FROM accounts WHERE company_id=$1`, [companyId]),
-    pool.query(`SELECT COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE -amount END),0) as net FROM transactions WHERE company_id=$1`, [companyId]),
+    // Cash in bank — per-account balance (opening + linked income − linked expenses)
+    pool.query(`SELECT COALESCE(SUM(
+         a.opening_balance
+         + COALESCE(inc.total_income, 0)
+         - COALESCE(exp.total_expense, 0)
+       ), 0) AS cash_in_bank
+       FROM accounts a
+       LEFT JOIN (SELECT account_id, SUM(amount) AS total_income FROM transactions
+         WHERE company_id = $1 AND type = 'income' AND account_id IS NOT NULL GROUP BY account_id) inc ON inc.account_id = a.id
+       LEFT JOIN (SELECT account_id, SUM(amount) AS total_expense FROM transactions
+         WHERE company_id = $1 AND type = 'expense' AND account_id IS NOT NULL GROUP BY account_id) exp ON exp.account_id = a.id
+       WHERE a.company_id = $1`, [companyId]),
     pool.query(`SELECT COALESCE(SUM(amount),0) as total FROM invoices WHERE company_id=$1 AND type='receivable' AND status IN ('pending','overdue')`, [companyId]),
     pool.query(`SELECT COALESCE(SUM(amount),0) as total FROM invoices WHERE company_id=$1 AND type='payable' AND status IN ('pending','overdue')`, [companyId]),
     pool.query(`SELECT account_type, name, opening_balance FROM chart_of_accounts WHERE company_id=$1`, [companyId]),
   ]);
   const fy1Net = parseFloat(profitRes.rows[0]?.fy1_net||0);
   const fy2Net = parseFloat(profitRes.rows[0]?.fy2_net||0);
-  const openingBal = parseFloat(accountsRes.rows[0]?.total||0);
-  const allTimeNet = parseFloat(allTimeNetRes.rows[0]?.net||0);
-  const cashFY1 = openingBal + allTimeNet;
+  const cashFY1 = parseFloat(accountsRes.rows[0]?.cash_in_bank||0);
   const cashFY2 = cashFY1 - fy1Net;
   const tradeRec = parseFloat(recRes.rows[0]?.total||0);
   const tradePay = parseFloat(payRes.rows[0]?.total||0);
@@ -461,19 +479,23 @@ const getBalanceSheet = async (req, res) => {
     const fy1Net = parseFloat(profitRes.rows[0]?.fy1_net || 0);
     const fy2Net = parseFloat(profitRes.rows[0]?.fy2_net || 0);
 
-    const accountsRes = await pool.query(
-      `SELECT COALESCE(SUM(opening_balance), 0) as total FROM accounts WHERE company_id = $1`,
-      [companyId]
-    );
-    const allTimeNetRes = await pool.query(`
-      SELECT COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE -amount END), 0) as net
-      FROM transactions WHERE company_id = $1
+    // Cash in bank — per-account balance (opening + linked income − linked expenses)
+    const accountsRes = await pool.query(`
+      SELECT COALESCE(SUM(
+        a.opening_balance
+        + COALESCE(inc.total_income, 0)
+        - COALESCE(exp.total_expense, 0)
+      ), 0) AS cash_in_bank
+      FROM accounts a
+      LEFT JOIN (SELECT account_id, SUM(amount) AS total_income FROM transactions
+        WHERE company_id = $1 AND type = 'income' AND account_id IS NOT NULL GROUP BY account_id) inc ON inc.account_id = a.id
+      LEFT JOIN (SELECT account_id, SUM(amount) AS total_expense FROM transactions
+        WHERE company_id = $1 AND type = 'expense' AND account_id IS NOT NULL GROUP BY account_id) exp ON exp.account_id = a.id
+      WHERE a.company_id = $1
     `, [companyId]);
 
-    const openingBal = parseFloat(accountsRes.rows[0]?.total || 0);
-    const allTimeNet = parseFloat(allTimeNetRes.rows[0]?.net || 0);
-    const cashFY1    = openingBal + allTimeNet;
-    const cashFY2    = cashFY1 - fy1Net;
+    const cashFY1 = parseFloat(accountsRes.rows[0]?.cash_in_bank || 0);
+    const cashFY2 = cashFY1 - fy1Net;
 
     const recRes = await pool.query(`
       SELECT COALESCE(SUM(amount), 0) as total FROM invoices

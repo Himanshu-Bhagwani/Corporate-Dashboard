@@ -83,7 +83,8 @@ const TransactionsView = ({
       name: transaction.name,
       type: transaction.type,
       category: transaction.category,
-      account: transaction.account,
+      account: transaction.account,      // display name
+      account_id: transaction.account_id || null, // FK for backend
       amount: transaction.amount,
       date: transaction.date?.slice(0, 10),
       notes: transaction.notes || '',
@@ -433,24 +434,26 @@ const TransactionsView = ({
                   <tr key={transaction.id} id={`transaction-row-${transaction.id}`}>
                     {editingId === transaction.id ? (
                       <>
+                        {/* TRANSACTION: type + name merged */}
                         <td>
-                          <select
-                            className="inline-select"
-                            value={editForm.type}
-                            onChange={e => setEditForm({ ...editForm, type: e.target.value })}
-                          >
-                            <option value="income">Credit</option>
-                            <option value="expense">Debit</option>
-                          </select>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <select
+                              className="inline-select"
+                              value={editForm.type}
+                              onChange={e => setEditForm({ ...editForm, type: e.target.value })}
+                            >
+                              <option value="income">Credit</option>
+                              <option value="expense">Debit</option>
+                            </select>
+                            <input
+                              className="inline-input"
+                              value={editForm.name}
+                              onChange={e => setEditForm({ ...editForm, name: e.target.value })}
+                              placeholder="Transaction name"
+                            />
+                          </div>
                         </td>
-                        <td>
-                          <input
-                            className="inline-input"
-                            value={editForm.name}
-                            onChange={e => setEditForm({ ...editForm, name: e.target.value })}
-                            placeholder="Name"
-                          />
-                        </td>
+                        {/* CATEGORY */}
                         <td>
                           <select
                             className="inline-select"
@@ -462,14 +465,27 @@ const TransactionsView = ({
                             ))}
                           </select>
                         </td>
+                        {/* ACCOUNT: dropdown from user's bank accounts */}
                         <td>
-                          <input
-                            className="inline-input"
-                            value={editForm.account}
-                            onChange={e => setEditForm({ ...editForm, account: e.target.value })}
-                            placeholder="Account"
-                          />
+                          <select
+                            className="inline-select"
+                            value={editForm.account_id || ''}
+                            onChange={e => {
+                              const selected = accounts.find(a => String(a.id) === e.target.value);
+                              setEditForm({
+                                ...editForm,
+                                account_id: selected ? selected.id : null,
+                                account: selected ? selected.name : '',
+                              });
+                            }}
+                          >
+                            <option value="">— No account —</option>
+                            {accounts.map(acc => (
+                              <option key={acc.id} value={acc.id}>{acc.name}</option>
+                            ))}
+                          </select>
                         </td>
+                        {/* DATE */}
                         <td>
                           <input
                             className="inline-input"
@@ -478,6 +494,7 @@ const TransactionsView = ({
                             onChange={e => setEditForm({ ...editForm, date: e.target.value })}
                           />
                         </td>
+                        {/* AMOUNT */}
                         <td className="align-right">
                           <input
                             className="inline-input align-right"
@@ -487,6 +504,7 @@ const TransactionsView = ({
                             placeholder="Amount"
                           />
                         </td>
+                        {/* ACTIONS */}
                         <td className="align-right">
                           <div className="action-buttons">
                             <button className="action-btn save" onClick={saveEdit}><Check size={16} /></button>
@@ -532,7 +550,7 @@ const TransactionsView = ({
                         <td><span className="table-secondary-text">{transaction.date?.slice(0, 10)}</span></td>
                         <td className="align-right">
                           <span className={`table-amount ${transaction.type === 'income' ? 'positive' : 'negative'}`}>
-                            {transaction.type === 'income' ? '+' : '-'}₹{parseFloat(transaction.amount).toLocaleString()}
+                            {transaction.type === 'income' ? '+' : '-'}₹{parseFloat(transaction.amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
                         </td>
                         <td className="align-right">

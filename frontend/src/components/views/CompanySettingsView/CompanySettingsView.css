@@ -1,0 +1,487 @@
+/* Team section accent — purple, matching appearance-section */
+.settings-section.team-section::before {
+  background: linear-gradient(180deg, var(--soft-purple, #9333ea), #a855f7);
+}
+
+/* ── Form Controls ──────────────────────────────────────── */
+.cs-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+}
+
+.cs-span-2 {
+  grid-column: span 2;
+}
+
+.cs-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.cs-label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #4a5568;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.cs-label svg {
+  color: var(--primary-blue, #4169e1);
+  flex-shrink: 0;
+}
+
+.cs-input,
+.cs-select,
+.cs-textarea {
+  padding: 0.75rem 1rem;
+  border: 1.5px solid rgba(226, 232, 240, 0.9);
+  border-radius: 12px;
+  font-size: 0.9rem;
+  color: #2d3748;
+  background: rgba(255, 255, 255, 0.85);
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
+  font-family: inherit;
+}
+
+.cs-input:focus,
+.cs-select:focus,
+.cs-textarea:focus {
+  border-color: var(--primary-blue, #4169e1);
+  box-shadow: 0 0 0 4px rgba(65, 105, 225, 0.1);
+  background: #fff;
+}
+
+.cs-input-disabled,
+.cs-input:disabled {
+  background: rgba(241, 245, 249, 0.7);
+  color: #94a3b8;
+  cursor: not-allowed;
+  border-color: rgba(226, 232, 240, 0.6);
+}
+
+.cs-textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.cs-select {
+  cursor: pointer;
+  appearance: auto;
+}
+
+/* ── Action Row ─────────────────────────────────────────── */
+.cs-actions {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 1.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid rgba(229, 231, 235, 0.5);
+}
+
+/* ── Buttons ────────────────────────────────────────────── */
+.cs-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.7rem 1.5rem;
+  background: linear-gradient(135deg, var(--primary-blue, #4169e1), #3451c7);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 14px rgba(65, 105, 225, 0.3);
+}
+
+.cs-btn-primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(65, 105, 225, 0.4);
+}
+
+.cs-btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.cs-btn-red {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.3);
+}
+
+.cs-btn-red:hover:not(:disabled) {
+  box-shadow: 0 8px 24px rgba(239, 68, 68, 0.4);
+}
+
+/* Spinner */
+.cs-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: csSpin 0.7s linear infinite;
+}
+
+@keyframes csSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Team ───────────────────────────────────────────────── */
+.cs-member-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.1rem 1.25rem;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.7));
+  border: 1.5px solid rgba(229, 231, 235, 0.7);
+  border-radius: 14px;
+  margin-bottom: 0.75rem;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.cs-member-card:hover {
+  background: rgba(255, 255, 255, 0.98);
+  border-color: rgba(147, 51, 234, 0.25);
+  transform: translateX(6px);
+  box-shadow: 0 6px 20px rgba(147, 51, 234, 0.1);
+}
+
+.cs-member-owner {
+  background: linear-gradient(135deg, rgba(65, 105, 225, 0.08), rgba(65, 105, 225, 0.03));
+  border-color: rgba(65, 105, 225, 0.22);
+}
+
+.cs-member-owner:hover {
+  border-color: rgba(65, 105, 225, 0.4);
+  transform: translateX(6px);
+  box-shadow: 0 6px 20px rgba(65, 105, 225, 0.12);
+}
+
+.cs-member-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1rem;
+  flex-shrink: 0;
+  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.cs-member-card:hover .cs-member-avatar {
+  transform: scale(1.1);
+}
+
+.cs-avatar-blue {
+  background: linear-gradient(135deg, var(--primary-blue, #4169e1), #3451c7);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(65, 105, 225, 0.3);
+}
+
+.cs-avatar-grey {
+  background: linear-gradient(135deg, rgba(147, 51, 234, 0.15), rgba(147, 51, 234, 0.05));
+  color: #9333ea;
+}
+
+.cs-member-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.cs-member-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #1a202c;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cs-member-email {
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+.cs-role-badge {
+  padding: 0.3rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: capitalize;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+.cs-role-owner {
+  background: rgba(65, 105, 225, 0.12);
+  color: var(--primary-blue, #4169e1);
+}
+
+.cs-role-admin {
+  background: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+}
+
+.cs-role-editor {
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+}
+
+.cs-role-viewer {
+  background: rgba(148, 163, 184, 0.15);
+  color: #475569;
+}
+
+.cs-status-pill {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 20px;
+  text-transform: capitalize;
+}
+
+.cs-status-pending { background: rgba(245, 158, 11, 0.12); color: #d97706; }
+.cs-status-accepted { background: rgba(16, 185, 129, 0.12); color: #059669; }
+
+.cs-remove-btn {
+  width: 32px;
+  height: 32px;
+  border: 1.5px solid rgba(239, 68, 68, 0.25);
+  background: rgba(239, 68, 68, 0.06);
+  color: #ef4444;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.25s ease;
+  flex-shrink: 0;
+}
+
+.cs-remove-btn:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.5);
+  transform: scale(1.1);
+}
+
+/* Invite form */
+.cs-invite-box {
+  background: linear-gradient(135deg, rgba(147, 51, 234, 0.06), rgba(147, 51, 234, 0.02));
+  border: 1.5px dashed rgba(147, 51, 234, 0.25);
+  border-radius: 16px;
+  padding: 1.5rem;
+  margin: 1.25rem 0;
+}
+
+.cs-invite-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #4a5568;
+  margin-bottom: 1rem;
+}
+
+.cs-invite-heading svg {
+  color: #9333ea;
+}
+
+.cs-invite-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.cs-invite-email {
+  flex: 1;
+  min-width: 200px;
+}
+
+.cs-invite-role {
+  width: 130px;
+  flex-shrink: 0;
+}
+
+.cs-members-count {
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+  margin-bottom: 0.75rem;
+}
+
+.cs-members-list {
+  margin-top: 0.5rem;
+}
+
+.cs-loading {
+  text-align: center;
+  padding: 2rem;
+  color: #94a3b8;
+  font-size: 0.875rem;
+}
+
+.cs-empty {
+  text-align: center;
+  padding: 2.5rem 1rem;
+  color: #94a3b8;
+}
+
+.cs-empty svg {
+  margin-bottom: 0.75rem;
+  opacity: 0.4;
+}
+
+.cs-empty p {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #718096;
+  margin: 0 0 0.25rem;
+}
+
+.cs-empty span {
+  font-size: 0.82rem;
+}
+
+/* ── Security Card (Password) ────────────────────────────── */
+.cs-security-card {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(255, 245, 245, 0.7));
+  border: 1.5px solid rgba(239, 68, 68, 0.15);
+  border-radius: 16px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  transition: all 0.3s ease;
+}
+
+.cs-security-card:hover {
+  border-color: rgba(239, 68, 68, 0.3);
+  box-shadow: 0 6px 20px rgba(239, 68, 68, 0.08);
+}
+
+.cs-security-card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid rgba(239, 68, 68, 0.1);
+}
+
+.cs-security-card-text h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #1a202c;
+  margin-bottom: 0.2rem;
+}
+
+.cs-security-card-text p {
+  font-size: 0.85rem;
+  color: #718096;
+}
+
+.cs-pw-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.cs-pw-field {
+  position: relative;
+}
+
+.cs-pw-field .cs-input {
+  padding-right: 2.8rem;
+}
+
+.cs-eye-btn {
+  position: absolute;
+  right: 0.875rem;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: none;
+  color: #94a3b8;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 0.2rem;
+  transition: color 0.2s ease;
+}
+
+.cs-eye-btn:hover {
+  color: #4a5568;
+}
+
+/* ── Toast ──────────────────────────────────────────────── */
+.cs-toast {
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  border-radius: 14px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  z-index: 2000;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
+  animation: csToastIn 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  max-width: 380px;
+}
+
+.cs-toast-success {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #fff;
+}
+
+.cs-toast-error {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  color: #fff;
+}
+
+@keyframes csToastIn {
+  from { opacity: 0; transform: translateY(16px) scale(0.95); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ── Responsive ─────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .cs-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cs-span-2 {
+    grid-column: span 1;
+  }
+
+  .cs-invite-row {
+    flex-direction: column;
+  }
+
+  .cs-invite-role,
+  .cs-invite-email {
+    width: 100%;
+  }
+}

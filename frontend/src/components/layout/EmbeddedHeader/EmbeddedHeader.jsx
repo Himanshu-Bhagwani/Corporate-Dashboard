@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, ChevronDown, User, Building2, Settings, LogOut, Plus, Bell, X, AlertTriangle, FileText, Shield, DollarSign, TrendingDown, CheckCircle2, BrainCircuit, Lock } from 'lucide-react';
+import { Search, ChevronDown, User, Building2, Settings, LogOut, Plus, Bell, X, AlertTriangle, FileText, Shield, DollarSign, TrendingDown, CheckCircle2, BrainCircuit, Lock, CreditCard } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { notificationsAPI } from '../../../services/api';
 import CreateCompanyModal from '../../company/CreateCompanyModal';
@@ -199,17 +199,21 @@ const EmbeddedHeader = ({ onSearch }) => {
                   <span>{company.name}</span>
                 </button>
               ))}
-              <div className="dropdown-divider" />
-              <button 
-                className="dropdown-item"
-                onClick={() => {
-                  setShowCreateCompanyModal(true);
-                  setShowCompanyDropdown(false);
-                }}
-              >
-                <Plus size={16} />
-                <span>Add New Company</span>
-              </button>
+              {currentCompany?.plan === 'Enterprise X' && (
+                <>
+                  <div className="dropdown-divider" />
+                  <button
+                    className="dropdown-item"
+                    onClick={() => {
+                      setShowCreateCompanyModal(true);
+                      setShowCompanyDropdown(false);
+                    }}
+                  >
+                    <Plus size={16} />
+                    <span>Add New Company</span>
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -438,13 +442,35 @@ const EmbeddedHeader = ({ onSearch }) => {
                   <div className="dropdown-user-email">{user?.email}</div>
                 </div>
                 <div className="dropdown-divider" />
-                <button className="dropdown-item">
-                  <User size={16} />
-                  <span>Profile</span>
+                <button
+                  className="dropdown-item"
+                  onClick={() => {
+                    window.dispatchEvent(new CustomEvent('navigate-to', { detail: { view: 'subscription' } }));
+                    setShowProfileDropdown(false);
+                  }}
+                >
+                  <CreditCard size={16} />
+                  <span>Manage Subscription</span>
                 </button>
-                <button className="dropdown-item">
+                <button
+                  className="dropdown-item"
+                  onClick={() => {
+                    window.dispatchEvent(new CustomEvent('navigate-to', { detail: { view: 'company-settings' } }));
+                    setShowProfileDropdown(false);
+                  }}
+                >
                   <Settings size={16} />
                   <span>Company Settings</span>
+                </button>
+                <button
+                  className="dropdown-item"
+                  onClick={() => {
+                    window.dispatchEvent(new CustomEvent('navigate-to', { detail: { view: 'accounts' } }));
+                    setShowProfileDropdown(false);
+                  }}
+                >
+                  <CreditCard size={16} />
+                  <span>Manage Accounts</span>
                 </button>
                 <div className="dropdown-divider" />
                 <button className="dropdown-item" onClick={logout}>
@@ -461,8 +487,10 @@ const EmbeddedHeader = ({ onSearch }) => {
         <CreateCompanyModal
           onClose={() => setShowCreateCompanyModal(false)}
           onSubmit={handleCreateCompany}
+          skipPlanStep={true}
         />
       )}
+
     </>
   );
 };

@@ -3,7 +3,7 @@ import './AccountsView.css';
 import EmbeddedHeader from '../../layout/EmbeddedHeader/EmbeddedHeader';
 import { PlusCircle, CreditCard, Link2, TrendingUp, Eye, EyeOff, DollarSign, Calendar, AlertCircle, CheckCircle, ArrowUpRight, Pencil, Trash2, X, Check } from 'lucide-react';
 
-const ACCOUNT_TYPES = ['Checking', 'Savings', 'Credit', 'Investment', 'Cash', 'UPI', 'Wallet', 'Other'];
+const ACCOUNT_TYPES = ['Checking', 'Savings', 'Current', 'Credit', 'Investment', 'Fixed Deposit', 'Other'];
 
 const AddAccountModal = ({ onClose, onSubmit }) => {
   const [formData, setFormData] = useState({
@@ -46,7 +46,7 @@ const AddAccountModal = ({ onClose, onSubmit }) => {
           <div className="form-row">
             <div className="form-group">
               <label>Bank / Provider</label>
-              <input name="bank" value={formData.bank} onChange={handleChange} placeholder="e.g., HDFC, GPay, Cash" />
+              <input name="bank" value={formData.bank} onChange={handleChange} placeholder="e.g., SBI, ICICI, Axis Bank, HDFC" />
             </div>
             <div className="form-group">
               <label>Account Number (Optional)</label>
@@ -120,7 +120,7 @@ const EditAccountModal = ({ account, onClose, onSubmit }) => {
           <div className="form-row">
             <div className="form-group">
               <label>Bank / Provider</label>
-              <input name="bank" value={formData.bank} onChange={handleChange} placeholder="e.g., HDFC, GPay, Cash" />
+              <input name="bank" value={formData.bank} onChange={handleChange} placeholder="e.g., SBI, ICICI, Axis Bank, HDFC" />
             </div>
             <div className="form-group">
               <label>Account Number (Optional)</label>
@@ -163,7 +163,7 @@ const AccountsView = ({ accounts, stats, loading, onAdd, onUpdate, onDelete }) =
   const formatBalance = (balance, id) => {
     if (hiddenBalances[id]) return '••••••';
     const num = parseFloat(balance) || 0;
-    return `${num < 0 ? '-' : ''}₹${Math.abs(num).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `${num < 0 ? '-' : ''}₹${Math.abs(num).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   const getAccountTypeGradient = (type) => {
@@ -208,10 +208,6 @@ const AccountsView = ({ accounts, stats, loading, onAdd, onUpdate, onDelete }) =
           <h1 className="view-title">Accounts</h1>
           <p className="view-subtitle">Manage your bank accounts, UPI, wallets and more</p>
         </div>
-        <button className="btn-primary" onClick={() => setShowAddModal(true)}>
-          <PlusCircle size={20} />
-          Add Account
-        </button>
       </div>
 
       {/* Stats Cards */}

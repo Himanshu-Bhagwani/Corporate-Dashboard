@@ -666,18 +666,21 @@ async function enrichChartOfAccounts(companyId, rows) {
     `SELECT category, SUM(amount) as total FROM transactions WHERE company_id = $1 AND type = 'expense' GROUP BY category`,
     [companyId]
   );
-  // Live bank account balances (opening_balance + income - expenses)
+  // Live per-account balances: opening_balance + account-linked income − account-linked expenses.
+  // Only transactions explicitly assigned to an account (account_id IS NOT NULL) are included.
   const accountBalances = await pool.query(
     `SELECT a.name,
        a.opening_balance +
-       COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE 0 END), 0) -
-       COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount ELSE 0 END), 0) AS balance
+       COALESCE(SUM(CASE WHEN t.type = 'income'  AND t.account_id IS NOT NULL THEN t.amount ELSE 0 END), 0) -
+       COALESCE(SUM(CASE WHEN t.type = 'expense' AND t.account_id IS NOT NULL THEN t.amount ELSE 0 END), 0) AS balance
      FROM accounts a
      LEFT JOIN transactions t ON t.account_id = a.id AND t.company_id = $1
      WHERE a.company_id = $1
      GROUP BY a.id, a.name, a.opening_balance`,
     [companyId]
   );
+  // Aggregate cash = sum of all per-account balances
+  const totalCash = accountBalances.rows.reduce((s, r) => s + (parseFloat(r.balance) || 0), 0);
   // Live accounts receivable (unpaid customer invoices)
   const receivables = await pool.query(
     `SELECT COALESCE(SUM(amount), 0) as total FROM invoices
@@ -715,7 +718,12 @@ async function enrichChartOfAccounts(companyId, rows) {
   const liveGST = parseFloat(gstPayable.rows[0].total) || 0;
   const liveTDS = parseFloat(tdsPayable.rows[0].total) || 0;
 
-  return rows.map(row => {
+  // Track which bank account names are already covered by a COA Asset row
+  const coveredBankNames = new Set(
+    rows.filter(r => r.account_type === 'Asset' && balanceMap[r.name] !== undefined).map(r => r.name)
+  );
+
+  const enrichedRows = rows.map(row => {
     let liveBalance = parseFloat(row.opening_balance) || 0;
 
     if (row.account_type === 'Asset') {
@@ -723,6 +731,9 @@ async function enrichChartOfAccounts(companyId, rows) {
         liveBalance = balanceMap[row.name];
       } else if (row.name === 'Accounts Receivable') {
         liveBalance = liveReceivables;
+      } else if (row.name === 'Cash in Bank' || row.name === 'Cash and Bank Equivalents') {
+        // Aggregate entry — show total cash (opening balances + all transactions)
+        liveBalance = totalCash;
       }
     } else if (row.account_type === 'Liability') {
       if (row.name === 'Accounts Payable') {
@@ -741,6 +752,42 @@ async function enrichChartOfAccounts(companyId, rows) {
 
     return { ...row, live_balance: liveBalance };
   });
+
+  // Inject virtual Asset rows for any bank accounts not already represented in COA
+  const virtualBankRows = accountBalances.rows
+    .filter(r => !coveredBankNames.has(r.name))
+    .map((r, idx) => ({
+      id: `virtual-bank-${idx}`,
+      company_id: companyId,
+      code: `1V${String(idx + 1).padStart(2, '0')}`,
+      name: r.name,
+      account_type: 'Asset',
+      description: `Bank account – ${r.name}`,
+      opening_balance: parseFloat(r.balance) || 0,
+      live_balance: parseFloat(r.balance) || 0,
+      is_virtual: true,
+    }));
+
+  // If no bank accounts added at all, inject a synthetic "Cash and Bank Equivalents" row
+  // showing total cash (opening + all transactions) so something meaningful always appears.
+  const hasBankAssets = enrichedRows.some(r => r.account_type === 'Asset' && balanceMap[r.name] !== undefined)
+    || virtualBankRows.length > 0;
+
+  const syntheticCash = (!hasBankAssets && totalCash > 0)
+    ? [{
+        id: 'virtual-cash-total',
+        company_id: companyId,
+        code: '1V01',
+        name: 'Cash and Bank Equivalents',
+        account_type: 'Asset',
+        description: 'Total cash across all accounts',
+        opening_balance: totalCash,
+        live_balance: totalCash,
+        is_virtual: true,
+      }]
+    : [];
+
+  return [...enrichedRows, ...virtualBankRows, ...syntheticCash];
 }
 
 module.exports = {

@@ -46,12 +46,31 @@ const getSummary = async (req, res) => {
 
     const pctChange = (cur, prev) => prev > 0 ? ((cur - prev) / prev * 100).toFixed(1) : cur > 0 ? 100 : 0;
 
-    // Cash in Bank — sum of account opening balances + net transactions
+    // Cash in Bank — per-account balance: opening_balance + account-linked income − account-linked expenses.
+    // Only transactions explicitly assigned to an account (via account_id) affect that account's balance.
     const accountsResult = await pool.query(
-      `SELECT COALESCE(SUM(opening_balance), 0) as total FROM accounts WHERE company_id = $1`,
+      `SELECT COALESCE(SUM(
+         a.opening_balance
+         + COALESCE(inc.total_income, 0)
+         - COALESCE(exp.total_expense, 0)
+       ), 0) AS cash_in_bank
+       FROM accounts a
+       LEFT JOIN (
+         SELECT account_id, SUM(amount) AS total_income
+         FROM transactions
+         WHERE company_id = $1 AND type = 'income' AND account_id IS NOT NULL
+         GROUP BY account_id
+       ) inc ON inc.account_id = a.id
+       LEFT JOIN (
+         SELECT account_id, SUM(amount) AS total_expense
+         FROM transactions
+         WHERE company_id = $1 AND type = 'expense' AND account_id IS NOT NULL
+         GROUP BY account_id
+       ) exp ON exp.account_id = a.id
+       WHERE a.company_id = $1`,
       [companyId]
     );
-    const cashInBank = parseFloat(accountsResult.rows[0].total) + netProfit;
+    const cashInBank = parseFloat(accountsResult.rows[0].cash_in_bank) || 0;
 
     // Receivables (pending/overdue invoices where type = 'receivable' or we use all invoices with status pending/overdue)
     const receivables = await pool.query(
@@ -74,17 +93,23 @@ const getSummary = async (req, res) => {
       [companyId]
     );
 
-    // Cash Runway — cash / avg monthly expenses (last 6 months)
+    // Cash Runway — same formula as getInsightsData: avg of last 3 completed months
     const avgExpenses = await pool.query(
       `SELECT COALESCE(AVG(monthly_total), 0) as avg_expense FROM (
-         SELECT DATE_TRUNC('month', date) as month, SUM(amount) as monthly_total
-         FROM transactions WHERE company_id = $1 AND type = 'expense' AND date >= NOW() - INTERVAL '6 months'
-         GROUP BY month
-       ) sub`,
+         SELECT SUM(amount) as monthly_total
+         FROM transactions
+         WHERE company_id = $1 AND type = 'expense'
+           AND date < DATE_TRUNC('month', CURRENT_DATE)
+         GROUP BY DATE_TRUNC('month', date)
+         ORDER BY DATE_TRUNC('month', date) DESC
+         LIMIT 3
+       ) recent_months`,
       [companyId]
     );
-    const avgMonthlyExpense = parseFloat(avgExpenses.rows[0].avg_expense || 1);
-    const cashRunway = avgMonthlyExpense > 0 ? (cashInBank / avgMonthlyExpense).toFixed(1) : 0;
+    const avgMonthlyExpense = parseFloat(avgExpenses.rows[0].avg_expense) || 0;
+    const cashRunway = avgMonthlyExpense > 0
+      ? (cashInBank / avgMonthlyExpense).toFixed(1)
+      : cashInBank > 0 ? 99 : 0;
 
     const totalReceivables = parseFloat(receivables.rows[0].total);
     const totalPayables = parseFloat(payables.rows[0].total);
@@ -268,13 +293,23 @@ const getInsightsData = async (req, res) => {
       avgGap: gapsCount > 0 ? (totalGaps / gapsCount).toFixed(1) : 0
     };
 
-    // Growth - Idle cash (Cash in bank - liabilities)
+    // Growth — Cash in Bank (per-account: opening_balance + linked income - linked expenses)
     const accountsResult = await pool.query(
-      `SELECT COALESCE(SUM(opening_balance), 0) as total FROM accounts WHERE company_id = $1`,
+      `SELECT COALESCE(SUM(
+         a.opening_balance
+         + COALESCE(inc.total_income, 0)
+         - COALESCE(exp.total_expense, 0)
+       ), 0) AS cash_in_bank
+       FROM accounts a
+       LEFT JOIN (SELECT account_id, SUM(amount) AS total_income FROM transactions
+         WHERE company_id = $1 AND type = 'income' AND account_id IS NOT NULL GROUP BY account_id) inc ON inc.account_id = a.id
+       LEFT JOIN (SELECT account_id, SUM(amount) AS total_expense FROM transactions
+         WHERE company_id = $1 AND type = 'expense' AND account_id IS NOT NULL GROUP BY account_id) exp ON exp.account_id = a.id
+       WHERE a.company_id = $1`,
       [companyId]
     );
     const netProfit  = netProfitAll;
-    const cashInBank = parseFloat(accountsResult.rows[0].total) + netProfit;
+    const cashInBank = parseFloat(accountsResult.rows[0].cash_in_bank) || 0;
     
     // Get payables
     const payablesRes = await pool.query(

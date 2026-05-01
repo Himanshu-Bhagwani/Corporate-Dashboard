@@ -15,6 +15,8 @@ import AccountingView from '../../views/AccountingView/AccountingView';
 import AiCfoView from '../../views/AiCfoView/AiCfoView';
 import ProfitLabView from '../../views/ProfitLabView/ProfitLabView';
 import ForecastingEngineView from '../../views/ForecastingEngineView/ForecastingEngineView';
+import CompanySettingsView from '../../views/CompanySettingsView/CompanySettingsView';
+import ManageSubscriptionView from '../../views/ManageSubscriptionView/ManageSubscriptionView';
 import AddTransactionModal from '../../shared/AddTransactionModal/AddTransactionModal';
 import CreateCompanyModal from '../../company/CreateCompanyModal';
 import { 
@@ -638,6 +640,12 @@ const MainLayout = () => {
           )}
           {activeView === 'forecasting' && (
             <ForecastingEngineView />
+          )}
+          {activeView === 'company-settings' && (
+            <CompanySettingsView />
+          )}
+          {activeView === 'subscription' && (
+            <ManageSubscriptionView />
           )}
         </main>
       </div>

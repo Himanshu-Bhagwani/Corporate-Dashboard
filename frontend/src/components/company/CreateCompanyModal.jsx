@@ -2,12 +2,14 @@ import React, { useState, useRef } from 'react';
 import { X, Upload, Check, ArrowRight, ArrowLeft, Plus } from 'lucide-react';
 import './CreateCompanyModal.css';
 
-const STEPS = [
+const ALL_STEPS = [
   { id: 1, label: 'Business Info' },
   { id: 2, label: 'Documents' },
   { id: 3, label: 'Team Invite' },
-  { id: 4, label: 'Select Plan' }
+  { id: 4, label: 'Select Plan' },
 ];
+
+const STEPS_NO_PLAN = ALL_STEPS.slice(0, 3);
 
 const ENTITY_TYPES = [
   'Sole Proprietorship',
@@ -15,24 +17,24 @@ const ENTITY_TYPES = [
   'Limited Liability Partnership (LLP)',
   'Private Limited Company',
   'Public Limited Company',
-  'One Person Company (OPC)'
+  'One Person Company (OPC)',
 ];
 
-const ROLES = [
-  'Admin',
-  'Finance Manager',
-  'Accountant',
-  'Auditor'
-];
+const ROLES = ['Admin', 'Finance Manager', 'Accountant', 'Auditor'];
 
 const ROLE_PERMISSIONS = {
   'Admin': 'Full access to all features',
   'Finance Manager': 'Manage finances, reports, and budgets',
   'Accountant': 'Manage transactions and ledgers',
-  'Auditor': 'Read-only access for compliance review'
+  'Auditor': 'Read-only access for compliance review',
 };
 
-const CreateCompanyModal = ({ onClose, onSubmit }) => {
+// skipPlanStep=true  → Enterprise X "Add New Company" flow (3 steps, auto Enterprise X)
+// skipPlanStep=false → first-time signup flow (4 steps, user picks plan)
+const CreateCompanyModal = ({ onClose, onSubmit, skipPlanStep = false }) => {
+  const STEPS = skipPlanStep ? STEPS_NO_PLAN : ALL_STEPS;
+  const maxStep = STEPS.length;
+
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -45,18 +47,14 @@ const CreateCompanyModal = ({ onClose, onSubmit }) => {
     entityType: '',
     documents: [],
     teamInvites: [{ email: '', role: 'Accountant' }],
-    plan: 'Growth'
+    plan: skipPlanStep ? 'Enterprise X' : 'Growth',
   });
 
   const handleChange = (e) => {
-    setFormData((prev) => ({
-      ...prev,
-      [e.target.name]: e.target.value
-    }));
+    setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
   const handleNext = () => {
-    // Basic validation before allowing next step
     if (currentStep === 1) {
       if (!formData.name || !formData.gstin || !formData.pan || !formData.entityType) {
         setError('Please fill in all required fields.');
@@ -64,29 +62,28 @@ const CreateCompanyModal = ({ onClose, onSubmit }) => {
       }
     }
     setError('');
-    setCurrentStep((prev) => Math.min(prev + 1, 4));
+    setCurrentStep(prev => Math.min(prev + 1, maxStep));
   };
 
   const handleBack = () => {
     setError('');
-    setCurrentStep((prev) => Math.max(prev - 1, 1));
+    setCurrentStep(prev => Math.max(prev - 1, 1));
   };
 
   const handleSubmit = async () => {
     setError('');
     setLoading(true);
     try {
-      // Map frontend fields to the API payload expectations
       const payload = {
         name: formData.name,
-        industry: '', // Not in wizard anymore
-        taxId: formData.gstin, // Fallback to taxId
-        address: '', // Not in wizard
+        industry: '',
+        taxId: formData.gstin,
+        address: '',
         gstin: formData.gstin,
         pan: formData.pan,
         entityType: formData.entityType,
         plan: formData.plan,
-        teamInvites: formData.teamInvites.filter(i => i.email && i.role)
+        teamInvites: formData.teamInvites.filter(i => i.email && i.role),
       };
       await onSubmit(payload);
     } catch (err) {
@@ -96,53 +93,36 @@ const CreateCompanyModal = ({ onClose, onSubmit }) => {
     }
   };
 
-  // --- Document Upload Handlers ---
-  const handleFileClick = () => {
-    fileInputRef.current?.click();
-  };
+  const handleFileClick = () => fileInputRef.current?.click();
 
-  const handleFileChange = (e) => {
-    const files = Array.from(e.target.files);
-    handleFilesAdded(files);
-  };
+  const handleFileChange = (e) => handleFilesAdded(Array.from(e.target.files));
 
   const handleDrop = (e) => {
     e.preventDefault();
-    const files = Array.from(e.dataTransfer.files);
-    handleFilesAdded(files);
+    handleFilesAdded(Array.from(e.dataTransfer.files));
   };
 
   const handleFilesAdded = (files) => {
-    const validFiles = files.filter(f => {
-      const isAllowed = ['application/pdf', 'image/jpeg', 'image/png'].includes(f.type);
-      const isUnder10MB = f.size <= 10 * 1024 * 1024;
-      return isAllowed && isUnder10MB;
-    });
-
-    if (validFiles.length !== files.length) {
+    const valid = files.filter(f =>
+      ['application/pdf', 'image/jpeg', 'image/png'].includes(f.type) &&
+      f.size <= 10 * 1024 * 1024
+    );
+    if (valid.length !== files.length) {
       setError('Some files were rejected. Ensure they are PDF, JPG, or PNG and under 10MB.');
     } else {
       setError('');
     }
-
-    setFormData((prev) => ({
-      ...prev,
-      documents: [...prev.documents, ...validFiles]
-    }));
+    setFormData(prev => ({ ...prev, documents: [...prev.documents, ...valid] }));
   };
 
-  // --- Team Invite Handlers ---
   const handleInviteChange = (index, field, value) => {
-    const newInvites = [...formData.teamInvites];
-    newInvites[index][field] = value;
-    setFormData({ ...formData, teamInvites: newInvites });
+    const updated = [...formData.teamInvites];
+    updated[index][field] = value;
+    setFormData({ ...formData, teamInvites: updated });
   };
 
   const addInvite = () => {
-    setFormData({
-      ...formData,
-      teamInvites: [...formData.teamInvites, { email: '', role: 'Accountant' }]
-    });
+    setFormData({ ...formData, teamInvites: [...formData.teamInvites, { email: '', role: 'Accountant' }] });
   };
 
   const renderStepIndicator = () => (
@@ -165,118 +145,78 @@ const CreateCompanyModal = ({ onClose, onSubmit }) => {
 
   return (
     <div className="wizard-overlay" onClick={onClose}>
-      <div className="wizard-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="wizard-modal" onClick={e => e.stopPropagation()}>
         {renderStepIndicator()}
-        
+
         {error && <div className="modal-error">{error}</div>}
 
         <div className="wizard-body">
+          {/* Step 1 — Business Info */}
           {currentStep === 1 && (
             <div className="wizard-step">
               <div className="form-group">
                 <label>Company Name <span>*</span></label>
-                <input
-                  type="text"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleChange}
-                  placeholder="Acme Corp Pvt Ltd"
-                />
+                <input type="text" name="name" value={formData.name} onChange={handleChange} placeholder="Acme Corp Pvt Ltd" />
               </div>
-
               <div className="form-row">
                 <div className="form-group half-width">
                   <label>GSTIN <span>*</span></label>
-                  <input
-                    type="text"
-                    name="gstin"
-                    value={formData.gstin}
-                    onChange={handleChange}
-                    placeholder="29XXXXX1234X1ZX"
-                  />
+                  <input type="text" name="gstin" value={formData.gstin} onChange={handleChange} placeholder="29XXXXX1234X1ZX" />
                 </div>
                 <div className="form-group half-width">
                   <label>PAN <span>*</span></label>
-                  <input
-                    type="text"
-                    name="pan"
-                    value={formData.pan}
-                    onChange={handleChange}
-                    placeholder="AAAAA1234A"
-                  />
+                  <input type="text" name="pan" value={formData.pan} onChange={handleChange} placeholder="AAAAA1234A" />
                 </div>
               </div>
-
               <div className="form-group">
                 <label>Entity Type <span>*</span></label>
                 <select name="entityType" value={formData.entityType} onChange={handleChange}>
                   <option value="" disabled>Select entity type</option>
-                  {ENTITY_TYPES.map((type) => (
-                    <option key={type} value={type}>{type}</option>
-                  ))}
+                  {ENTITY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
             </div>
           )}
 
+          {/* Step 2 — Documents */}
           {currentStep === 2 && (
             <div className="wizard-step">
               <h3 className="step-title">Upload Documents</h3>
-              <div 
-                className="dropzone"
-                onDrop={handleDrop}
-                onDragOver={(e) => e.preventDefault()}
-              >
+              <div className="dropzone" onDrop={handleDrop} onDragOver={e => e.preventDefault()}>
                 <Upload size={32} />
                 <p>Drag and drop files here, or click to browse</p>
                 <span className="supported-text">Supported: PDF, JPG, PNG (Max 10MB each)</span>
-                <button type="button" className="btn-browse" onClick={handleFileClick}>
-                  Choose Files
-                </button>
-                <input
-                  type="file"
-                  multiple
-                  ref={fileInputRef}
-                  onChange={handleFileChange}
-                  accept=".pdf,.jpg,.jpeg,.png"
-                  style={{ display: 'none' }}
-                />
+                <button type="button" className="btn-browse" onClick={handleFileClick}>Choose Files</button>
+                <input type="file" multiple ref={fileInputRef} onChange={handleFileChange} accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }} />
               </div>
               {formData.documents.length > 0 && (
                 <div className="uploaded-files">
-                  {formData.documents.map((file, i) => (
-                    <span key={i} className="file-chip">{file.name}</span>
-                  ))}
+                  {formData.documents.map((file, i) => <span key={i} className="file-chip">{file.name}</span>)}
                 </div>
               )}
             </div>
           )}
 
+          {/* Step 3 — Team Invite */}
           {currentStep === 3 && (
             <div className="wizard-step">
               <h3 className="step-title">Invite Team Members</h3>
-              
               {formData.teamInvites.map((invite, index) => (
                 <div className="invite-row" key={index}>
                   <input
                     type="email"
                     placeholder="team@company.com"
                     value={invite.email}
-                    onChange={(e) => handleInviteChange(index, 'email', e.target.value)}
+                    onChange={e => handleInviteChange(index, 'email', e.target.value)}
                   />
-                  <select 
-                    value={invite.role}
-                    onChange={(e) => handleInviteChange(index, 'role', e.target.value)}
-                  >
+                  <select value={invite.role} onChange={e => handleInviteChange(index, 'role', e.target.value)}>
                     {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
                   </select>
                 </div>
               ))}
-
               <button type="button" className="btn-add-text" onClick={addInvite}>
                 <Plus size={16} /> Add Another Member
               </button>
-
               <div className="role-permissions-card">
                 <h4>Role Permissions</h4>
                 {Object.entries(ROLE_PERMISSIONS).map(([role, desc]) => (
@@ -286,12 +226,12 @@ const CreateCompanyModal = ({ onClose, onSubmit }) => {
             </div>
           )}
 
-          {currentStep === 4 && (
+          {/* Step 4 — Select Plan (first-time signup only) */}
+          {currentStep === 4 && !skipPlanStep && (
             <div className="wizard-step">
               <h3 className="step-title">Choose Your Plan</h3>
               <div className="plans-container">
-                {/* Launchpad Plan */}
-                <div 
+                <div
                   className={`plan-card ${formData.plan === 'Launchpad' ? 'selected' : ''}`}
                   onClick={() => setFormData({ ...formData, plan: 'Launchpad' })}
                 >
@@ -309,8 +249,7 @@ const CreateCompanyModal = ({ onClose, onSubmit }) => {
                   </ul>
                 </div>
 
-                {/* Growth Plan */}
-                <div 
+                <div
                   className={`plan-card ${formData.plan === 'Growth' ? 'selected' : ''}`}
                   onClick={() => setFormData({ ...formData, plan: 'Growth' })}
                 >
@@ -330,13 +269,12 @@ const CreateCompanyModal = ({ onClose, onSubmit }) => {
                   </ul>
                 </div>
 
-                {/* Enterprise Plan */}
-                <div 
+                <div
                   className={`plan-card ${formData.plan === 'Enterprise X' ? 'selected' : ''}`}
                   onClick={() => setFormData({ ...formData, plan: 'Enterprise X' })}
                 >
                   {formData.plan === 'Enterprise X' && <div className="plan-check"><Check size={14} /></div>}
-                  <h4>Enterprise</h4>
+                  <h4>Enterprise X</h4>
                   <div className="plan-price">Custom<span>pricing</span></div>
                   <div className="plan-setup">Contact us for setup fee</div>
                   <ul className="plan-features">
@@ -351,7 +289,6 @@ const CreateCompanyModal = ({ onClose, onSubmit }) => {
               </div>
             </div>
           )}
-
         </div>
 
         <div className="wizard-footer">
@@ -359,17 +296,15 @@ const CreateCompanyModal = ({ onClose, onSubmit }) => {
             <button type="button" className="btn-back" onClick={handleBack}>
               <ArrowLeft size={16} /> Back
             </button>
-          ) : <div></div> /* Spacer */}
-          
-          {currentStep < 4 ? (
+          ) : <div />}
+
+          {currentStep < maxStep ? (
             <button type="button" className="btn-next" onClick={handleNext}>
               Continue <ArrowRight size={16} />
             </button>
           ) : (
             <button type="button" className="btn-next complete" onClick={handleSubmit} disabled={loading}>
-              {loading ? 'Processing...' : (
-                <>Complete Setup <ArrowRight size={16} /></>
-              )}
+              {loading ? 'Processing...' : <><>Complete Setup</> <ArrowRight size={16} /></>}
             </button>
           )}
         </div>

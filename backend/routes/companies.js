@@ -82,15 +82,33 @@ router.post('/', authenticateToken, async (req, res) => {
   }
 });
 
-// Update company
+// Update company (full settings update including GSTIN, PAN, entity_type)
 router.put('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, industry, taxId, address } = req.body;
+    const { name, industry, taxId, address, gstin, pan, entityType, email } = req.body;
+
+    // Verify user belongs to this company
+    const memberCheck = await pool.query(
+      'SELECT role FROM user_companies WHERE user_id = $1 AND company_id = $2',
+      [req.user.userId, id]
+    );
+    if (memberCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
 
     const result = await pool.query(
-      'UPDATE companies SET name = $1, industry = $2, tax_id = $3, address = $4, updated_at = NOW() WHERE id = $5 RETURNING *',
-      [name, industry, taxId, address, id]
+      `UPDATE companies
+       SET name = COALESCE($1, name),
+           industry = COALESCE($2, industry),
+           tax_id = COALESCE($3, tax_id),
+           address = COALESCE($4, address),
+           gstin = COALESCE($5, gstin),
+           pan = COALESCE($6, pan),
+           entity_type = COALESCE($7, entity_type),
+           updated_at = NOW()
+       WHERE id = $8 RETURNING *`,
+      [name, industry, taxId, address, gstin || null, pan || null, entityType || null, id]
     );
 
     if (result.rows.length === 0) {
@@ -101,6 +119,73 @@ router.put('/:id', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Update company error:', error);
     res.status(500).json({ error: 'Failed to update company' });
+  }
+});
+
+// Get team invites for a company
+router.get('/:id/team', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const memberCheck = await pool.query(
+      'SELECT role FROM user_companies WHERE user_id = $1 AND company_id = $2',
+      [req.user.userId, id]
+    );
+    if (memberCheck.rows.length === 0) return res.status(403).json({ error: 'Access denied' });
+
+    const result = await pool.query(
+      'SELECT * FROM team_invites WHERE company_id = $1 ORDER BY created_at DESC',
+      [id]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Get team error:', error);
+    res.status(500).json({ error: 'Failed to fetch team' });
+  }
+});
+
+// Invite a new team member
+router.post('/:id/team', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { email, role } = req.body;
+
+    if (!email || !role) return res.status(400).json({ error: 'Email and role required' });
+
+    const memberCheck = await pool.query(
+      'SELECT role FROM user_companies WHERE user_id = $1 AND company_id = $2',
+      [req.user.userId, id]
+    );
+    if (memberCheck.rows.length === 0) return res.status(403).json({ error: 'Access denied' });
+
+    const result = await pool.query(
+      `INSERT INTO team_invites (company_id, email, role, status)
+       VALUES ($1, $2, $3, 'pending')
+       ON CONFLICT (company_id, email) DO UPDATE SET role = $3, status = 'pending', created_at = NOW()
+       RETURNING *`,
+      [id, email, role]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Invite member error:', error);
+    res.status(500).json({ error: 'Failed to invite member' });
+  }
+});
+
+// Remove a team invite
+router.delete('/:id/team/:inviteId', authenticateToken, async (req, res) => {
+  try {
+    const { id, inviteId } = req.params;
+    const memberCheck = await pool.query(
+      'SELECT role FROM user_companies WHERE user_id = $1 AND company_id = $2',
+      [req.user.userId, id]
+    );
+    if (memberCheck.rows.length === 0) return res.status(403).json({ error: 'Access denied' });
+
+    await pool.query('DELETE FROM team_invites WHERE id = $1 AND company_id = $2', [inviteId, id]);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Remove member error:', error);
+    res.status(500).json({ error: 'Failed to remove member' });
   }
 });
 

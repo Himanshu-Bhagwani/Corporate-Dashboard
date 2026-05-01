@@ -648,7 +648,10 @@ const AccountingView = ({
                           ) : (
                             <>
                               <td><span className="coa-code" style={{ color: TYPE_COLORS[type].color }}>{acc.code}</span></td>
-                              <td className="coa-name">{acc.name}</td>
+                              <td className="coa-name">
+                                {acc.name}
+                                {acc.is_virtual && <span style={{ fontSize: '10px', color: '#6b7280', marginLeft: '6px' }}>(live)</span>}
+                              </td>
                               <td className="coa-description">{acc.description || '-'}</td>
                               <td className="align-right">
                                 <span className="coa-balance" style={{ color: TYPE_COLORS[type].color }}>
@@ -657,8 +660,8 @@ const AccountingView = ({
                               </td>
                               <td className="align-right">
                                 <div className="coa-actions">
-                                  <button className="coa-action-btn edit" onClick={() => startEdit(acc)}><Pencil size={14} /></button>
-                                  <button className="coa-action-btn delete" onClick={() => handleDelete(acc.id)}><Trash2 size={14} /></button>
+                                  {!acc.is_virtual && <button className="coa-action-btn edit" onClick={() => startEdit(acc)}><Pencil size={14} /></button>}
+                                  {!acc.is_virtual && <button className="coa-action-btn delete" onClick={() => handleDelete(acc.id)}><Trash2 size={14} /></button>}
                                 </div>
                               </td>
                             </>
