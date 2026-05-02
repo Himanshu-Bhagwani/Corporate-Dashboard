@@ -7,6 +7,7 @@ import { ArrowUpRight, ArrowDownLeft } from 'lucide-react';
 import './DashboardView.css';
 import EmbeddedHeader from '../../layout/EmbeddedHeader/EmbeddedHeader';
 import { calcComplianceScore } from '../../../utils/compliance';
+import HealthScoreCard from './HealthScoreCard';
 
 const formatCurrency = (val) => {
   if (val >= 10000000) return `₹${(val / 10000000).toFixed(2)}Cr`;
@@ -717,6 +718,13 @@ const DashboardView = ({
           </div>
         </div>
       </div>
+
+      {/* === CORPORATE HEALTH SCORE === */}
+      <HealthScoreCard
+        dashboardSummary={dashboardSummary}
+        transactions={transactions}
+        onViewLoans={() => setActiveView && setActiveView('loans')}
+      />
 
       {/* === CREATE INVOICE MODAL === */}
       {showInvoiceModal && (

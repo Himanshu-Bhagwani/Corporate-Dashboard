@@ -1,6 +1,6 @@
 import React from 'react';
 import './Sidebar.css';
-import { LayoutDashboard, Receipt, FileText, TrendingUp, BarChart3, FileCheck, BookOpen, BrainCircuit, Lock, Activity, CalendarClock } from 'lucide-react';
+import { LayoutDashboard, Receipt, FileText, TrendingUp, BarChart3, FileCheck, BookOpen, BrainCircuit, Lock, Activity, CalendarClock, Landmark } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 
 const Sidebar = ({ activeView, setActiveView, stats }) => {
@@ -101,6 +101,13 @@ const Sidebar = ({ activeView, setActiveView, stats }) => {
             Forecasting
             {isLaunchpad && <Lock size={14} style={{ marginLeft: 'auto', color: '#94a3b8' }} />}
           </span>
+        </button>
+        <button
+          className={`nav-button ${activeView === 'loans' ? 'active' : ''}`}
+          onClick={() => setActiveView('loans')}
+        >
+          <Landmark size={20} />
+          <span>Loan Offers</span>
         </button>
       </nav>
 

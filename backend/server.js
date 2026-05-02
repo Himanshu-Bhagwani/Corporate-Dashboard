@@ -17,6 +17,7 @@ const accountingRoutes = require('./routes/accounting');
 const notificationsRoutes = require('./routes/notifications');
 const documentsRoutes = require('./routes/documents');
 const noticesRoutes = require('./routes/notices');
+const financialMetricsRoutes = require('./routes/financialMetrics');
 const app = express();
 
 // Middleware
@@ -168,6 +169,7 @@ app.use('/api/accounting', accountingRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/compliance-documents', documentsRoutes);
 app.use('/api/compliance-notices', noticesRoutes);
+app.use('/api/financial-metrics', financialMetricsRoutes);
 app.get('/', (req, res) => {
   res.send('Backend is running');
 });

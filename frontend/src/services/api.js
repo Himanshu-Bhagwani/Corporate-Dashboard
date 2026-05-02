@@ -554,3 +554,30 @@ export const companiesAPI = {
     return handleResponse(response);
   },
 };
+
+export const financialMetricsAPI = {
+  get: async (companyId) => {
+    const response = await fetch(`${BASE_URL}/financial-metrics`, {
+      headers: getHeaders(companyId),
+    });
+    return handleResponse(response);
+  },
+
+  save: async (data, companyId) => {
+    const response = await fetch(`${BASE_URL}/financial-metrics`, {
+      method: 'PUT',
+      headers: getHeaders(companyId),
+      body: JSON.stringify(data),
+    });
+    return handleResponse(response);
+  },
+
+  tallySync: async (apiKey, companyId) => {
+    const response = await fetch(`${BASE_URL}/financial-metrics/tally-sync`, {
+      method: 'POST',
+      headers: getHeaders(companyId),
+      body: JSON.stringify({ apiKey }),
+    });
+    return handleResponse(response);
+  },
+};

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, ChevronDown, User, Building2, Settings, LogOut, Plus, Bell, X, AlertTriangle, FileText, Shield, DollarSign, TrendingDown, CheckCircle2, BrainCircuit, Lock, CreditCard } from 'lucide-react';
+import { Search, ChevronDown, User, Building2, Settings, LogOut, Plus, Bell, X, AlertTriangle, FileText, Shield, DollarSign, TrendingDown, CheckCircle2, BrainCircuit, Lock, CreditCard, Activity, Landmark } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { notificationsAPI } from '../../../services/api';
 import CreateCompanyModal from '../../company/CreateCompanyModal';
@@ -442,6 +442,26 @@ const EmbeddedHeader = ({ onSearch }) => {
                   <div className="dropdown-user-email">{user?.email}</div>
                 </div>
                 <div className="dropdown-divider" />
+                <button
+                  className="dropdown-item"
+                  onClick={() => {
+                    window.dispatchEvent(new CustomEvent('navigate-to', { detail: { view: 'financial-metrics' } }));
+                    setShowProfileDropdown(false);
+                  }}
+                >
+                  <Activity size={16} />
+                  <span>Your Financial Metrics</span>
+                </button>
+                <button
+                  className="dropdown-item"
+                  onClick={() => {
+                    window.dispatchEvent(new CustomEvent('navigate-to', { detail: { view: 'loans' } }));
+                    setShowProfileDropdown(false);
+                  }}
+                >
+                  <Landmark size={16} />
+                  <span>Loan Offers</span>
+                </button>
                 <button
                   className="dropdown-item"
                   onClick={() => {

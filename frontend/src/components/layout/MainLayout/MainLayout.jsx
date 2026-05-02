@@ -17,6 +17,8 @@ import ProfitLabView from '../../views/ProfitLabView/ProfitLabView';
 import ForecastingEngineView from '../../views/ForecastingEngineView/ForecastingEngineView';
 import CompanySettingsView from '../../views/CompanySettingsView/CompanySettingsView';
 import ManageSubscriptionView from '../../views/ManageSubscriptionView/ManageSubscriptionView';
+import LoanOffersView from '../../views/LoanOffersView/LoanOffersView';
+import FinancialMetricsView from '../../views/FinancialMetricsView/FinancialMetricsView';
 import AddTransactionModal from '../../shared/AddTransactionModal/AddTransactionModal';
 import CreateCompanyModal from '../../company/CreateCompanyModal';
 import { 
@@ -646,6 +648,21 @@ const MainLayout = () => {
           )}
           {activeView === 'subscription' && (
             <ManageSubscriptionView />
+          )}
+          {activeView === 'loans' && (
+            <LoanOffersView
+              dashboardSummary={dashboardSummary}
+              transactions={transactions}
+              userCibil={(() => {
+                try { return JSON.parse(localStorage.getItem('financialMetrics') || '{}').cibil || 0; } catch { return 0; }
+              })()}
+            />
+          )}
+          {activeView === 'financial-metrics' && (
+            <FinancialMetricsView
+              dashboardSummary={dashboardSummary}
+              transactions={transactions}
+            />
           )}
         </main>
       </div>
