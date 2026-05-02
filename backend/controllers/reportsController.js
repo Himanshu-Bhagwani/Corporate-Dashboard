@@ -377,6 +377,7 @@ const queryPnL = async (companyId, fyEndYear = null) => {
     payables,
     cogsAmount: buckets.cogs[0],
     interestExpense: buckets.finance[0],
+    retainedEarnings: fy1Rev - fy1ExpTotal,
   });
   // FY2 ratios — income-statement metrics only (no historical balance sheet data available)
   const fy2Net = fy2Rev - fy2ExpTotal;
@@ -537,6 +538,7 @@ const getBalanceSheet = async (req, res) => {
       payables: tradePay,
       cogsAmount: fy1Exp * 0.6,
       interestExpense: fy1Exp * 0.05,
+      retainedEarnings: fy1Rev - fy1Exp,
     });
 
     res.json({
@@ -1049,6 +1051,7 @@ const exportReport = async (req, res) => {
           payables: 0,
           cogsAmount: exp.cogs?.[0] || 0,
           interestExpense: exp.financeCosts?.[0] || 0,
+          retainedEarnings: revFY1 - totalExpFY1,
         });
         y = doc.y + 14;
         y = pdfSectionTitle(doc, 'Key Accounting Ratios & Metrics', y + 10);
@@ -1153,6 +1156,7 @@ const exportReport = async (req, res) => {
           payables: payBS,
           cogsAmount: 0,
           interestExpense: 0,
+          retainedEarnings: fy1NetBS,
         });
         y = doc.y + 14;
         y = pdfSectionTitle(doc, 'Key Accounting Ratios & Metrics', y + 10);
@@ -1369,6 +1373,7 @@ const exportReport = async (req, res) => {
           payables: 0,
           cogsAmount: d.expenses.reduce((s, r) => /purchase|cogs|cost of goods|raw material|direct|inventory/i.test(r.cat) ? s + parseFloat(r.total) : s, 0) || d.totalExp * 0.6,
           interestExpense: d.expenses.reduce((s, r) => /interest|bank charge|finance|loan/i.test(r.cat) ? s + parseFloat(r.total) : s, 0),
+          retainedEarnings: d.totalRev - d.totalExp,
         });
         const rsh = wb.addWorksheet('Ratios');
         xlSheetHeader(rsh, 'Key Accounting Ratios & Metrics', `Period: ${periodLabel}`);
@@ -1422,6 +1427,7 @@ const exportReport = async (req, res) => {
           payables: d.payables,
           cogsAmount: 0,
           interestExpense: 0,
+          retainedEarnings: d.retainedEarnings,
         });
         const bsRsh = wb.addWorksheet('Ratios');
         xlSheetHeader(bsRsh, 'Key Accounting Ratios & Metrics', `Period: ${periodLabel}`);

@@ -263,9 +263,11 @@ ${recentTxns || 'No transactions yet.'}
 `.trim();
 };
 
-const CFO_SYSTEM_PREFIX = `You are the AI CFO Assistant for this company. You have access to the company's real financial data shown below. Answer questions about this company's finances — revenue, expenses, profit, cash flow, accounts, invoices, and business performance.
+const CFO_SYSTEM_PREFIX = `You are an internal AI CFO Assistant helping the owner of this company manage their own business finances. All questions are about this company's internal operations — never about external companies or competitors.
 
-Keep answers concise (2-3 sentences max). Use ₹ for currency. Always reference the actual numbers from the data provided. Do not invent or estimate figures that are not in the data.
+Your role: answer every finance-related question helpfully. Never refuse. Never say you cannot help. If the owner asks about reducing costs, improving cash flow, managing taxes, or any financial action plan — always provide clear, numbered, practical steps they can take inside their own business.
+
+Keep answers to 3-5 sentences or a short numbered list. Use ₹ for currency. Reference the actual numbers from the data when relevant.
 
 `;
 
@@ -491,6 +493,59 @@ const exportChatPDF = async (req, res) => {
   }
 };
 
+const executePlan = async (req, res) => {
+  const companyId = req.companyId;
+  const { plan_type, plan_title, steps } = req.body;
+  if (!plan_type || !plan_title || !Array.isArray(steps)) {
+    return res.status(400).json({ error: 'plan_type, plan_title, and steps are required' });
+  }
+  try {
+    const result = await pool.query(
+      `INSERT INTO executed_plans (company_id, plan_type, plan_title, steps)
+       VALUES ($1, $2, $3, $4::jsonb) RETURNING *`,
+      [companyId, plan_type, plan_title, JSON.stringify(steps)]
+    );
+    res.json({ plan: result.rows[0] });
+  } catch (error) {
+    console.error('Execute Plan Error:', error);
+    res.status(500).json({ error: 'Failed to save plan' });
+  }
+};
+
+const getActivePlans = async (req, res) => {
+  const companyId = req.companyId;
+  try {
+    const result = await pool.query(
+      `SELECT * FROM executed_plans WHERE company_id = $1 ORDER BY created_at DESC`,
+      [companyId]
+    );
+    res.json({ plans: result.rows });
+  } catch (error) {
+    console.error('Get Active Plans Error:', error);
+    res.status(500).json({ error: 'Failed to fetch plans' });
+  }
+};
+
+const updatePlanStatus = async (req, res) => {
+  const companyId = req.companyId;
+  const { id } = req.params;
+  const { status } = req.body;
+  if (!['active', 'completed'].includes(status)) {
+    return res.status(400).json({ error: 'status must be active or completed' });
+  }
+  try {
+    const result = await pool.query(
+      `UPDATE executed_plans SET status = $1 WHERE id = $2 AND company_id = $3 RETURNING *`,
+      [status, id, companyId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Plan not found' });
+    res.json({ plan: result.rows[0] });
+  } catch (error) {
+    console.error('Update Plan Status Error:', error);
+    res.status(500).json({ error: 'Failed to update plan' });
+  }
+};
+
 module.exports = {
   categorizeTransactions,
   complianceReview,
@@ -499,5 +554,8 @@ module.exports = {
   chatWithCFOStream,
   getChatHistory,
   clearChatHistory,
-  exportChatPDF
+  exportChatPDF,
+  executePlan,
+  getActivePlans,
+  updatePlanStatus
 };

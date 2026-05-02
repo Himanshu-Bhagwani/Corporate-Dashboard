@@ -152,6 +152,22 @@ connectDB().then(() => {
       CREATE INDEX IF NOT EXISTS idx_chat_history_company ON chat_history(company_id);
     `)
     .catch((err) => console.error('Chat history table init failed:', err.message));
+
+  // Ensure executed_plans table exists
+  pool
+    .query(`
+      CREATE TABLE IF NOT EXISTS executed_plans (
+        id SERIAL PRIMARY KEY,
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        plan_type VARCHAR(50) NOT NULL,
+        plan_title VARCHAR(255) NOT NULL,
+        steps JSONB NOT NULL DEFAULT '[]',
+        status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active', 'completed')),
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_executed_plans_company ON executed_plans(company_id);
+    `)
+    .catch((err) => console.error('Executed plans table init failed:', err.message));
 });
 
 // Routes

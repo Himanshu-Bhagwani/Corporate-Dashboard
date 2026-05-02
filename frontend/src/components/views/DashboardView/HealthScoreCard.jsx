@@ -8,13 +8,13 @@ const METRIC_DEFS = [
     id: 'roe',
     label: 'Return on Equity (ROE)',
     category: 'Profitability Power',
-    getVal: (s) => parseFloat(s.roe) || 0,
-    format: (v) => v > 500 ? '>500%' : v < -100 ? 'N/A' : `${v.toFixed(1)}%`,
+    getVal: (s) => (s.roe !== null && s.roe !== undefined) ? parseFloat(s.roe) : null,
+    format: (v) => v === null ? 'N/A' : v > 200 ? '>200%' : v < -100 ? 'Negative' : `${v.toFixed(1)}%`,
     recommended: 'Above 15%',
-    description: 'Measures how well capital is turned into profit',
-    getStatus: (v) => v >= 15 ? 'green' : v >= 10 ? 'yellow' : 'red',
-    getScore: (v) => v >= 15 ? 10 : v >= 8 ? 6 : v >= 0 ? 3 : 0,
-    getFill: (v) => clamp((v / 30) * 100, 0, 100),
+    description: (v) => v === null ? 'Enter your equity in Financial Metrics → Additional Data to compute ROE' : 'Measures how well capital is turned into profit',
+    getStatus: (v) => v === null ? 'yellow' : v >= 15 ? 'green' : v >= 10 ? 'yellow' : 'red',
+    getScore: (v) => v === null ? 5 : v >= 15 ? 10 : v >= 8 ? 6 : v >= 0 ? 3 : 0,
+    getFill: (v) => v === null ? 50 : clamp((v / 30) * 100, 0, 100),
   },
   {
     id: 'npm',
@@ -56,29 +56,31 @@ const METRIC_DEFS = [
     id: 'ic',
     label: 'Interest Coverage Ratio',
     category: 'Interest Safety',
-    getVal: (s) => parseFloat(s.interestCoverage) || 0,
-    format: (v) => v < 0 ? 'N/A' : v > 50 ? '>50x' : `${v.toFixed(2)}x`,
+    getVal: (s) => (s.interestCoverage !== null && s.interestCoverage !== undefined) ? parseFloat(s.interestCoverage) : null,
+    format: (v) => v === null ? 'No Debt' : v > 50 ? '>50x' : `${v.toFixed(2)}x`,
     recommended: 'Above 3x',
     description: 'EBIT / Interest — how easily you service debt',
-    getStatus: (v) => v >= 3 ? 'green' : v >= 2 ? 'yellow' : 'red',
-    getScore: (v) => v >= 5 ? 10 : v >= 3 ? 7 : v >= 1.5 ? 3 : 0,
-    getFill: (v) => clamp((v / 8) * 100, 0, 100),
+    getStatus: (v) => v === null ? 'green' : v >= 3 ? 'green' : v >= 2 ? 'yellow' : 'red',
+    getScore: (v) => v === null ? 8 : v >= 5 ? 10 : v >= 3 ? 7 : v >= 1.5 ? 3 : 0,
+    getFill: (v) => v === null ? 80 : clamp((v / 8) * 100, 0, 100),
   },
   {
     id: 'cr',
     label: 'Current Ratio',
     category: 'Liquidity Cushion',
-    getVal: (s) => parseFloat(s.currentRatio) || 0,
-    format: (v) => `${v.toFixed(2)}x`,
-    recommended: '1.2 – 2.0x',
-    description: 'Too low = stress, too high = idle inefficiency',
-    getStatus: (v) => (v >= 1.2 && v <= 2.5) ? 'green' : (v >= 1.0 || v > 2.5) ? 'yellow' : 'red',
-    getScore: (v) => (v >= 1.2 && v <= 2) ? 10 : ((v >= 1 && v < 1.2) || (v > 2 && v <= 2.5)) ? 6 : v >= 0.8 ? 3 : 0,
+    getVal: (s) => (s.currentRatio !== null && s.currentRatio !== undefined) ? parseFloat(s.currentRatio) : null,
+    format: (v) => v === null ? 'No Payables' : `${v.toFixed(2)}x`,
+    recommended: '1.5 – 3.0x',
+    description: 'Too low = stress; no payables = excellent; very high = idle cash',
+    getStatus: (v) => v === null ? 'green' : (v >= 1.5 && v <= 3) ? 'green' : (v >= 1.2 || (v > 3 && v <= 5)) ? 'yellow' : 'red',
+    getScore: (v) => v === null ? 10 : (v >= 1.5 && v <= 3) ? 10 : ((v >= 1.2 && v < 1.5) || (v > 3 && v <= 5)) ? 7 : ((v >= 1 && v < 1.2) || v > 5) ? 4 : v >= 0.8 ? 2 : 0,
     getFill: (v) => {
-      if (v >= 1.2 && v <= 2) return 90;
-      if ((v >= 1 && v < 1.2) || (v > 2 && v <= 2.5)) return 65;
-      if (v >= 0.8) return 35;
-      return 15;
+      if (v === null) return 90;
+      if (v >= 1.5 && v <= 3) return 90;
+      if ((v >= 1.2 && v < 1.5) || (v > 3 && v <= 5)) return 65;
+      if ((v >= 1 && v < 1.2) || v > 5) return 40;
+      if (v >= 0.8) return 22;
+      return 10;
     },
   },
   {
@@ -87,16 +89,17 @@ const METRIC_DEFS = [
     category: 'Cash Flow Reality',
     getVal: (s) => {
       const ocf = parseFloat(s.operatingCashFlow) || 0;
-      const np = parseFloat(s.netProfit) || 0;
+      const np  = parseFloat(s.annualNetProfit ?? s.netProfit) || 0;
       if (np <= 0) return ocf > 0 ? 120 : 0;
+      if (ocf === np) return -1; // proxy: OCF and NP are same value, quality undeterminable
       return parseFloat(((ocf / np) * 100).toFixed(1));
     },
-    format: (v) => `${Math.max(0, v).toFixed(0)}% of NP`,
+    format: (v) => v === -1 ? 'Proxy (N/A)' : `${Math.max(0, v).toFixed(0)}% of NP`,
     recommended: '≥ 100% of Net Profit',
     description: 'OCF ≥ Net Profit = real, clean earnings (not paper profits)',
-    getStatus: (v) => v >= 100 ? 'green' : v >= 60 ? 'yellow' : 'red',
-    getScore: (v) => v >= 100 ? 10 : v >= 60 ? 6 : v >= 0 ? 3 : 0,
-    getFill: (v) => clamp(Math.max(0, v), 0, 100),
+    getStatus: (v) => v === -1 ? 'yellow' : v >= 100 ? 'green' : v >= 60 ? 'yellow' : 'red',
+    getScore: (v) => v === -1 ? 5 : v >= 100 ? 10 : v >= 60 ? 6 : v >= 0 ? 3 : 0,
+    getFill: (v) => v === -1 ? 50 : clamp(Math.max(0, v), 0, 100),
   },
   {
     id: 'dso',
@@ -204,15 +207,16 @@ const HealthScoreCard = ({ dashboardSummary, transactions, onViewLoans }) => {
     }
 
     // Piotroski F-Score (simplified 9-point)
-    const np  = parseFloat(s.netProfit) || 0;
+    // annualNetProfit (trailing-12M) keeps np on same time basis as ocf (also trailing-12M).
+    const np  = parseFloat(s.annualNetProfit ?? s.netProfit) || 0;
     const ocf = parseFloat(s.operatingCashFlow) || 0;
-    const roe = parseFloat(s.roe) || 0;
     const dte = parseFloat(s.debtToEquity) || 0;
-    const cr  = parseFloat(s.currentRatio) || 0;
     const npm = parseFloat(s.netProfitMargin) || 0;
-    const ic  = parseFloat(s.interestCoverage) || 0;
     const fcf = parseFloat(s.freeCashFlow) || 0;
     const roa = parseFloat(s.roa) || 0;
+    // null = no payables / no interest debt — treat as passing those checks
+    const cr  = (s.currentRatio !== null && s.currentRatio !== undefined) ? parseFloat(s.currentRatio) : null;
+    const ic  = (s.interestCoverage !== null && s.interestCoverage !== undefined) ? parseFloat(s.interestCoverage) : null;
 
     const piotroskiScore = [
       np > 0,
@@ -220,9 +224,9 @@ const HealthScoreCard = ({ dashboardSummary, transactions, onViewLoans }) => {
       roa > 0,
       ocf > np,
       dte < 1,
-      cr > 1.2,
+      cr === null || cr > 1.2,
       npm > 5,
-      ic > 3,
+      ic === null || ic > 3,
       fcf > 0,
     ].filter(Boolean).length;
 
@@ -237,7 +241,8 @@ const HealthScoreCard = ({ dashboardSummary, transactions, onViewLoans }) => {
       const fill    = m.getFill(val);
       const displayVal = m.format(val);
 
-      return { ...m, value: val, displayVal, status, score, fill };
+      const description = typeof m.description === 'function' ? m.description(val) : m.description;
+      return { ...m, value: val, displayVal, status, score, fill, description };
     });
 
     const totalScore = Math.round(metricData.reduce((a, m) => a + m.score, 0));

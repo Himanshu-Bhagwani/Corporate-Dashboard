@@ -373,13 +373,14 @@ const uploadPdfStatement = async (req, res) => {
     client = await pool.connect();
     await client.query('BEGIN');
 
+    const accountId = req.body.account_id || null;
     const created = [];
     for (const txn of normalizedTransactions) {
       const category = autoCategorize(txn.name);
       const result = await client.query(
-        `INSERT INTO transactions (company_id, name, type, category, amount, date, notes)
-         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-        [companyId, txn.name, txn.type, category, txn.amount, txn.date, txn.notes]
+        `INSERT INTO transactions (company_id, name, type, category, account_id, amount, date, notes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+        [companyId, txn.name, txn.type, category, accountId, txn.amount, txn.date, txn.notes]
       );
       created.push(result.rows[0]);
     }

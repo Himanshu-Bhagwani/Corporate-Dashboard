@@ -169,6 +169,7 @@ const computeAllRatios = ({
   interestExpense = 0,
   taxExpense = 0,
   cogsAmount = null,         // null = auto-derive
+  retainedEarnings = null,   // all-time net profit — used as equity proxy (retained earnings ≈ equity)
 }) => {
   // ── Core income statement values ──────────────────────────────────────────
   const ni = netIncome(revenue, expenses);
@@ -191,16 +192,17 @@ const computeAllRatios = ({
 
   // ── Balance Sheet ─────────────────────────────────────────────────────────
   const currentA = currentAssetsTotal(cash, receivables, inventory);
-  // Current Liabilities = Accounts Payable (payables) + accrued expenses (proxy: monthly expenses/12)
-  // Formula 2.4: Current Liabilities = AP + Accrued Expenses + Current Portion of LT Debt
-  const accruedExpenses = expenses > 0 ? expenses / 12 : 0;  // monthly accrual proxy
-  const currentL = currentLiabilitiesCalc(payables, accruedExpenses, 0);
+  const currentL = Math.max(0, payables);
   const totalAssets = totalAssetsCalc(currentA);
 
-  // Equity proxy: when no balance sheet capital data, equity ≈ retained earnings = net income
-  // In a real balance sheet: Equity = Total Assets − Total Liabilities
   const totalLiabilities = Math.max(0, currentL);
-  const equity = Math.max(1, totalAssets - totalLiabilities);
+  // Equity proxy: prefer all-time retained earnings (cumulative profits = owner's stake).
+  // Fallback: assets − liabilities (unreliable when only liquid assets are known).
+  // Using cash+receivables as equity massively understates it for cash-light businesses,
+  // producing ROE of 500%+ when annual profit > current bank balance.
+  const equity = retainedEarnings !== null
+    ? Math.max(1, retainedEarnings)
+    : Math.max(1, totalAssets - totalLiabilities);
 
   // ── Derived ratios ────────────────────────────────────────────────────────
   const arTurnoverVal = arTurnover(revenue, Math.max(1, receivables));
@@ -222,17 +224,20 @@ const computeAllRatios = ({
     currentAssets: currentA,
     currentLiabilities: currentL,
     // ── Liquidity Ratios ─────────────────────────────────────────────────
-    currentRatio: currentRatio(currentA, currentL),             // 6.1
-    quickRatio: quickRatio(currentA, inventory, currentL),      // 6.2
-    cashRatio: cashRatio(cash, currentL),                       // 6.3
+    // null = no current liabilities (no open payable invoices) — excellent liquidity
+    currentRatio: currentL > 0 ? currentRatio(currentA, currentL) : null,          // 6.1
+    quickRatio:   currentL > 0 ? quickRatio(currentA, inventory, currentL) : null, // 6.2
+    cashRatio:    currentL > 0 ? cashRatio(cash, currentL) : null,                 // 6.3
     // ── Profitability Ratios ─────────────────────────────────────────────
     roa: roa(ni, totalAssets),                                  // 5.2
-    roe: roe(ni, equity),                                       // 5.3
+    // null when equity ≤ annual NI (proxy unreliable — would show ≥100% ROE).
+    // Happens when all data is within 12 months and no opening capital is recorded.
+    roe: (ni > 0 && equity <= ni) ? null : roe(ni, equity),    // 5.3
     // ── Leverage / Solvency ───────────────────────────────────────────────
     debtToEquity: debtToEquity(totalLiabilities, equity),       // 7.1
     debtRatio: debtRatio(totalLiabilities, totalAssets),        // 7.2
     equityMultiplier: eqMult,                                   // 7.3
-    interestCoverage: interestCoverage(ebitVal, Math.max(1, interestExpense)), // 7.4
+    interestCoverage: interestExpense > 0 ? interestCoverage(ebitVal, interestExpense) : null, // 7.4 — null = no interest-bearing debt
     // ── Efficiency / Turnover ─────────────────────────────────────────────
     arTurnover: arTurnoverVal,                                  // 8.3
     daysSalesOutstanding: daysSalesOutstanding(arTurnoverVal),  // 8.4

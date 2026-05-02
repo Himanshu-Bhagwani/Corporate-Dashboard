@@ -71,9 +71,10 @@ export const transactionsAPI = {
   },
 
   // Upload CSV file
-  uploadCSV: async (file, companyId) => {
+  uploadCSV: async (file, companyId, accountId = null) => {
     const formData = new FormData();
     formData.append('file', file);
+    if (accountId) formData.append('account_id', accountId);
     const response = await fetch(`${BASE_URL}/transactions/upload-csv`, {
       method: 'POST',
       headers: {
@@ -86,9 +87,10 @@ export const transactionsAPI = {
   },
 
   // Upload PDF Statement (Deterministic Parser)
-  uploadPDF: async (file, companyId) => {
+  uploadPDF: async (file, companyId, accountId = null) => {
     const formData = new FormData();
     formData.append('file', file);
+    if (accountId) formData.append('account_id', accountId);
     const response = await fetch(`${BASE_URL}/transactions/upload-statement`, {
       method: 'POST',
       headers: {
@@ -327,6 +329,28 @@ export const aiAPI = {
     const response = await fetch(`${BASE_URL}/ai/chat-history`, {
       method: 'DELETE',
       headers: getHeaders(companyId),
+    });
+    return handleResponse(response);
+  },
+  executePlan: async (companyId, plan_type, plan_title, steps) => {
+    const response = await fetch(`${BASE_URL}/ai/execute-plan`, {
+      method: 'POST',
+      headers: getHeaders(companyId),
+      body: JSON.stringify({ plan_type, plan_title, steps }),
+    });
+    return handleResponse(response);
+  },
+  getActivePlans: async (companyId) => {
+    const response = await fetch(`${BASE_URL}/ai/active-plans`, {
+      headers: getHeaders(companyId),
+    });
+    return handleResponse(response);
+  },
+  updatePlanStatus: async (companyId, planId, status) => {
+    const response = await fetch(`${BASE_URL}/ai/active-plans/${planId}`, {
+      method: 'PATCH',
+      headers: getHeaders(companyId),
+      body: JSON.stringify({ status }),
     });
     return handleResponse(response);
   },

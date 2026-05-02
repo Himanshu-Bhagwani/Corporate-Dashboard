@@ -62,6 +62,7 @@ const TransactionsView = ({
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 25;
   const [uploadErrorMessage, setUploadErrorMessage] = useState('');
+  const [uploadAccountId, setUploadAccountId] = useState('');
   const [expandedTransactions, setExpandedTransactions] = useState(new Set());
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [clearing, setClearing] = useState(false);
@@ -186,13 +187,15 @@ const TransactionsView = ({
     setUploadStatus('');
     setUploadErrorMessage('');
     try {
+      const accountId = uploadAccountId || null;
       if (uploadFile.name.toLowerCase().endsWith('.pdf')) {
-        await onUploadPDF(uploadFile);
+        await onUploadPDF(uploadFile, accountId);
       } else {
-        await onUploadCSV(uploadFile);
+        await onUploadCSV(uploadFile, accountId);
       }
       setUploadStatus('success');
       setUploadFile(null);
+      setUploadAccountId('');
       if (fileInputRef.current) fileInputRef.current.value = '';
       setTimeout(() => setShowUploadModal(false), 1500);
     } catch (err) {
@@ -637,6 +640,28 @@ const TransactionsView = ({
                 type="file" accept=".csv,.pdf" style={{ display: 'none' }}
                 onChange={handleFileSelect}
               />
+            </div>
+
+            <div style={{ marginBottom: '1.25rem' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>
+                Link to Bank Account <span style={{ color: '#9ca3af', fontWeight: 400 }}>(enables ROE &amp; equity calculations)</span>
+              </label>
+              {accounts.length > 0 ? (
+                <select
+                  value={uploadAccountId}
+                  onChange={e => setUploadAccountId(e.target.value)}
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '14px', color: '#1a202c', background: 'white' }}
+                >
+                  <option value=''>— Select account —</option>
+                  {accounts.map(acc => (
+                    <option key={acc.id} value={acc.id}>{acc.name}{acc.bank ? ` · ${acc.bank}` : ''}</option>
+                  ))}
+                </select>
+              ) : (
+                <div style={{ padding: '9px 12px', borderRadius: '8px', border: '1px solid #fde68a', background: '#fffbeb', fontSize: '13px', color: '#92400e' }}>
+                  No bank accounts set up yet. Go to <strong>Accounts</strong> to add one first, then re-upload.
+                </div>
+              )}
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>

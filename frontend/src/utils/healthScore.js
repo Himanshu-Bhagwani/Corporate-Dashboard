@@ -27,34 +27,36 @@ export const computeHealthScore = (dashboardSummary, transactions = []) => {
   }
 
   // Piotroski F-Score (simplified, 9-point)
-  const np  = parseFloat(s.netProfit) || 0;
+  // Use annualNetProfit (trailing-12M) alongside OCF (also trailing-12M) so both are the same period.
+  // Fall back to netProfit (all-time) for older API responses that lack annualNetProfit.
+  const np  = parseFloat(s.annualNetProfit ?? s.netProfit) || 0;
   const ocf = parseFloat(s.operatingCashFlow) || 0;
-  const roe = parseFloat(s.roe) || 0;
+  const roe = (s.roe !== null && s.roe !== undefined) ? parseFloat(s.roe) : null;
   const dte = parseFloat(s.debtToEquity) || 0;
-  const cr  = parseFloat(s.currentRatio) || 0;
+  const cr  = (s.currentRatio !== null && s.currentRatio !== undefined) ? parseFloat(s.currentRatio) : null;
   const npm = parseFloat(s.netProfitMargin) || 0;
-  const ic  = parseFloat(s.interestCoverage) || 0;
+  const ic  = (s.interestCoverage !== null && s.interestCoverage !== undefined) ? parseFloat(s.interestCoverage) : null;
   const fcf = parseFloat(s.freeCashFlow) || 0;
   const roa = parseFloat(s.roa) || 0;
 
-  const piotroski = [np > 0, ocf > 0, roa > 0, ocf > np, dte < 1, cr > 1.2, npm > 5, ic > 3, fcf > 0]
+  const piotroski = [np > 0, ocf > 0, roa > 0, ocf > np, dte < 1, cr === null || cr > 1.2, npm > 5, ic === null || ic > 3, fcf > 0]
     .filter(Boolean).length;
 
   const scores = [
-    // ROE
-    parseFloat(s.roe) >= 15 ? 10 : parseFloat(s.roe) >= 8 ? 6 : parseFloat(s.roe) >= 0 ? 3 : 0,
+    // ROE — null means equity proxy unreliable (all data within 12M, no opening capital) → neutral
+    roe === null ? 5 : roe >= 15 ? 10 : roe >= 8 ? 6 : roe >= 0 ? 3 : 0,
     // Net Profit Margin
     npm >= 20 ? 10 : npm >= 10 ? 7 : npm >= 5 ? 4 : npm >= 0 ? 2 : 0,
     // Revenue Consistency
     revCV <= 20 ? 10 : revCV <= 35 ? 7 : revCV <= 50 ? 4 : 1,
     // Debt-to-Equity
     dte <= 0.5 ? 10 : dte <= 1 ? 7 : dte <= 2 ? 3 : 0,
-    // Interest Coverage
-    ic >= 5 ? 10 : ic >= 3 ? 7 : ic >= 1.5 ? 3 : 0,
-    // Current Ratio
-    (cr >= 1.2 && cr <= 2) ? 10 : ((cr >= 1 && cr < 1.2) || (cr > 2 && cr <= 2.5)) ? 6 : cr >= 0.8 ? 3 : 0,
-    // OCF Quality
-    (() => { const v = np <= 0 ? (ocf > 0 ? 120 : 0) : (ocf / np) * 100; return v >= 100 ? 10 : v >= 60 ? 6 : v >= 0 ? 3 : 0; })(),
+    // Interest Coverage (null = no interest-bearing debt → good)
+    ic === null ? 8 : ic >= 5 ? 10 : ic >= 3 ? 7 : ic >= 1.5 ? 3 : 0,
+    // Current Ratio — null = no payables (excellent); high CR = excess idle cash
+    cr === null ? 10 : (cr >= 1.5 && cr <= 3) ? 10 : ((cr >= 1.2 && cr < 1.5) || (cr > 3 && cr <= 5)) ? 7 : ((cr >= 1 && cr < 1.2) || cr > 5) ? 4 : cr >= 0.8 ? 2 : 0,
+    // OCF Quality — when OCF equals NP exactly, the proxy has no adjustments; give neutral 5
+    (() => { if (np > 0 && ocf === np) return 5; const v = np <= 0 ? (ocf > 0 ? 120 : 0) : (ocf / np) * 100; return v >= 100 ? 10 : v >= 60 ? 6 : v >= 0 ? 3 : 0; })(),
     // DSO
     (() => { const dso = parseFloat(s.daysSalesOutstanding) || 0; return dso <= 30 ? 10 : dso <= 45 ? 7 : dso <= 60 ? 4 : 0; })(),
     // FCF

@@ -266,15 +266,15 @@ const FinancialMetricsView = ({ dashboardSummary, transactions }) => {
           </div>
 
           <div className="fm-metrics-list">
-            <MetricRow label="Return on Equity (ROE)" value={fmtRatio(s.roe, 1, 500)} unit="%" source="Live"
-              description="Net Profit / Equity — how well capital earns returns"
-              status={getStatus(parseFloat(s.roe), 15, 10)} />
+            <MetricRow label="Return on Equity (ROE)" value={s.roe === null || s.roe === undefined ? 'Enter equity below ↓' : fmtRatio(s.roe, 1, 200)} unit={s.roe === null || s.roe === undefined ? '' : '%'} source={s.roe === null || s.roe === undefined ? 'Manual needed' : 'Live'}
+              description="Net Profit / Equity — enter Total Equity in Additional Financial Data below to compute"
+              status={s.roe === null || s.roe === undefined ? 'neutral' : getStatus(parseFloat(s.roe), 15, 10)} />
             <MetricRow label="Net Profit Margin" value={fmt(s.netProfitMargin)} unit="%" source="Live"
               description="Net Profit / Revenue × 100"
               status={getStatus(parseFloat(s.netProfitMargin), 10, 7)} />
-            <MetricRow label="Current Ratio" value={fmt(s.currentRatio, 2)} unit="x" source="Live"
-              description="Current Assets / Current Liabilities — ideal: 1.2–2.0"
-              status={parseFloat(s.currentRatio) >= 1.2 && parseFloat(s.currentRatio) <= 2.5 ? 'green' : parseFloat(s.currentRatio) >= 1 ? 'yellow' : 'red'} />
+            <MetricRow label="Current Ratio" value={s.currentRatio === null || s.currentRatio === undefined ? 'No Payables' : fmt(s.currentRatio, 2)} unit={s.currentRatio === null || s.currentRatio === undefined ? '' : 'x'} source="Live"
+              description="Current Assets / Current Liabilities — ideal: 1.5–3.0; no payables = excellent"
+              status={s.currentRatio === null || s.currentRatio === undefined ? 'green' : parseFloat(s.currentRatio) >= 1.5 && parseFloat(s.currentRatio) <= 3 ? 'green' : parseFloat(s.currentRatio) >= 1 ? 'yellow' : 'red'} />
             <MetricRow label="Debt-to-Equity Ratio" value={fmtRatio(s.debtToEquity, 2, 20)} unit="x" source="Live"
               description="Total Debt / Equity — ideal below 1.0"
               status={getStatus(parseFloat(s.debtToEquity), 0.5, 1, true)} />
@@ -331,7 +331,7 @@ const FinancialMetricsView = ({ dashboardSummary, transactions }) => {
                 { key: 'turnover',         label: 'Annual Turnover (₹)',         placeholder: 'e.g. 50000000' },
                 { key: 'totalAssets',      label: 'Total Assets (₹)',            placeholder: 'e.g. 20000000' },
                 { key: 'totalLiabilities', label: 'Total Liabilities (₹)',       placeholder: 'e.g. 8000000' },
-                { key: 'equity',           label: 'Total Equity / Net Worth (₹)', placeholder: 'e.g. 12000000' },
+                { key: 'equity',           label: 'Total Equity / Net Worth (₹) — used for ROE', placeholder: 'e.g. 12000000' },
                 { key: 'gstTurnover',      label: 'GST-reported Turnover (₹)',   placeholder: 'e.g. 48000000' },
                 { key: 'bankCCLimit',      label: 'Bank CC / OD Limit (₹)',      placeholder: 'e.g. 5000000' },
                 { key: 'existingEmi',      label: 'Existing Monthly EMIs (₹)',   placeholder: 'e.g. 100000' },

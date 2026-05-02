@@ -174,6 +174,16 @@ const MainLayout = () => {
         complianceAPI.getAll(currentCompany.id),
         getComplianceScore(currentCompany.id),
       ]);
+      // If user entered total equity manually in Financial Metrics, use it to override
+      // the automatic proxy (which only sees liquid assets, understating true equity).
+      try {
+        const saved = JSON.parse(localStorage.getItem('financialMetrics') || '{}');
+        const manualEquity = parseFloat(saved.manual?.equity);
+        const annualNI = parseFloat(summary.annualNetProfit ?? summary.netProfit) || 0;
+        if (manualEquity > 0) {
+          summary.roe = parseFloat((annualNI / manualEquity * 100).toFixed(2));
+        }
+      } catch {}
       setDashboardSummary(summary);
       setInvoices(invData);
       setCompliance(compData);
@@ -228,12 +238,12 @@ const MainLayout = () => {
   };
 
   // --- CSV Upload Handler ---
-  const handleUploadCSV = async (file) => {
+  const handleUploadCSV = async (file, accountId = null) => {
     try {
-      await transactionsAPI.uploadCSV(file, currentCompany.id);
+      await transactionsAPI.uploadCSV(file, currentCompany.id, accountId);
       fetchTransactions();
       fetchAccounts();
-      fetchDashboardData(); // Dashboard updates with new data
+      fetchDashboardData();
     } catch (err) {
       console.error('Failed to upload CSV:', err);
       throw err;
@@ -254,9 +264,9 @@ const MainLayout = () => {
   };
 
   // --- PDF Upload Handler ---
-  const handleUploadPDF = async (file) => {
+  const handleUploadPDF = async (file, accountId = null) => {
     try {
-      await transactionsAPI.uploadPDF(file, currentCompany.id);
+      await transactionsAPI.uploadPDF(file, currentCompany.id, accountId);
       fetchTransactions();
       fetchAccounts();
       fetchDashboardData();

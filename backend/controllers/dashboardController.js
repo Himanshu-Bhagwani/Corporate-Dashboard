@@ -26,18 +26,33 @@ const getSummary = async (req, res) => {
       [companyId, lastMonthStart, lastMonthEnd]
     );
 
-    // All-time totals
-    const allTime = await pool.query(
-      `SELECT type, COALESCE(SUM(amount), 0) as total FROM transactions 
-       WHERE company_id = $1 GROUP BY type`,
-      [companyId]
-    );
+    // All-time totals (for KPI display cards)
+    const [allTime, trailing12M] = await Promise.all([
+      pool.query(
+        `SELECT type, COALESCE(SUM(amount), 0) as total FROM transactions
+         WHERE company_id = $1 GROUP BY type`,
+        [companyId]
+      ),
+      // Trailing-12-month totals — used for period ratios (ROE, ROA, NPM, OCF, FCF)
+      // Prevents all-time cumulative profit inflating ratios vs current equity snapshot
+      pool.query(
+        `SELECT type, COALESCE(SUM(amount), 0) as total FROM transactions
+         WHERE company_id = $1 AND date >= CURRENT_DATE - INTERVAL '12 months' GROUP BY type`,
+        [companyId]
+      ),
+    ]);
 
     const getTotal = (rows, type) => parseFloat(rows.find(r => r.type === type)?.total || 0);
 
     const totalRevenue = getTotal(allTime.rows, 'income');
     const totalExpenses = getTotal(allTime.rows, 'expense');
     const netProfit = totalRevenue - totalExpenses;
+
+    // Annual revenue/expenses for ratio computation; fall back to all-time for new companies
+    const annualRevenue  = getTotal(trailing12M.rows, 'income');
+    const annualExpenses = getTotal(trailing12M.rows, 'expense');
+    const ratioRevenue   = annualRevenue  > 0 ? annualRevenue  : totalRevenue;
+    const ratioExpenses  = annualExpenses > 0 ? annualExpenses : totalExpenses;
 
     const curRevenue = getTotal(currentMonth.rows, 'income');
     const curExpenses = getTotal(currentMonth.rows, 'expense');
@@ -146,15 +161,21 @@ const getSummary = async (req, res) => {
     const cogsAmount      = parseFloat(cogsQ.rows[0].total) || null; // null triggers auto-proxy
 
     // ── Formula-computed ratios (Standard Accounting Formulas Guide) ──────────
+    // Use trailing-12M revenue/expenses so period ratios (ROE, ROA, NPM, OCF) reflect
+    // the current year's performance against the current balance-sheet snapshot.
     const ratios = formulas.computeAllRatios({
-      revenue: totalRevenue,
-      expenses: totalExpenses,
+      revenue: ratioRevenue,
+      expenses: ratioExpenses,
       cash: cashInBank,
       receivables: totalReceivables,
       payables: totalPayables,
       interestExpense,
       taxExpense,
       cogsAmount,
+      // Automatic equity proxy: cashInBank already contains opening_balance + all linked
+      // income − all linked expenses, so cashInBank + receivables − payables is the real
+      // net liquid equity without any manual input needed.
+      retainedEarnings: cashInBank + totalReceivables - totalPayables,
     });
 
     res.json({
@@ -174,6 +195,8 @@ const getSummary = async (req, res) => {
       expensesChange: pctChange(curExpenses, prevExpenses),
       profitChange: pctChange(curRevenue - curExpenses, prevRevenue - prevExpenses),
       cashChange: 0,
+      // ── Annual net profit (trailing-12M) — used by health score for OCF/Piotroski
+      annualNetProfit: ratios.netIncome,
       // ── Accounting-formula ratios (real-time from user data) ───────────────
       // Income Statement
       cogs: ratios.cogs,                                // 3.1
