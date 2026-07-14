@@ -63,6 +63,12 @@ const automationRulesRoutes = require('./routes/automationRules');
 
 const app = express();
 
+// ─── Trust proxy (required for Vercel / any reverse-proxy deployment) ─────────
+// Vercel routes all traffic through a load balancer that sets X-Forwarded-For.
+// Without this, express-rate-limit throws ERR_ERL_UNEXPECTED_X_FORWARDED_FOR
+// and blocks every request with a 401/500 before it can reach our routes.
+app.set('trust proxy', 1);
+
 // ─── Security middleware ───────────────────────────────────────────────────────
 app.use(helmetMiddleware);
 app.use(cors(corsOptions));

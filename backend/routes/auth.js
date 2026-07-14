@@ -7,10 +7,14 @@ const { signAccessToken, signRefreshToken, verifyRefreshToken, authenticateToken
 const isValidEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e).toLowerCase());
 const isStrongPassword = (p) => typeof p === 'string' && p.length >= 8;
 const userPayload = (u) => ({ id: u.id, email: u.email, fullName: u.full_name, avatarUrl: u.avatar_url });
-const issueTokens = (u) => ({
-  accessToken: signAccessToken({ userId: u.id, email: u.email }),
-  refreshToken: signRefreshToken({ userId: u.id, email: u.email })
-});
+const issueTokens = (u) => {
+  const accessToken = signAccessToken({ userId: u.id, email: u.email });
+  return {
+    accessToken,
+    refreshToken: signRefreshToken({ userId: u.id, email: u.email }),
+    token: accessToken
+  };
+};
 
 router.post('/register', async (req, res) => {
   try {
