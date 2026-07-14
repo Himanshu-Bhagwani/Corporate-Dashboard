@@ -24,9 +24,22 @@ const isProd = process.env.NODE_ENV === 'production';
 // ─── CORS ─────────────────────────────────────────────────────────────────────
 const corsOptions = {
   origin: (origin, callback) => {
-    // Allow server-to-server (no origin) only in dev
-    if (!origin && !isProd) return callback(null, true);
-    if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+    // Allow server-to-server or same-origin requests
+    if (!origin) return callback(null, true);
+    
+    const url = new URL(origin);
+    const hostname = url.hostname;
+    
+    // Allow localhost, vercel.app domains, and explicitly allowed origins
+    const isAllowed = ALLOWED_ORIGINS.includes(origin) || 
+                      hostname === 'localhost' || 
+                      hostname === '127.0.0.1' || 
+                      hostname.endsWith('.vercel.app');
+                      
+    if (isAllowed) {
+      return callback(null, true);
+    }
+    
     callback(new Error(`CORS: origin '${origin}' not allowed`));
   },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
