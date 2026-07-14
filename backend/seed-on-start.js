@@ -17,6 +17,10 @@ async function seedDemoData() {
       userId = existingUser.rows[0].id;
       console.log('✓ Demo user already exists');
       
+      // Force update password hash to 'demo123' to fix invalid/placeholder hashes from raw SQL files
+      const passwordHash = await bcrypt.hash('demo123', 10);
+      await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [passwordHash, userId]);
+      
       // Check if seed data also exists
       const existingCompany = await pool.query(
         `SELECT c.id FROM companies c 
@@ -208,4 +212,4 @@ async function seedCompanyData(companyId) {
   console.log('==============================================\n');
 }
 
-module.exports = { seedDemoData };
+module.exports = { seedDemoData, seedCompanyData };

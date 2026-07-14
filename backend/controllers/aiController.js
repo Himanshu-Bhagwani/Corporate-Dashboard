@@ -326,42 +326,16 @@ const chatWithCFOStream = async (req, res) => {
     res.setHeader('X-Accel-Buffering', 'no'); // Nginx
     res.flushHeaders();
 
-    const ollamaRes = await generateStreamResponse(message, systemPrompt);
-    const stream = ollamaRes.body;
+    const tokenStream = await generateStreamResponse(message, systemPrompt);
     let fullReply = '';
-    let buffer = '';
 
-    stream.on('data', (chunk) => {
-      buffer += chunk.toString();
-      // Ollama sends NDJSON — one JSON object per line
-      const lines = buffer.split('\n');
-      buffer = lines.pop(); // keep incomplete last line
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        try {
-          const parsed = JSON.parse(line);
-          if (parsed.response) {
-            fullReply += parsed.response;
-            res.write(`data: ${JSON.stringify({ token: parsed.response })}\n\n`);
-          }
-          if (parsed.done) {
-            res.write(`data: [DONE]\n\n`);
-          }
-        } catch (e) { /* skip malformed lines */ }
-      }
+    tokenStream.on('data', (chunk) => {
+      const token = chunk.toString();
+      fullReply += token;
+      res.write(`data: ${JSON.stringify({ token })}\n\n`);
     });
 
-    stream.on('end', async () => {
-      // Process any remaining buffer
-      if (buffer.trim()) {
-        try {
-          const parsed = JSON.parse(buffer);
-          if (parsed.response) {
-            fullReply += parsed.response;
-            res.write(`data: ${JSON.stringify({ token: parsed.response })}\n\n`);
-          }
-        } catch (e) { /* ignore */ }
-      }
+    tokenStream.on('end', async () => {
       res.write(`data: [DONE]\n\n`);
 
       // Persist to chat history
@@ -377,7 +351,7 @@ const chatWithCFOStream = async (req, res) => {
       res.end();
     });
 
-    stream.on('error', (err) => {
+    tokenStream.on('error', (err) => {
       console.error('Stream error:', err);
       res.write(`data: ${JSON.stringify({ token: '\n\nSorry, the analysis encountered an error.' })}\n\n`);
       res.write(`data: [DONE]\n\n`);
@@ -386,7 +360,7 @@ const chatWithCFOStream = async (req, res) => {
 
     // Client disconnect cleanup
     req.on('close', () => {
-      stream.destroy();
+      tokenStream.destroy();
     });
   } catch (error) {
     console.error('Stream Chat CFO Error:', error);

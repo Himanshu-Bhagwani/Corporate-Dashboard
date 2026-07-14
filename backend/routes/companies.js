@@ -63,6 +63,15 @@ router.post('/', authenticateToken, async (req, res) => {
       [req.user.userId, company.id, 'owner']
     );
 
+    // Automatically seed demo data for new companies so they have preloaded data!
+    try {
+      const { seedCompanyData } = require('../seed-on-start');
+      await seedCompanyData(company.id);
+      console.log(`Auto-seeded new company ID ${company.id} for user ID ${req.user.userId}`);
+    } catch (seedErr) {
+      console.error('Failed to auto-seed new company:', seedErr.message);
+    }
+
     // Add team invites
     if (teamInvites && Array.isArray(teamInvites) && teamInvites.length > 0) {
       for (const invite of teamInvites) {
