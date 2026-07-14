@@ -194,42 +194,17 @@ const AiCfoView = () => {
       return;
     }
     setChatLoading(true);
-    setMessages(prev => [...prev, { role: 'ai', text: '', streaming: true }]);
     try {
-      await aiAPI.chatWithCFOStream(msg, currentCompany?.id, (token) => {
-        setMessages(prev => {
-          const updated = [...prev];
-          const lastAi = updated[updated.length - 1];
-          if (lastAi && lastAi.role === 'ai') {
-            updated[updated.length - 1] = { ...lastAi, text: lastAi.text + token };
-          }
-          return updated;
-        });
-      });
-      setMessages(prev => {
-        const updated = [...prev];
-        const lastAi = updated[updated.length - 1];
-        if (lastAi && lastAi.role === 'ai') {
-          updated[updated.length - 1] = { ...lastAi, streaming: false };
-        }
-        return updated;
-      });
+      // Use non-streaming endpoint — Vercel serverless doesn't support long-lived SSE.
+      const data = await aiAPI.chatWithCFO(msg, currentCompany?.id);
+      setMessages(prev => [...prev, { role: 'ai', text: data.reply, streaming: false }]);
     } catch (error) {
-      console.error('Chat stream error:', error);
-      try {
-        const data = await aiAPI.chatWithCFO(msg, currentCompany?.id);
-        setMessages(prev => {
-          const updated = [...prev];
-          updated[updated.length - 1] = { role: 'ai', text: data.reply, streaming: false };
-          return updated;
-        });
-      } catch {
-        setMessages(prev => {
-          const updated = [...prev];
-          updated[updated.length - 1] = { role: 'ai', text: 'Sorry, I encountered an error processing your question. Please try again.', streaming: false };
-          return updated;
-        });
-      }
+      console.error('Chat CFO error:', error);
+      setMessages(prev => [...prev, {
+        role: 'ai',
+        text: 'Sorry, I encountered an error processing your question. Please try again.',
+        streaming: false
+      }]);
     } finally {
       setChatLoading(false);
     }

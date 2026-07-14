@@ -1,13 +1,22 @@
 const { pool } = require('../config/db');
 const path = require('path');
+const os = require('os');
 const fs = require('fs');
 const multer = require('multer');
 
-const UPLOADS_DIR = path.join(__dirname, '../uploads/compliance-documents');
+// On Vercel serverless /tmp is the only writable directory.
+// On local dev, use a persistent uploads directory.
+const isVercel = process.env.VERCEL === '1';
+const UPLOADS_DIR = isVercel
+  ? os.tmpdir()
+  : path.join(__dirname, '../uploads/compliance-documents');
+
+if (!isVercel && !fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
     cb(null, UPLOADS_DIR);
   },
   filename: (req, file, cb) => {
@@ -27,7 +36,6 @@ const upload = multer({
 });
 
 const getCompanyId = (req) => {
-  // Accept from header (API calls) or query param (iframe/direct links)
   const id = req.headers['x-company-id'] || req.query.company_id;
   if (!id) throw new Error('Company ID required');
   return id;
@@ -62,6 +70,7 @@ const uploadDocument = async (req, res) => {
     const fileSizeKB = Math.round(file.size / 1024);
     const fileSizeStr = fileSizeKB > 1024 ? `${(fileSizeKB / 1024).toFixed(1)} MB` : `${fileSizeKB} KB`;
 
+    // Store just the filename, not the full path, for portability
     const result = await pool.query(
       `INSERT INTO compliance_documents (company_id, name, category, file_path, file_size, mime_type, expiry_date)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -73,8 +82,13 @@ const uploadDocument = async (req, res) => {
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
+    console.error('[Documents] Upload error:', error);
     res.status(500).json({ error: error.message });
   }
+};
+
+const resolveFilePath = (filename) => {
+  return path.join(UPLOADS_DIR, filename);
 };
 
 const viewDocument = async (req, res) => {
@@ -90,9 +104,11 @@ const viewDocument = async (req, res) => {
     if (result.rows.length === 0) return res.status(404).json({ error: 'Document not found' });
 
     const doc = result.rows[0];
-    const filePath = path.join(UPLOADS_DIR, doc.file_path);
+    const filePath = resolveFilePath(doc.file_path);
 
-    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found on server' });
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'File not found on server. Note: files uploaded to Vercel are temporary and may have expired.' });
+    }
 
     res.setHeader('Content-Type', doc.mime_type || 'application/octet-stream');
     res.setHeader('Content-Disposition', `inline; filename="${doc.name}"`);
@@ -115,9 +131,11 @@ const downloadDocument = async (req, res) => {
     if (result.rows.length === 0) return res.status(404).json({ error: 'Document not found' });
 
     const doc = result.rows[0];
-    const filePath = path.join(UPLOADS_DIR, doc.file_path);
+    const filePath = resolveFilePath(doc.file_path);
 
-    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found on server' });
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'File not found on server. Note: files uploaded to Vercel are temporary and may have expired.' });
+    }
 
     res.setHeader('Content-Disposition', `attachment; filename="${doc.name}"`);
     res.setHeader('Content-Type', doc.mime_type || 'application/octet-stream');
@@ -139,7 +157,7 @@ const deleteDocument = async (req, res) => {
 
     if (result.rows.length === 0) return res.status(404).json({ error: 'Document not found' });
 
-    const filePath = path.join(UPLOADS_DIR, result.rows[0].file_path);
+    const filePath = resolveFilePath(result.rows[0].file_path);
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 
     res.json({ message: 'Deleted' });

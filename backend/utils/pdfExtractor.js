@@ -1,12 +1,18 @@
-const pdfjs = require('pdfjs-dist/legacy/build/pdf.js');
+/**
+ * pdfExtractor.js
+ * Uses `pdf-parse` instead of `pdfjs-dist` so there is no dependency on the
+ * `canvas` native module that is unavailable in Vercel's Lambda environment.
+ */
 
-// Set worker for Node.js environment
-pdfjs.GlobalWorkerOptions.workerSrc = require('pdfjs-dist/legacy/build/pdf.worker.js');
+const pdfParse = require('pdf-parse');
 
 /**
- * Extracts raw text items with their spatial coordinates from a PDF buffer.
- * @param {Buffer} pdfBuffer - The PDF file buffer.
- * @returns {Promise<Array>} - Array of items: { text, x, y, page, height }
+ * Extracts raw text items from a PDF buffer.
+ * Returns an array of synthetic "items" that are compatible with the
+ * shape expected by the rest of the codebase (text, x, y, page, height).
+ *
+ * @param {Buffer} pdfBuffer
+ * @returns {Promise<Array>}
  */
 async function extractTextWithCoords(pdfBuffer) {
   if (!pdfBuffer || !(pdfBuffer instanceof Buffer)) {
@@ -14,38 +20,38 @@ async function extractTextWithCoords(pdfBuffer) {
   }
 
   try {
-    const data = new Uint8Array(pdfBuffer);
-    const loadingTask = pdfjs.getDocument({
-      data,
-      disableFontFace: true,
-      verbosity: 0
-    });
-    
-    const pdf = await loadingTask.promise;
-    if (!pdf || pdf.numPages === 0) {
-      throw new Error('PDF_EXTRACTION_FAILED: PDF has no pages or is unreadable');
+    const data = await pdfParse(pdfBuffer);
+
+    if (!data || !data.text || !data.text.trim()) {
+      throw new Error('PDF_EXTRACTION_FAILED: No text content found in PDF');
     }
 
+    // Split the flat text into lines and convert to synthetic coord items.
+    // pdf-parse doesn't give us real x/y, so we synthesise positions using
+    // line number as the Y axis (sufficient for the bank-statement parser).
+    const lines = data.text.split('\n');
     const items = [];
 
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const textContent = await page.getTextContent();
-      
-      if (textContent && Array.isArray(textContent.items)) {
-        textContent.items.forEach(item => {
-          if (item && item.str && item.str.trim() && item.transform) {
-            items.push({
-              text: item.str,
-              x: item.transform[4],
-              y: item.transform[5],
-              height: item.transform[3], // scaleY
-              page: i
-            });
-          }
+    lines.forEach((line, lineIndex) => {
+      const trimmed = line.trim();
+      if (!trimmed) return;
+
+      // Tokenise by whitespace so that wide-spaced columns work the same
+      // way as they did with pdfjs, which returned individual word spans.
+      let xOffset = 0;
+      const tokens = trimmed.split(/\s{2,}/); // split on 2+ spaces (column gaps)
+      tokens.forEach((token) => {
+        if (!token.trim()) return;
+        items.push({
+          text: token.trim(),
+          x: xOffset,
+          y: lineIndex * 12, // synthetic Y: 12pt per line
+          height: 12,
+          page: lineIndex < data.numpages * 50 ? Math.floor(lineIndex / 50) + 1 : 1,
         });
-      }
-    }
+        xOffset += token.length * 6; // synthetic X: ~6pt per char
+      });
+    });
 
     if (items.length === 0) {
       throw new Error('PDF_EXTRACTION_FAILED: No text content found in PDF');
@@ -53,12 +59,11 @@ async function extractTextWithCoords(pdfBuffer) {
 
     return items;
   } catch (error) {
-    // Preserve our custom error codes, otherwise wrap generic ones
     if (error.message && error.message.includes('PDF_EXTRACTION_FAILED')) {
       throw error;
     }
     console.error('[pdfExtractor] Internal Error:', error);
-    throw new Error('PDF_EXTRACTION_FAILED: ' + (error.message || 'Unknown PDFJS error'));
+    throw new Error('PDF_EXTRACTION_FAILED: ' + (error.message || 'Unknown pdf-parse error'));
   }
 }
 

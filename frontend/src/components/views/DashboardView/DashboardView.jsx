@@ -761,7 +761,7 @@ const DashboardView = ({
                   type="text" value={invoiceForm.client_name}
                   onChange={(e) => setInvoiceForm(p => ({ ...p, client_name: e.target.value }))}
                   style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
-                  placeholder="e.g. Acme Corp"
+                  placeholder="e.g. HB devs Pvt. Ltd."
                 />
               </div>
               <div>

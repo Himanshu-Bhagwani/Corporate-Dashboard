@@ -117,6 +117,59 @@ connectDB().then(async () => {
       ALTER TABLE compliance_events ADD COLUMN IF NOT EXISTS itc_available NUMERIC DEFAULT 0;
       ALTER TABLE compliance_events ADD COLUMN IF NOT EXISTS advance_tax_paid NUMERIC DEFAULT 0;
     `);
+
+    // Ensure tables that may not have been created via migrations exist
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS compliance_documents (
+        id SERIAL PRIMARY KEY,
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        category VARCHAR(100) DEFAULT 'Other',
+        file_path TEXT NOT NULL,
+        file_size VARCHAR(50),
+        mime_type VARCHAR(100),
+        expiry_date DATE,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_compliance_documents_company ON compliance_documents(company_id);
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS audit_log (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER,
+        action VARCHAR(100),
+        ip_address VARCHAR(100),
+        details JSONB,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(user_id, action, ip_address)
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS chat_history (
+        id SERIAL PRIMARY KEY,
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        role VARCHAR(20) NOT NULL,
+        message TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_chat_history_company ON chat_history(company_id);
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS action_plans (
+        id SERIAL PRIMARY KEY,
+        company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+        plan_type VARCHAR(50),
+        plan_title VARCHAR(255),
+        steps JSONB DEFAULT '[]',
+        status VARCHAR(50) DEFAULT 'active',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_action_plans_company ON action_plans(company_id);
+    `);
+
     console.log('[DB] Legacy inline alters checked successfully.');
   } catch (err) {
     console.error('[DB PATCH] Legacy inline patch failed:', err.message);

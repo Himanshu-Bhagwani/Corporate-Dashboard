@@ -65,7 +65,7 @@ async function seedDemoData() {
       `INSERT INTO companies (name, industry, tax_id, address, created_at)
        VALUES ($1, $2, $3, $4, NOW())
        RETURNING id, name`,
-      ['Acme Corp Pvt Ltd', 'Technology', 'TAX123456', '123 Business Street, Tech City']
+      ['HB devs Pvt. Ltd.', 'Technology', 'TAX123456', '123 Business Street, Tech City']
     );
     
     const companyId = companyResult.rows[0].id;
@@ -116,7 +116,7 @@ async function seedCompanyData(companyId) {
   // Insert corporate transactions spanning 6 months
   const transactions = [
     // Current month
-    ['Payment from Acme Corp for Q1 services', 'income', 'Sales', checkingAccount.id, 450000.00, '2026-03-25', 'Q1 service delivery payment'],
+    ['Payment from HB devs Pvt. Ltd. for Q1 services', 'income', 'Sales', checkingAccount.id, 450000.00, '2026-03-25', 'Q1 service delivery payment'],
     ['March salary payments', 'expense', 'Salaries', checkingAccount.id, 325000.00, '2026-03-24', 'Monthly payroll - 45 employees'],
     ['Google Ads campaign - March', 'expense', 'Marketing', creditCard.id, 75000.00, '2026-03-22', 'Digital marketing spend'],
     ['Equity shares purchase - Reliance', 'expense', 'Shares', checkingAccount.id, 120000.00, '2026-03-20', 'Investment in Reliance Industries'],
@@ -170,7 +170,7 @@ async function seedCompanyData(companyId) {
   // Insert demo invoices matching the screenshot
   const invoices = [
     ['INV-1005', 'Digital Ventures', null, 'receivable', 180000.00, 'paid', '2026-01-20', '2026-01-05'],
-    ['INV-1001', 'Acme Corp', null, 'receivable', 450000.00, 'overdue', '2026-02-15', '2026-01-15'],
+    ['INV-1001', 'HB devs Pvt. Ltd.', null, 'receivable', 450000.00, 'overdue', '2026-02-15', '2026-01-15'],
     ['INV-1004', 'InnovateLabs', null, 'receivable', 325000.00, 'overdue', '2026-02-20', '2026-01-20'],
     ['INV-1002', 'TechStart Inc', null, 'receivable', 280000.00, 'overdue', '2026-02-28', '2026-02-01'],
     ['INV-1003', 'Global Solutions', null, 'receivable', 560000.00, 'overdue', '2026-03-10', '2026-02-10'],
@@ -208,7 +208,7 @@ async function seedCompanyData(companyId) {
   console.log('==============================================');
   console.log('📧 Email: demo@corporate.com');
   console.log('🔑 Password: demo123');
-  console.log('🏢 Company: Acme Corp Pvt Ltd');
+  console.log('🏢 Company: HB devs Pvt. Ltd.');
   console.log('==============================================\n');
 }
 

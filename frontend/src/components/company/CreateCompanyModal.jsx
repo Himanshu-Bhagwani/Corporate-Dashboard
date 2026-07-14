@@ -156,7 +156,7 @@ const CreateCompanyModal = ({ onClose, onSubmit, skipPlanStep = false }) => {
             <div className="wizard-step">
               <div className="form-group">
                 <label>Company Name <span>*</span></label>
-                <input type="text" name="name" value={formData.name} onChange={handleChange} placeholder="Acme Corp Pvt Ltd" />
+                <input type="text" name="name" value={formData.name} onChange={handleChange} placeholder="HB devs Pvt. Ltd." />
               </div>
               <div className="form-row">
                 <div className="form-group half-width">
