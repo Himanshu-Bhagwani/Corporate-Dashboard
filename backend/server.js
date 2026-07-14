@@ -78,19 +78,16 @@ app.use('/api/', apiLimiter);
 
 // ─── DB + migrations + seed ───────────────────────────────────────────────────
 connectDB().then(async () => {
-  if (process.env.VERCEL === '1') {
-    console.log('[DB] Running inside Vercel serverless environment — skipping inline migrations and seeds.');
-    return;
+  if (process.env.VERCEL !== '1') {
+    try {
+      await runMigrations();
+      console.log('[MIGRATION] Migrations completed successfully.');
+    } catch (err) {
+      console.error('[MIGRATION] Migration failed:', err.message);
+    }
   }
 
-  try {
-    await runMigrations();
-    console.log('[MIGRATION] Migrations completed successfully.');
-  } catch (err) {
-    console.error('[MIGRATION] Migration failed:', err.message);
-  }
-
-  // Run legacy inline alters sequentially to prevent race conditions
+  // Run legacy inline alters sequentially to ensure missing columns are created
   try {
     await pool.query(`ALTER TABLE user_companies ADD COLUMN IF NOT EXISTS last_selected_at TIMESTAMP;`);
     await pool.query(`UPDATE user_companies SET last_selected_at = created_at WHERE last_selected_at IS NULL;`);
@@ -114,13 +111,16 @@ connectDB().then(async () => {
       ALTER TABLE compliance_events ADD COLUMN IF NOT EXISTS itc_available NUMERIC DEFAULT 0;
       ALTER TABLE compliance_events ADD COLUMN IF NOT EXISTS advance_tax_paid NUMERIC DEFAULT 0;
     `);
+    console.log('[DB] Legacy inline alters checked successfully.');
   } catch (err) {
     console.error('[DB PATCH] Legacy inline patch failed:', err.message);
   }
 
-  setTimeout(() => {
-    seedDemoData().catch(err => console.error('Seed error:', err));
-  }, 2000);
+  if (process.env.VERCEL !== '1') {
+    setTimeout(() => {
+      seedDemoData().catch(err => console.error('Seed error:', err));
+    }, 2000);
+  }
 });
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
