@@ -78,6 +78,11 @@ app.use('/api/', apiLimiter);
 
 // ─── DB + migrations + seed ───────────────────────────────────────────────────
 connectDB().then(async () => {
+  if (process.env.VERCEL === '1') {
+    console.log('[DB] Running inside Vercel serverless environment — skipping inline migrations and seeds.');
+    return;
+  }
+
   try {
     await runMigrations();
     console.log('[MIGRATION] Migrations completed successfully.');
