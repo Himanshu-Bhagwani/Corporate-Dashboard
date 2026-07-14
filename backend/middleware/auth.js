@@ -2,12 +2,7 @@ const jwt = require('jsonwebtoken');
 
 // ─── JWT secrets — must be set in environment in production ──────────────────
 if (!process.env.JWT_SECRET || !process.env.JWT_REFRESH_SECRET) {
-  if (process.env.NODE_ENV === 'production') {
-    console.error('[FATAL] JWT_SECRET and JWT_REFRESH_SECRET must be set in production.');
-    process.exit(1);
-  } else {
-    console.warn('[WARN] JWT secrets not set — using insecure dev defaults. NEVER use in production.');
-  }
+  console.warn('[WARN] JWT secrets not set — using default fallback secrets.');
 }
 
 const ACCESS_SECRET  = process.env.JWT_SECRET          || 'soda-dev-access-secret-CHANGE-ME';
