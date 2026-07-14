@@ -150,7 +150,7 @@ if (process.env.NODE_ENV === 'production') {
   app.use(express.static(frontendDistPath));
   
   // Return frontend index for any non-API routes
-  app.get('/(.*)', (req, res, next) => {
+  app.get('/{*splat}', (req, res, next) => {
     if (req.path.startsWith('/api')) {
       return next();
     }
