@@ -97,7 +97,14 @@ connectDB().then(async () => {
   try {
     await pool.query(`ALTER TABLE user_companies ADD COLUMN IF NOT EXISTS last_selected_at TIMESTAMP;`);
     await pool.query(`UPDATE user_companies SET last_selected_at = created_at WHERE last_selected_at IS NULL;`);
-    
+
+    // One-time rename: update demo company name from old placeholder to HB devs Pvt. Ltd.
+    await pool.query(`
+      UPDATE companies
+      SET name = 'HB devs Pvt. Ltd.'
+      WHERE name IN ('Acme Corp Pvt Ltd', 'Acme Corp');
+    `);
+
     await pool.query(`
       ALTER TABLE companies ADD COLUMN IF NOT EXISTS gstin VARCHAR(100);
       ALTER TABLE companies ADD COLUMN IF NOT EXISTS pan VARCHAR(100);
@@ -125,7 +132,8 @@ connectDB().then(async () => {
         company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
         name VARCHAR(255) NOT NULL,
         category VARCHAR(100) DEFAULT 'Other',
-        file_path TEXT NOT NULL,
+        file_path TEXT,
+        file_data BYTEA,
         file_size VARCHAR(50),
         mime_type VARCHAR(100),
         expiry_date DATE,
@@ -133,6 +141,9 @@ connectDB().then(async () => {
       );
       CREATE INDEX IF NOT EXISTS idx_compliance_documents_company ON compliance_documents(company_id);
     `);
+    // Add file_data column if upgrading from an older schema without it
+    await pool.query(`ALTER TABLE compliance_documents ADD COLUMN IF NOT EXISTS file_data BYTEA;`);
+    await pool.query(`ALTER TABLE compliance_documents ALTER COLUMN file_path DROP NOT NULL;`);
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS audit_log (

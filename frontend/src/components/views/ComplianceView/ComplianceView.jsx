@@ -69,6 +69,7 @@ const ComplianceView = ({ compliance = [], invoices = [], onMarkFiled, onAddEven
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [viewingDoc, setViewingDoc] = useState(null);
+  const [viewBlobUrl, setViewBlobUrl] = useState(null);
 
   // Notices state
   const [notices, setNotices] = useState([]);
@@ -300,8 +301,24 @@ const ComplianceView = ({ compliance = [], invoices = [], onMarkFiled, onAddEven
     }
   };
 
-  const handleViewDocument = (doc) => {
+  const handleViewDocument = async (doc) => {
     setViewingDoc(doc);
+    setViewBlobUrl(null);
+    try {
+      const response = await documentsAPI.download(doc.id, currentCompany.id);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      setViewBlobUrl(url);
+    } catch (err) {
+      alert('Could not load document preview: ' + err.message);
+      setViewingDoc(null);
+    }
+  };
+
+  const handleCloseViewer = () => {
+    if (viewBlobUrl) window.URL.revokeObjectURL(viewBlobUrl);
+    setViewBlobUrl(null);
+    setViewingDoc(null);
   };
 
   const handleDownloadDocument = async (doc) => {
@@ -1085,22 +1102,24 @@ const ComplianceView = ({ compliance = [], invoices = [], onMarkFiled, onAddEven
 
       {/* ── Document Viewer Modal ───────────────────────────────────────── */}
       {viewingDoc && (
-        <div style={{ ...modalOverlay, zIndex: 1100 }} onClick={() => setViewingDoc(null)}>
+        <div style={{ ...modalOverlay, zIndex: 1100 }} onClick={handleCloseViewer}>
           <div style={{ background: 'white', borderRadius: '16px', padding: '1rem', maxWidth: '90vw', width: '800px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#1a202c' }}>{viewingDoc.name}</h3>
-              <button onClick={() => setViewingDoc(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4a5568', fontSize: '18px', padding: '4px' }}>✕</button>
+              <button onClick={handleCloseViewer} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4a5568', fontSize: '18px', padding: '4px' }}>✕</button>
             </div>
-            <div style={{ flex: 1, overflow: 'hidden', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-              {viewingDoc.mime_type && viewingDoc.mime_type.startsWith('image/') ? (
+            <div style={{ flex: 1, overflow: 'hidden', borderRadius: '8px', border: '1px solid #e2e8f0', minHeight: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {!viewBlobUrl ? (
+                <div style={{ color: '#a0aec0', fontSize: '14px' }}>Loading preview…</div>
+              ) : viewingDoc.mime_type && viewingDoc.mime_type.startsWith('image/') ? (
                 <img
-                  src={`/api/compliance-documents/${viewingDoc.id}/view?company_id=${currentCompany?.id}`}
+                  src={viewBlobUrl}
                   alt={viewingDoc.name}
                   style={{ width: '100%', height: '100%', objectFit: 'contain', maxHeight: '70vh' }}
                 />
               ) : (
                 <iframe
-                  src={`/api/compliance-documents/${viewingDoc.id}/view?company_id=${currentCompany?.id}`}
+                  src={viewBlobUrl}
                   title={viewingDoc.name}
                   style={{ width: '100%', height: '70vh', border: 'none' }}
                 />

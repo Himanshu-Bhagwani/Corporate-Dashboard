@@ -63,14 +63,8 @@ router.post('/', authenticateToken, async (req, res) => {
       [req.user.userId, company.id, 'owner']
     );
 
-    // Automatically seed demo data for new companies so they have preloaded data!
-    try {
-      const { seedCompanyData } = require('../seed-on-start');
-      await seedCompanyData(company.id);
-      console.log(`Auto-seeded new company ID ${company.id} for user ID ${req.user.userId}`);
-    } catch (seedErr) {
-      console.error('Failed to auto-seed new company:', seedErr.message);
-    }
+    // ⚠️ Do NOT auto-seed new companies — only demo@corporate.com gets pre-loaded data.
+    // New users start with a clean slate and enter their own company data.
 
     // Add team invites
     if (teamInvites && Array.isArray(teamInvites) && teamInvites.length > 0) {

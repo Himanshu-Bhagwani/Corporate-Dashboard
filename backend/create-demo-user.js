@@ -34,7 +34,7 @@ async function createDemoUser() {
        VALUES ($1, $2, $3, $4, NOW())
        ON CONFLICT DO NOTHING
        RETURNING id, name`,
-      ['Acme Corp Pvt Ltd', 'Technology', 'TAX123456', '123 Business Street, Tech City']
+      ['HB devs Pvt. Ltd.', 'Technology', 'TAX123456', '123 Business Street, Tech City']
     );
     
     let company;
@@ -44,7 +44,7 @@ async function createDemoUser() {
     } else {
       const existingCompany = await pool.query(
         `SELECT id, name FROM companies WHERE name = $1`,
-        ['Acme Corp Pvt Ltd']
+        ['HB devs Pvt. Ltd.']
       );
       company = existingCompany.rows[0];
       console.log('✓ Demo company already exists:', company);
@@ -86,7 +86,7 @@ async function createDemoUser() {
     
     // Insert demo transactions
     const transactions = [
-      ['Payment from Acme Corp for Q1 services', 'income', 'Sales', checkingAccount.id, 450000.00, '2026-02-25', 'Q1 service payment'],
+      ['Payment from HB devs Pvt. Ltd. for Q1 services', 'income', 'Sales', checkingAccount.id, 450000.00, '2026-02-25', 'Q1 service payment'],
       ['February salary payments', 'expense', 'Salaries', checkingAccount.id, 325000.00, '2026-02-24', 'Monthly payroll'],
       ['Consulting fees - TechStart Inc', 'income', 'Consulting', checkingAccount.id, 180000.00, '2026-02-23', 'Consulting project payment'],
       ['Google Ads campaign - February', 'expense', 'Marketing', creditCard.id, 75000.00, '2026-02-22', 'Digital marketing spend'],
@@ -110,7 +110,7 @@ async function createDemoUser() {
     console.log('Email: demo@corporate.com');
     console.log('Password: demo123');
     console.log('==============================================');
-    console.log('Company: Acme Corp Pvt Ltd');
+    console.log('Company: HB devs Pvt. Ltd.');
     console.log('==============================================\n');
     
     process.exit(0);
