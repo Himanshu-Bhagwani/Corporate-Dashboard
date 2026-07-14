@@ -142,6 +142,23 @@ app.use('/api/financial-metrics', financialMetricsRoutes);
 app.use('/api/verify',            verifyRoutes);
 app.use('/api/tally',             tallyRoutes);
 app.use('/api/automation-rules',  automationRulesRoutes);
+app.get('/api/verify-db', async (req, res) => {
+  try {
+    const companiesCols = await pool.query(
+      `SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'companies'`
+    );
+    const migrations = await pool.query(
+      `SELECT filename FROM schema_migrations`
+    ).catch(e => ({ rows: [{ filename: 'Error: ' + e.message }] }));
+
+    res.json({
+      companies_columns: companiesCols.rows,
+      applied_migrations: migrations.rows
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message, stack: err.stack });
+  }
+});
 
 // ─── Serve Frontend Static Files in Production ────────────────────────────────
 if (process.env.NODE_ENV === 'production') {
