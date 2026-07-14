@@ -168,11 +168,15 @@ app.use((err, req, res, next) => {
 });
 
 // ─── Server ───────────────────────────────────────────────────────────────────
-const PORT = process.env.PORT || 5000;
-const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`SODA Business Backend live on port ${PORT} [${process.env.NODE_ENV || 'development'}]`);
-});
+if (process.env.VERCEL !== '1') {
+  const PORT = process.env.PORT || 5000;
+  const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`SODA Business Backend live on port ${PORT} [${process.env.NODE_ENV || 'development'}]`);
+  });
 
-server.setTimeout(600000);
-server.keepAliveTimeout = 600000;
-server.headersTimeout   = 600000;
+  server.setTimeout(600000);
+  server.keepAliveTimeout = 600000;
+  server.headersTimeout   = 600000;
+}
+
+module.exports = app;
