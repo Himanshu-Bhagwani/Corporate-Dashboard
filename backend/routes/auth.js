@@ -3,6 +3,8 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const { pool } = require('../config/db');
 const { signAccessToken, signRefreshToken, verifyRefreshToken, authenticateToken } = require('../middleware/auth');
+const { OAuth2Client } = require('google-auth-library');
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const isValidEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e).toLowerCase());
 const isStrongPassword = (p) => typeof p === 'string' && p.length >= 8;
@@ -76,8 +78,24 @@ router.post('/refresh', async (req, res) => {
 
 router.post('/google', async (req, res) => {
   try {
-    const { googleId, email, fullName, avatarUrl } = req.body;
-    if (!googleId || !email) return res.status(400).json({ error: 'Google ID and email required.' });
+    const { idToken } = req.body;
+    if (!idToken) return res.status(400).json({ error: 'Google ID token required.' });
+    
+    let payload;
+    try {
+      const ticket = await googleClient.verifyIdToken({
+        idToken: idToken,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+      payload = ticket.getPayload();
+    } catch (verifyErr) {
+      console.error('Google token verification failed:', verifyErr);
+      return res.status(401).json({ error: 'Invalid Google token.' });
+    }
+
+    const { sub: googleId, email, name: fullName, picture: avatarUrl } = payload;
+    if (!googleId || !email) return res.status(400).json({ error: 'Incomplete Google profile.' });
+
     let result = await pool.query('SELECT * FROM users WHERE google_id = $1 OR email = $2', [googleId, email.toLowerCase()]);
     let user;
     if (result.rows.length === 0) {
