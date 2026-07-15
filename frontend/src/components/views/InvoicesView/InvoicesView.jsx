@@ -26,11 +26,31 @@ const InvoicesView = ({
 
   // --- Stats ---
   const stats = useMemo(() => {
-    const total = filteredInvoices.reduce((s, i) => s + parseFloat(i.amount || 0), 0);
-    const paid = filteredInvoices.filter(i => i.status === 'paid').reduce((s, i) => s + parseFloat(i.amount || 0), 0);
-    const pending = filteredInvoices.filter(i => i.status === 'pending').reduce((s, i) => s + parseFloat(i.amount || 0), 0);
-    const overdue = filteredInvoices.filter(i => i.status === 'overdue').reduce((s, i) => s + parseFloat(i.amount || 0), 0);
-    return { total, paid, pending, overdue };
+    const receivables = filteredInvoices.filter(i => (i.type || 'receivable') === 'receivable');
+    const payables = filteredInvoices.filter(i => i.type === 'payable');
+
+    const recTotal = receivables.reduce((s, i) => s + parseFloat(i.amount || 0), 0);
+    const recOverdue = receivables.filter(i => i.status === 'overdue').reduce((s, i) => s + parseFloat(i.amount || 0), 0);
+    const recPendingCount = receivables.filter(i => i.status === 'pending').length;
+
+    const payTotal = payables.reduce((s, i) => s + parseFloat(i.amount || 0), 0);
+    const payUpcoming = payables.filter(i => i.status === 'pending').reduce((s, i) => s + parseFloat(i.amount || 0), 0);
+    const payPendingCount = payables.filter(i => i.status === 'pending').length;
+
+    const healthPaid = filteredInvoices.filter(i => i.status === 'paid').length;
+    const healthPending = filteredInvoices.filter(i => i.status === 'pending').length;
+    const healthFailed = filteredInvoices.filter(i => i.status === 'overdue' || i.status === 'failed').length;
+
+    const recCollected = receivables.filter(i => i.status === 'paid').reduce((s, i) => s + parseFloat(i.amount || 0), 0);
+    const collectionRate = recTotal > 0 ? (recCollected / recTotal) * 100 : 0;
+    const recPaidCount = receivables.filter(i => i.status === 'paid').length;
+
+    return { 
+      recTotal, recOverdue, recPendingCount,
+      payTotal, payUpcoming, payPendingCount,
+      healthPaid, healthPending, healthFailed,
+      recCollected, collectionRate, recPaidCount
+    };
   }, [filteredInvoices]);
 
   // --- Sorting: paid invoices always at bottom ---
@@ -372,6 +392,12 @@ const InvoicesView = ({
               <span className="detail-label">Status</span>
               <span className="detail-value">{statusBadge(inv?.status)}</span>
             </div>
+            <div className="invoice-detail-row">
+              <span className="detail-label">IRN (Simulated — IRP integration pending)</span>
+              <span className="detail-value" style={{ fontSize: '11px', wordBreak: 'break-all', fontFamily: 'monospace' }}>
+                {inv?.irn_number || 'Not Generated'}
+              </span>
+            </div>
             {inv?.notes && (
               <div className="invoice-detail-row">
                 <span className="detail-label">Notes</span>
@@ -430,37 +456,131 @@ const InvoicesView = ({
         </div>
       </div>
 
-      {/* Stats Cards — same design as Transactions stats */}
+      {/* Stats Cards */}
       <div className="stats-grid-4">
-        <div className="stat-card-simple">
-          <div className="stat-icon-wrapper-small blue"><DollarSign size={18} /></div>
-          <div className="stat-content-simple">
-            <div className="stat-label-simple">Total Invoiced</div>
-            <div className="stat-value-simple">{formatAmount(stats.total)}</div>
+        {/* Receivables */}
+        <div className="stat-card-simple" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', alignItems: 'stretch' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 500 }}>Receivables</span>
+            <div className="stat-icon-wrapper-small green" style={{ width: '28px', height: '28px' }}><DollarSign size={14} /></div>
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--pure-white)' }}>{formatAmount(stats.recTotal)}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#94a3b8', marginTop: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Overdue</span><span style={{ color: '#ef4444', fontWeight: 500 }}>{formatAmount(stats.recOverdue)}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Pending</span><span style={{ color: '#f59e0b', fontWeight: 500 }}>{stats.recPendingCount} invoices</span>
+            </div>
           </div>
         </div>
-        <div className="stat-card-simple">
-          <div className="stat-icon-wrapper-small green"><CheckCircle size={18} /></div>
-          <div className="stat-content-simple">
-            <div className="stat-label-simple">Paid</div>
-            <div className="stat-value-simple green">{formatAmount(stats.paid)}</div>
+
+        {/* Payables */}
+        <div className="stat-card-simple" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', alignItems: 'stretch' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 500 }}>Payables</span>
+            <div className="stat-icon-wrapper-small blue" style={{ width: '28px', height: '28px' }}><DollarSign size={14} /></div>
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--pure-white)' }}>{formatAmount(stats.payTotal)}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#94a3b8', marginTop: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Upcoming</span><span style={{ color: 'var(--pure-white)', fontWeight: 500 }}>{formatAmount(stats.payUpcoming)}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Pending</span><span style={{ color: '#f59e0b', fontWeight: 500 }}>{stats.payPendingCount} Bills</span>
+            </div>
           </div>
         </div>
-        <div className="stat-card-simple">
-          <div className="stat-icon-wrapper-small orange"><Clock size={18} /></div>
-          <div className="stat-content-simple">
-            <div className="stat-label-simple">Pending</div>
-            <div className="stat-value-simple orange">{formatAmount(stats.pending)}</div>
+
+        {/* Invoice Health */}
+        <div className="stat-card-simple" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', alignItems: 'stretch' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 500 }}>Invoice Health</span>
+            <div className="stat-icon-wrapper-small" style={{ width: '28px', height: '28px', background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6' }}><CheckCircle size={14} /></div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px', color: '#94a3b8', marginTop: '8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }}></span> Paid</div>
+              <span style={{ color: 'var(--pure-white)', fontWeight: 600 }}>{stats.healthPaid}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#f59e0b' }}></span> Pending</div>
+              <span style={{ color: 'var(--pure-white)', fontWeight: 600 }}>{stats.healthPending}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#ef4444' }}></span> Failed</div>
+              <span style={{ color: 'var(--pure-white)', fontWeight: 600 }}>{stats.healthFailed}</span>
+            </div>
           </div>
         </div>
-        <div className="stat-card-simple">
-          <div className="stat-icon-wrapper-small red"><AlertTriangle size={18} /></div>
-          <div className="stat-content-simple">
-            <div className="stat-label-simple">Overdue</div>
-            <div className="stat-value-simple red">{formatAmount(stats.overdue)}</div>
+
+        {/* Collections */}
+        <div className="stat-card-simple" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', alignItems: 'stretch' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 500 }}>Collections</span>
+            <div className="stat-icon-wrapper-small" style={{ width: '28px', height: '28px', background: 'rgba(6, 182, 212, 0.15)', color: '#06b6d4' }}><AlertTriangle size={14} /></div>
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--pure-white)' }}>{formatAmount(stats.recCollected)}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#94a3b8', marginTop: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Collection Rate</span><span style={{ color: '#10b981', fontWeight: 500 }}>{stats.collectionRate.toFixed(0)}%</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Paid Invoices</span><span style={{ color: '#10b981', fontWeight: 500 }}>↗ {stats.recPaidCount}</span>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Volume Trend Block */}
+      {!loading && filteredInvoices.length > 0 && (
+        <div style={{ background: '#1e293b', borderRadius: '12px', padding: '1.5rem', marginBottom: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(99, 102, 241, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#818cf8' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: 'var(--pure-white)' }}>Volume Trend</h3>
+                <div style={{ fontSize: '12px', color: '#94a3b8' }}>Last 30 Days</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <select style={{ background: '#0f172a', border: '1px solid #334155', color: '#e2e8f0', padding: '4px 8px', borderRadius: '6px', fontSize: '12px' }}>
+                <option>30D</option>
+                <option>90D</option>
+                <option>YTD</option>
+              </select>
+              <select style={{ background: '#0f172a', border: '1px solid #334155', color: '#e2e8f0', padding: '4px 8px', borderRadius: '6px', fontSize: '12px' }}>
+                <option>Amount</option>
+                <option>Count</option>
+              </select>
+            </div>
+          </div>
+          
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', borderTop: '1px solid #334155', paddingTop: '1.5rem' }}>
+            <div>
+              <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Current Period</div>
+              <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--pure-white)' }}>{formatAmount(stats.recTotal + stats.payTotal)}</div>
+              <div style={{ fontSize: '12px', color: '#64748b' }}>{filteredInvoices.length} invoices</div>
+            </div>
+            <div>
+              <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Previous Period</div>
+              <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--pure-white)' }}>₹0</div>
+            </div>
+            <div>
+              <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Period Change</div>
+              <div style={{ fontSize: '14px', color: '#64748b' }}>--</div>
+              <div style={{ fontSize: '12px', color: '#64748b' }}>vs prev 30 Days</div>
+            </div>
+          </div>
+          
+          {/* Simple Bar visualization */}
+          <div style={{ height: '120px', display: 'flex', alignItems: 'flex-end', gap: '8px', padding: '1rem 0 0', marginTop: '1rem', borderTop: '1px solid #334155', justifyContent: 'flex-end' }}>
+             <div style={{ width: '40px', background: '#10b981', height: '80%', borderRadius: '4px 4px 0 0' }}></div>
+          </div>
+        </div>
+      )}
 
       {/* Loading State */}
       {loading && <div className="state-message">Loading invoices...</div>}
@@ -474,6 +594,7 @@ const InvoicesView = ({
                 <th onClick={() => toggleSort('invoice_number')} style={{ cursor: 'pointer' }}>
                   INVOICE # <ArrowUpDown size={12} style={{ verticalAlign: 'middle', marginLeft: 4, opacity: 0.5 }} />
                 </th>
+                <th>e-Invoice (IRN)</th>
                 <th onClick={() => toggleSort('client_name')} style={{ cursor: 'pointer' }}>
                   CLIENT / VENDOR <ArrowUpDown size={12} style={{ verticalAlign: 'middle', marginLeft: 4, opacity: 0.5 }} />
                 </th>
@@ -502,6 +623,15 @@ const InvoicesView = ({
                 sortedInvoices.map(invoice => (
                   <tr key={invoice.id} className={invoice.status === 'paid' ? 'row-paid' : ''}>
                     <td><span className="table-main-text" style={{ fontWeight: 600 }}>{invoice.invoice_number}</span></td>
+                    <td>
+                      {invoice.irn_number ? (
+                        <span style={{ fontSize: '12px', color: '#10b981', background: 'rgba(16, 185, 129, 0.1)', padding: '2px 6px', borderRadius: '4px', fontFamily: 'monospace' }}>
+                          {invoice.irn_number.substring(0, 10)}...
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: '12px', color: '#64748b', background: '#334155', padding: '2px 6px', borderRadius: '4px' }}>Exempt</span>
+                      )}
+                    </td>
                     <td><span className="table-secondary-text" style={{ color: '#4F46E5', fontWeight: 500 }}>{invoice.client_name || invoice.vendor_name || '-'}</span></td>
                     <td>
                       {invoice.type === 'payable' ? (

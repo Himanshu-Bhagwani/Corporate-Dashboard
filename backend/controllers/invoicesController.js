@@ -17,7 +17,7 @@ const getInvoices = async (req, res) => {
       `SELECT id, invoice_number, client_name, vendor_name, type, amount, status, 
               TO_CHAR(due_date, 'YYYY-MM-DD') as due_date,
               TO_CHAR(issue_date, 'YYYY-MM-DD') as issue_date,
-              notes, created_at
+              notes, irn_number, created_at
        FROM invoices WHERE company_id = $1 ORDER BY due_date DESC`,
       [companyId]
     );
@@ -42,13 +42,22 @@ const createInvoice = async (req, res) => {
       'SELECT COUNT(*) as count FROM invoices WHERE company_id = $1',
       [companyId]
     );
-    const invoiceNumber = `INV-${String(parseInt(countResult.rows[0].count) + 1).padStart(4, '0')}`;
+    const invoiceNumber = `INV-${String(new Date().getFullYear())}-${String(parseInt(countResult.rows[0].count) + 1).padStart(4, '0')}`;
+
+    const finalIssueDate = issue_date || new Date().toISOString().slice(0, 10);
+    
+    // Generate Dummy IRN
+    const crypto = require('crypto');
+    const dummyGstin = '29ABCDE1234F1Z5'; // Fallback dummy GSTIN
+    const financialYear = new Date().getMonth() < 3 ? `${new Date().getFullYear() - 1}-${new Date().getFullYear()}` : `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
+    const irnData = `${dummyGstin}${invoiceNumber}${financialYear}${finalIssueDate}`;
+    const irnNumber = crypto.createHash('sha256').update(irnData).digest('hex');
 
     const result = await pool.query(
-      `INSERT INTO invoices (company_id, invoice_number, client_name, type, amount, status, due_date, issue_date, notes)
-       VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, $8)
+      `INSERT INTO invoices (company_id, invoice_number, client_name, type, amount, status, due_date, issue_date, notes, irn_number)
+       VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, $8, $9)
        RETURNING *, TO_CHAR(due_date, 'YYYY-MM-DD') as due_date, TO_CHAR(issue_date, 'YYYY-MM-DD') as issue_date`,
-      [companyId, invoiceNumber, client_name, type || 'receivable', amount, due_date, issue_date || new Date().toISOString().slice(0, 10), notes]
+      [companyId, invoiceNumber, client_name, type || 'receivable', amount, due_date, finalIssueDate, notes, irnNumber]
     );
 
     res.status(201).json(result.rows[0]);
