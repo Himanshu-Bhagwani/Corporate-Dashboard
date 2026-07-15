@@ -219,6 +219,14 @@ export const invoicesAPI = {
     });
     return handleResponse(response);
   },
+
+  getVolumeTrend: async (params, companyId) => {
+    const query = new URLSearchParams(params).toString();
+    const response = await fetch(`${BASE_URL}/invoices/analytics/volume-trend?${query}`, {
+      headers: getHeaders(companyId)
+    });
+    return handleResponse(response);
+  }
 };
 
 export const complianceAPI = {

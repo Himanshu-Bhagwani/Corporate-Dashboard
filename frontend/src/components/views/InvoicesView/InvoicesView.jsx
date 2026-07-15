@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import './InvoicesView.css';
 import EmbeddedHeader from '../../layout/EmbeddedHeader/EmbeddedHeader';
 import { FileText, PlusCircle, Eye, Pencil, ArrowUpDown, X, DollarSign, CheckCircle, Clock, AlertTriangle, Upload, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
+import { invoicesAPI } from '../../../services/api';
 
 const InvoicesView = ({
   invoices,
@@ -21,29 +22,53 @@ const InvoicesView = ({
 
   const filteredInvoices = useMemo(() => {
     if (filterType === 'all') return invoices;
-    return invoices.filter(i => (i.type || 'receivable') === filterType);
+    return invoices.filter(i => (i.type || 'receivable').toLowerCase() === filterType);
   }, [invoices, filterType]);
+
+  const [trendWindow, setTrendWindow] = useState('30D');
+  const [baseMeasure, setBaseMeasure] = useState('invoice_amount');
+  const [volumeData, setVolumeData] = useState(null);
+  const [volumeLoading, setVolumeLoading] = useState(false);
+
+  useEffect(() => {
+    const fetchTrend = async () => {
+      setVolumeLoading(true);
+      try {
+        const companyId = localStorage.getItem('companyId') || undefined;
+        const res = await invoicesAPI.getVolumeTrend({
+          trend_window_size: trendWindow,
+          base_measure: baseMeasure
+        }, companyId);
+        setVolumeData(res);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setVolumeLoading(false);
+      }
+    };
+    fetchTrend();
+  }, [trendWindow, baseMeasure]);
 
   // --- Stats ---
   const stats = useMemo(() => {
-    const receivables = filteredInvoices.filter(i => (i.type || 'receivable') === 'receivable');
-    const payables = filteredInvoices.filter(i => i.type === 'payable');
+    const receivables = filteredInvoices.filter(i => (i.type || 'receivable').toLowerCase() === 'receivable');
+    const payables = filteredInvoices.filter(i => (i.type || '').toLowerCase() === 'payable');
 
     const recTotal = receivables.reduce((s, i) => s + parseFloat(i.amount || 0), 0);
-    const recOverdue = receivables.filter(i => i.status === 'overdue').reduce((s, i) => s + parseFloat(i.amount || 0), 0);
-    const recPendingCount = receivables.filter(i => i.status === 'pending').length;
+    const recOverdue = receivables.filter(i => (i.status || '').toLowerCase() === 'overdue').reduce((s, i) => s + parseFloat(i.amount || 0), 0);
+    const recPendingCount = receivables.filter(i => (i.status || '').toLowerCase() === 'pending').length;
 
     const payTotal = payables.reduce((s, i) => s + parseFloat(i.amount || 0), 0);
-    const payUpcoming = payables.filter(i => i.status === 'pending').reduce((s, i) => s + parseFloat(i.amount || 0), 0);
-    const payPendingCount = payables.filter(i => i.status === 'pending').length;
+    const payUpcoming = payables.filter(i => (i.status || '').toLowerCase() === 'pending').reduce((s, i) => s + parseFloat(i.amount || 0), 0);
+    const payPendingCount = payables.filter(i => (i.status || '').toLowerCase() === 'pending').length;
 
-    const healthPaid = filteredInvoices.filter(i => i.status === 'paid').length;
-    const healthPending = filteredInvoices.filter(i => i.status === 'pending').length;
-    const healthFailed = filteredInvoices.filter(i => i.status === 'overdue' || i.status === 'failed').length;
+    const healthPaid = filteredInvoices.filter(i => (i.status || '').toLowerCase() === 'paid').length;
+    const healthPending = filteredInvoices.filter(i => (i.status || '').toLowerCase() === 'pending').length;
+    const healthFailed = filteredInvoices.filter(i => (i.status || '').toLowerCase() === 'overdue' || (i.status || '').toLowerCase() === 'failed').length;
 
-    const recCollected = receivables.filter(i => i.status === 'paid').reduce((s, i) => s + parseFloat(i.amount || 0), 0);
+    const recCollected = receivables.filter(i => (i.status || '').toLowerCase() === 'paid').reduce((s, i) => s + parseFloat(i.amount || 0), 0);
     const collectionRate = recTotal > 0 ? (recCollected / recTotal) * 100 : 0;
-    const recPaidCount = receivables.filter(i => i.status === 'paid').length;
+    const recPaidCount = receivables.filter(i => (i.status || '').toLowerCase() === 'paid').length;
 
     return { 
       recTotal, recOverdue, recPendingCount,
@@ -459,13 +484,13 @@ const InvoicesView = ({
       {/* Stats Cards */}
       <div className="stats-grid-4">
         {/* Receivables */}
-        <div className="stat-card-simple" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', alignItems: 'stretch' }}>
+        <div className="stat-card-simple" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', alignItems: 'stretch', background: '#ffffff', border: '1px solid #e2e8f0' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 500 }}>Receivables</span>
+            <span style={{ fontSize: '15px', color: '#64748b', fontWeight: 600 }}>Receivables</span>
             <div className="stat-icon-wrapper-small green" style={{ width: '28px', height: '28px' }}><DollarSign size={14} /></div>
           </div>
-          <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--pure-white)' }}>{formatAmount(stats.recTotal)}</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#94a3b8', marginTop: 'auto' }}>
+          <div style={{ fontSize: '24px', fontWeight: 700, color: '#1e293b' }}>{formatAmount(stats.recTotal)}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '13px', color: '#64748b', marginTop: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span>Overdue</span><span style={{ color: '#ef4444', fontWeight: 500 }}>{formatAmount(stats.recOverdue)}</span>
             </div>
@@ -476,15 +501,15 @@ const InvoicesView = ({
         </div>
 
         {/* Payables */}
-        <div className="stat-card-simple" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', alignItems: 'stretch' }}>
+        <div className="stat-card-simple" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', alignItems: 'stretch', background: '#ffffff', border: '1px solid #e2e8f0' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 500 }}>Payables</span>
+            <span style={{ fontSize: '15px', color: '#64748b', fontWeight: 600 }}>Payables</span>
             <div className="stat-icon-wrapper-small blue" style={{ width: '28px', height: '28px' }}><DollarSign size={14} /></div>
           </div>
-          <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--pure-white)' }}>{formatAmount(stats.payTotal)}</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#94a3b8', marginTop: 'auto' }}>
+          <div style={{ fontSize: '24px', fontWeight: 700, color: '#1e293b' }}>{formatAmount(stats.payTotal)}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '13px', color: '#64748b', marginTop: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>Upcoming</span><span style={{ color: 'var(--pure-white)', fontWeight: 500 }}>{formatAmount(stats.payUpcoming)}</span>
+              <span>Upcoming</span><span style={{ color: '#1e293b', fontWeight: 500 }}>{formatAmount(stats.payUpcoming)}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span>Pending</span><span style={{ color: '#f59e0b', fontWeight: 500 }}>{stats.payPendingCount} Bills</span>
@@ -493,35 +518,35 @@ const InvoicesView = ({
         </div>
 
         {/* Invoice Health */}
-        <div className="stat-card-simple" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', alignItems: 'stretch' }}>
+        <div className="stat-card-simple" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', alignItems: 'stretch', background: '#ffffff', border: '1px solid #e2e8f0' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 500 }}>Invoice Health</span>
+            <span style={{ fontSize: '15px', color: '#64748b', fontWeight: 600 }}>Invoice Health</span>
             <div className="stat-icon-wrapper-small" style={{ width: '28px', height: '28px', background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6' }}><CheckCircle size={14} /></div>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px', color: '#94a3b8', marginTop: '8px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px', color: '#64748b', marginTop: '8px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }}></span> Paid</div>
-              <span style={{ color: 'var(--pure-white)', fontWeight: 600 }}>{stats.healthPaid}</span>
+              <span style={{ color: '#1e293b', fontWeight: 600 }}>{stats.healthPaid}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#f59e0b' }}></span> Pending</div>
-              <span style={{ color: 'var(--pure-white)', fontWeight: 600 }}>{stats.healthPending}</span>
+              <span style={{ color: '#1e293b', fontWeight: 600 }}>{stats.healthPending}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#ef4444' }}></span> Failed</div>
-              <span style={{ color: 'var(--pure-white)', fontWeight: 600 }}>{stats.healthFailed}</span>
+              <span style={{ color: '#1e293b', fontWeight: 600 }}>{stats.healthFailed}</span>
             </div>
           </div>
         </div>
 
         {/* Collections */}
-        <div className="stat-card-simple" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', alignItems: 'stretch' }}>
+        <div className="stat-card-simple" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', alignItems: 'stretch', background: '#ffffff', border: '1px solid #e2e8f0' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 500 }}>Collections</span>
+            <span style={{ fontSize: '15px', color: '#64748b', fontWeight: 600 }}>Collections</span>
             <div className="stat-icon-wrapper-small" style={{ width: '28px', height: '28px', background: 'rgba(6, 182, 212, 0.15)', color: '#06b6d4' }}><AlertTriangle size={14} /></div>
           </div>
-          <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--pure-white)' }}>{formatAmount(stats.recCollected)}</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#94a3b8', marginTop: 'auto' }}>
+          <div style={{ fontSize: '24px', fontWeight: 700, color: '#1e293b' }}>{formatAmount(stats.recCollected)}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '13px', color: '#64748b', marginTop: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span>Collection Rate</span><span style={{ color: '#10b981', fontWeight: 500 }}>{stats.collectionRate.toFixed(0)}%</span>
             </div>
@@ -533,52 +558,79 @@ const InvoicesView = ({
       </div>
 
       {/* Volume Trend Block */}
-      {!loading && filteredInvoices.length > 0 && (
-        <div style={{ background: '#1e293b', borderRadius: '12px', padding: '1.5rem', marginBottom: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      {!loading && (
+        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1.5rem', marginBottom: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(99, 102, 241, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#818cf8' }}>
+              <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(99, 102, 241, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4f46e5' }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
               </div>
               <div>
-                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: 'var(--pure-white)' }}>Volume Trend</h3>
-                <div style={{ fontSize: '12px', color: '#94a3b8' }}>Last 30 Days</div>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: '#1e293b' }}>Volume Trend</h3>
+                <div style={{ fontSize: '12px', color: '#64748b' }}>Last {trendWindow.replace('D', ' Days')}</div>
               </div>
             </div>
             <div style={{ display: 'flex', gap: '8px' }}>
-              <select style={{ background: '#0f172a', border: '1px solid #334155', color: '#e2e8f0', padding: '4px 8px', borderRadius: '6px', fontSize: '12px' }}>
-                <option>30D</option>
-                <option>90D</option>
-                <option>YTD</option>
+              <select value={trendWindow} onChange={e => setTrendWindow(e.target.value)} style={{ background: '#f8fafc', border: '1px solid #cbd5e1', color: '#334155', padding: '4px 8px', borderRadius: '6px', fontSize: '13px', outline: 'none' }}>
+                <option value="7D">7D</option>
+                <option value="30D">30D</option>
+                <option value="90D">90D</option>
+                <option value="MTD">MTD</option>
+                <option value="QTD">QTD</option>
+                <option value="YTD">YTD</option>
               </select>
-              <select style={{ background: '#0f172a', border: '1px solid #334155', color: '#e2e8f0', padding: '4px 8px', borderRadius: '6px', fontSize: '12px' }}>
-                <option>Amount</option>
-                <option>Count</option>
+              <select value={baseMeasure} onChange={e => setBaseMeasure(e.target.value)} style={{ background: '#f8fafc', border: '1px solid #cbd5e1', color: '#334155', padding: '4px 8px', borderRadius: '6px', fontSize: '13px', outline: 'none' }}>
+                <option value="invoice_amount">Amount</option>
+                <option value="invoice_count">Count</option>
               </select>
             </div>
           </div>
           
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', borderTop: '1px solid #334155', paddingTop: '1.5rem' }}>
-            <div>
-              <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Current Period</div>
-              <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--pure-white)' }}>{formatAmount(stats.recTotal + stats.payTotal)}</div>
-              <div style={{ fontSize: '12px', color: '#64748b' }}>{filteredInvoices.length} invoices</div>
-            </div>
-            <div>
-              <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Previous Period</div>
-              <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--pure-white)' }}>₹0</div>
-            </div>
-            <div>
-              <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Period Change</div>
-              <div style={{ fontSize: '14px', color: '#64748b' }}>--</div>
-              <div style={{ fontSize: '12px', color: '#64748b' }}>vs prev 30 Days</div>
-            </div>
-          </div>
-          
-          {/* Simple Bar visualization */}
-          <div style={{ height: '120px', display: 'flex', alignItems: 'flex-end', gap: '8px', padding: '1rem 0 0', marginTop: '1rem', borderTop: '1px solid #334155', justifyContent: 'flex-end' }}>
-             <div style={{ width: '40px', background: '#10b981', height: '80%', borderRadius: '4px 4px 0 0' }}></div>
-          </div>
+          {volumeLoading ? (
+             <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>Loading analytics...</div>
+          ) : volumeData && (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', borderTop: '1px solid #e2e8f0', paddingTop: '1.5rem' }}>
+                <div>
+                  <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Current Period</div>
+                  <div style={{ fontSize: '20px', fontWeight: 700, color: '#1e293b' }}>
+                    {baseMeasure === 'invoice_count' ? volumeData.summary.current_total : formatAmount(volumeData.summary.current_total)}
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#64748b' }}>{volumeData.summary.current_count} invoices</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Previous Period</div>
+                  <div style={{ fontSize: '20px', fontWeight: 700, color: '#1e293b' }}>
+                    {baseMeasure === 'invoice_count' ? volumeData.summary.previous_total : formatAmount(volumeData.summary.previous_total)}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Period Change</div>
+                  <div style={{ fontSize: '14px', color: volumeData.summary.pct_change > 0 ? '#10b981' : volumeData.summary.pct_change < 0 ? '#ef4444' : '#64748b', fontWeight: 500 }}>
+                    {volumeData.summary.pct_change !== null ? `${volumeData.summary.pct_change > 0 ? '+' : ''}${volumeData.summary.pct_change}%` : '--'}
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#64748b' }}>vs previous {trendWindow}</div>
+                </div>
+              </div>
+              
+              {/* Stacked Bar visualization */}
+              <div style={{ height: '140px', display: 'flex', alignItems: 'flex-end', gap: '8px', padding: '1rem 0 0', marginTop: '1rem', borderTop: '1px solid #e2e8f0', justifyContent: 'space-between' }}>
+                {(() => {
+                  const maxVal = Math.max(...volumeData.series.map(s => baseMeasure === 'invoice_count' ? s.raw_count : s.raw_amount), 1);
+                  return volumeData.series.map((s, idx) => {
+                    const rVal = baseMeasure === 'invoice_count' ? s.receivable > 0 ? s.raw_count : 0 : s.receivable;
+                    const pVal = baseMeasure === 'invoice_count' ? s.payable > 0 ? s.raw_count : 0 : s.payable;
+                    return (
+                      <div key={idx} title={`Period: ${s.period}\nReceivable: ${rVal}\nPayable: ${pVal}`} style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%', gap: '2px' }}>
+                        {pVal > 0 && <div style={{ width: '100%', background: '#f97316', height: `${(pVal / maxVal) * 100}%`, borderRadius: rVal > 0 ? '4px 4px 0 0' : '4px' }}></div>}
+                        {rVal > 0 && <div style={{ width: '100%', background: '#10b981', height: `${(rVal / maxVal) * 100}%`, borderRadius: pVal > 0 ? '0 0 4px 4px' : '4px' }}></div>}
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -629,7 +681,7 @@ const InvoicesView = ({
                           {invoice.irn_number.substring(0, 10)}...
                         </span>
                       ) : (
-                        <span style={{ fontSize: '12px', color: '#64748b', background: '#334155', padding: '2px 6px', borderRadius: '4px' }}>Exempt</span>
+                        <span style={{ fontSize: '12px', color: '#64748b', background: '#f1f5f9', border: '1px solid #e2e8f0', padding: '2px 6px', borderRadius: '4px' }}>Exempt</span>
                       )}
                     </td>
                     <td><span className="table-secondary-text" style={{ color: '#4F46E5', fontWeight: 500 }}>{invoice.client_name || invoice.vendor_name || '-'}</span></td>
