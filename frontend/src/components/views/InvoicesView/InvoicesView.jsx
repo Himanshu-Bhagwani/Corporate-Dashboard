@@ -3,6 +3,7 @@ import './InvoicesView.css';
 import EmbeddedHeader from '../../layout/EmbeddedHeader/EmbeddedHeader';
 import { FileText, PlusCircle, Eye, Pencil, ArrowUpDown, X, DollarSign, CheckCircle, Clock, AlertTriangle, Upload, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
 import { invoicesAPI } from '../../../services/api';
+import { useAuth } from '../../../context/AuthContext';
 
 const InvoicesView = ({
   invoices,
@@ -19,6 +20,7 @@ const InvoicesView = ({
   const [sortField, setSortField] = useState('due_date');
   const [sortDir, setSortDir] = useState('desc');
   const [filterType, setFilterType] = useState('all');
+  const { currentCompany } = useAuth();
 
   const filteredInvoices = useMemo(() => {
     if (filterType === 'all') return invoices;
@@ -32,13 +34,13 @@ const InvoicesView = ({
 
   useEffect(() => {
     const fetchTrend = async () => {
+      if (!currentCompany?.id) return;
       setVolumeLoading(true);
       try {
-        const companyId = localStorage.getItem('companyId') || undefined;
         const res = await invoicesAPI.getVolumeTrend({
           trend_window_size: trendWindow,
           base_measure: baseMeasure
-        }, companyId);
+        }, currentCompany.id);
         setVolumeData(res);
       } catch (err) {
         console.error(err);
@@ -47,7 +49,7 @@ const InvoicesView = ({
       }
     };
     fetchTrend();
-  }, [trendWindow, baseMeasure]);
+  }, [trendWindow, baseMeasure, currentCompany?.id]);
 
   // --- Stats ---
   const stats = useMemo(() => {
