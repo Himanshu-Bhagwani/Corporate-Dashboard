@@ -502,7 +502,7 @@ const InvoicesView = ({
       {/* Stats Cards */}
       <div className="stats-grid-4">
         {/* Receivables */}
-        <div className="stat-card-simple" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', alignItems: 'stretch', background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.01) 0%, rgba(16, 185, 129, 0.04) 100%)', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+        <div className="stat-card-simple" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', alignItems: 'stretch', background: 'linear-gradient(135deg, rgba(16, 185, 129, 0) 0%, rgba(16, 185, 129, 0.02) 100%)', border: '1px solid rgba(16, 185, 129, 0.1)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '15px', color: '#1e293b', fontWeight: 600 }}>Receivables</span>
             <div className="stat-icon-wrapper-small green" style={{ width: '28px', height: '28px' }}><DollarSign size={14} /></div>
@@ -519,7 +519,7 @@ const InvoicesView = ({
         </div>
 
         {/* Payables */}
-        <div className="stat-card-simple" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', alignItems: 'stretch', background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.01) 0%, rgba(59, 130, 246, 0.04) 100%)', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
+        <div className="stat-card-simple" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', alignItems: 'stretch', background: 'linear-gradient(135deg, rgba(59, 130, 246, 0) 0%, rgba(59, 130, 246, 0.02) 100%)', border: '1px solid rgba(59, 130, 246, 0.1)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '15px', color: '#1e293b', fontWeight: 600 }}>Payables</span>
             <div className="stat-icon-wrapper-small blue" style={{ width: '28px', height: '28px' }}><DollarSign size={14} /></div>
@@ -527,7 +527,7 @@ const InvoicesView = ({
           <div style={{ fontSize: '24px', fontWeight: 700, color: '#1e293b' }}>{formatAmount(stats.payTotal)}</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '13px', color: '#475569', marginTop: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>Upcoming</span><span style={{ color: '#1e293b', fontWeight: 500 }}>{formatAmount(stats.payUpcoming)}</span>
+              <span>Overdue</span><span style={{ color: '#ef4444', fontWeight: 500 }}>{formatAmount(stats.payOverdue)}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span>Pending</span><span style={{ color: '#f59e0b', fontWeight: 500 }}>{stats.payPendingCount} Bills</span>
@@ -695,14 +695,14 @@ const InvoicesView = ({
                 <th onClick={() => toggleSort('amount')} style={{ cursor: 'pointer' }}>
                   AMOUNT <ArrowUpDown size={12} style={{ verticalAlign: 'middle', marginLeft: 4, opacity: 0.5 }} />
                 </th>
-                <th>PAID AMOUNT</th>
-                <th>OUTSTANDING</th>
                 <th onClick={() => toggleSort('issue_date')} style={{ cursor: 'pointer' }}>
                   ISSUE DATE <ArrowUpDown size={12} style={{ verticalAlign: 'middle', marginLeft: 4, opacity: 0.5 }} />
                 </th>
                 <th onClick={() => toggleSort('due_date')} style={{ cursor: 'pointer' }}>
                   DUE DATE <ArrowUpDown size={12} style={{ verticalAlign: 'middle', marginLeft: 4, opacity: 0.5 }} />
                 </th>
+                <th>PAID AMOUNT</th>
+                <th>OUTSTANDING</th>
                 <th>STATUS</th>
                 <th>ACTIONS</th>
               </tr>
@@ -734,10 +734,10 @@ const InvoicesView = ({
                       )}
                     </td>
                     <td><span className="table-main-text" style={{ fontWeight: 600 }}>{formatAmount(invoice.amount)}</span></td>
-                    <td><span className="table-secondary-text">{formatAmount(paidAmount)}</span></td>
-                    <td><span className="table-secondary-text" style={{ color: outstandingAmount > 0 ? '#f97316' : '#64748b' }}>{formatAmount(outstandingAmount)}</span></td>
                     <td><span className="table-secondary-text">{formatDate(invoice.issue_date)}</span></td>
                     <td><span className="table-secondary-text">{formatDate(invoice.due_date)}</span></td>
+                    <td><span className="table-secondary-text">{formatAmount(paidAmount)}</span></td>
+                    <td><span className="table-secondary-text" style={{ color: outstandingAmount > 0 ? '#f97316' : '#64748b' }}>{formatAmount(outstandingAmount)}</span></td>
                     <td>{statusBadge(invoice.status)}</td>
                     <td>
                       <div className="action-buttons">
