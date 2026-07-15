@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import './InvoicesView.css';
 import EmbeddedHeader from '../../layout/EmbeddedHeader/EmbeddedHeader';
-import { FileText, PlusCircle, Eye, Pencil, ArrowUpDown, X, DollarSign, CheckCircle, Clock, AlertTriangle, Upload, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
+import { FileText, PlusCircle, Eye, Pencil, ArrowUpDown, X, DollarSign, CheckCircle, Clock, AlertTriangle, Upload, ArrowUpRight, ArrowDownLeft, Trash2 } from 'lucide-react';
 import { invoicesAPI } from '../../../services/api';
 import { useAuth } from '../../../context/AuthContext';
 
@@ -74,12 +74,15 @@ const InvoicesView = ({
     const recPendingCount = receivables.filter(i => (i.status || '').toLowerCase() === 'pending').length;
 
     const payTotal = payables.reduce((s, i) => s + parseFloat(i.amount || 0), 0);
-    const payUpcoming = payables.filter(i => (i.status || '').toLowerCase() === 'pending').reduce((s, i) => s + parseFloat(i.amount || 0), 0);
+    const payOverdue = payables.filter(i => (i.status || '').toLowerCase() === 'overdue').reduce((s, i) => s + parseFloat(i.amount || 0), 0);
     const payPendingCount = payables.filter(i => (i.status || '').toLowerCase() === 'pending').length;
 
     const healthPaid = filteredInvoices.filter(i => (i.status || '').toLowerCase() === 'paid').length;
     const healthPending = filteredInvoices.filter(i => (i.status || '').toLowerCase() === 'pending').length;
     const healthFailed = filteredInvoices.filter(i => (i.status || '').toLowerCase() === 'overdue' || (i.status || '').toLowerCase() === 'failed').length;
+    
+    const totalHealthCount = healthPaid + healthPending + healthFailed;
+    const healthScore = totalHealthCount === 0 ? 100 : Math.round(((healthPaid * 100) + (healthPending * 80) + (healthFailed * 50)) / totalHealthCount);
 
     const recCollected = receivables.filter(i => (i.status || '').toLowerCase() === 'paid').reduce((s, i) => s + parseFloat(i.amount || 0), 0);
     const collectionRate = recTotal > 0 ? (recCollected / recTotal) * 100 : 0;
@@ -87,8 +90,8 @@ const InvoicesView = ({
 
     return { 
       recTotal, recOverdue, recPendingCount,
-      payTotal, payUpcoming, payPendingCount,
-      healthPaid, healthPending, healthFailed,
+      payTotal, payOverdue, payPendingCount,
+      healthPaid, healthPending, healthFailed, healthScore,
       recCollected, collectionRate, recPaidCount
     };
   }, [filteredInvoices]);
@@ -536,7 +539,10 @@ const InvoicesView = ({
         <div className="stat-card-simple" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', alignItems: 'stretch', background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.01) 0%, rgba(139, 92, 246, 0.04) 100%)', border: '1px solid rgba(139, 92, 246, 0.2)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '15px', color: '#1e293b', fontWeight: 600 }}>Invoice Health</span>
-            <div className="stat-icon-wrapper-small" style={{ width: '28px', height: '28px', background: 'rgba(139, 92, 246, 0.2)', color: '#8b5cf6' }}><CheckCircle size={14} /></div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '18px', fontWeight: 700, color: '#8b5cf6' }}>{stats.healthScore}</span>
+              <div className="stat-icon-wrapper-small" style={{ width: '28px', height: '28px', background: 'rgba(139, 92, 246, 0.2)', color: '#8b5cf6' }}><CheckCircle size={14} /></div>
+            </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px', color: '#475569', marginTop: '8px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -548,7 +554,7 @@ const InvoicesView = ({
               <span style={{ color: '#1e293b', fontWeight: 600 }}>{stats.healthPending}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#ef4444' }}></span> Failed</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#ef4444' }}></span> Overdue/Failed</div>
               <span style={{ color: '#1e293b', fontWeight: 600 }}>{stats.healthFailed}</span>
             </div>
           </div>
@@ -672,7 +678,7 @@ const InvoicesView = ({
             )}
           </div>
           <button className="btn-secondary" style={{ color: '#ef4444', borderColor: '#fecaca', background: '#fef2f2' }} onClick={onClearAllInvoices}>
-            <X size={16} /> Clear All
+            <Trash2 size={16} /> Clear All
           </button>
         </div>
         
@@ -682,7 +688,6 @@ const InvoicesView = ({
                 <th onClick={() => toggleSort('invoice_number')} style={{ cursor: 'pointer' }}>
                   INVOICE # <ArrowUpDown size={12} style={{ verticalAlign: 'middle', marginLeft: 4, opacity: 0.5 }} />
                 </th>
-                <th>e-Invoice (IRN)</th>
                 <th onClick={() => toggleSort('client_name')} style={{ cursor: 'pointer' }}>
                   CLIENT / VENDOR <ArrowUpDown size={12} style={{ verticalAlign: 'middle', marginLeft: 4, opacity: 0.5 }} />
                 </th>
@@ -690,6 +695,8 @@ const InvoicesView = ({
                 <th onClick={() => toggleSort('amount')} style={{ cursor: 'pointer' }}>
                   AMOUNT <ArrowUpDown size={12} style={{ verticalAlign: 'middle', marginLeft: 4, opacity: 0.5 }} />
                 </th>
+                <th>PAID AMOUNT</th>
+                <th>OUTSTANDING</th>
                 <th onClick={() => toggleSort('issue_date')} style={{ cursor: 'pointer' }}>
                   ISSUE DATE <ArrowUpDown size={12} style={{ verticalAlign: 'middle', marginLeft: 4, opacity: 0.5 }} />
                 </th>
@@ -708,18 +715,12 @@ const InvoicesView = ({
                   </td>
                 </tr>
               ) : (
-                sortedInvoices.map(invoice => (
-                  <tr key={invoice.id} className={invoice.status === 'paid' ? 'row-paid' : ''}>
+                sortedInvoices.map(invoice => {
+                  const paidAmount = invoice.status === 'paid' ? invoice.amount : (invoice.amount_paid || 0);
+                  const outstandingAmount = invoice.status === 'paid' ? 0 : (invoice.balance || invoice.amount);
+                  return (
+                  <tr key={invoice.id} className={invoice.status === 'paid' ? 'row-paid clickable-row' : 'clickable-row'} style={{ cursor: 'pointer' }} onClick={(e) => { if (!e.target.closest('button')) { setSelectedInvoice(invoice); setShowViewModal(true); } }}>
                     <td><span className="table-main-text" style={{ fontWeight: 600 }}>{invoice.invoice_number}</span></td>
-                    <td>
-                      {invoice.irn_number ? (
-                        <span style={{ fontSize: '12px', color: '#10b981', background: 'rgba(16, 185, 129, 0.1)', padding: '2px 6px', borderRadius: '4px', fontFamily: 'monospace' }}>
-                          {invoice.irn_number.substring(0, 10)}...
-                        </span>
-                      ) : (
-                        <span style={{ fontSize: '12px', color: '#64748b', background: '#f1f5f9', border: '1px solid #e2e8f0', padding: '2px 6px', borderRadius: '4px' }}>Exempt</span>
-                      )}
-                    </td>
                     <td><span className="table-secondary-text" style={{ color: '#4F46E5', fontWeight: 500 }}>{invoice.client_name || invoice.vendor_name || '-'}</span></td>
                     <td>
                       {invoice.type === 'payable' ? (
@@ -733,18 +734,21 @@ const InvoicesView = ({
                       )}
                     </td>
                     <td><span className="table-main-text" style={{ fontWeight: 600 }}>{formatAmount(invoice.amount)}</span></td>
+                    <td><span className="table-secondary-text">{formatAmount(paidAmount)}</span></td>
+                    <td><span className="table-secondary-text" style={{ color: outstandingAmount > 0 ? '#f97316' : '#64748b' }}>{formatAmount(outstandingAmount)}</span></td>
                     <td><span className="table-secondary-text">{formatDate(invoice.issue_date)}</span></td>
                     <td><span className="table-secondary-text">{formatDate(invoice.due_date)}</span></td>
                     <td>{statusBadge(invoice.status)}</td>
                     <td>
                       <div className="action-buttons">
-                        <button className="action-btn view-btn" title="View" onClick={() => { setSelectedInvoice(invoice); setShowViewModal(true); }}><Eye size={16} /></button>
-                        <button className="action-btn edit-btn" title="Edit" onClick={() => { setSelectedInvoice(invoice); setShowEditModal(true); }}><Pencil size={16} /></button>
-                        <button className="action-btn delete-btn" title="Delete" onClick={() => onDeleteInvoice(invoice.id)} style={{ color: '#ef4444' }}><X size={16} /></button>
+                        <button className="action-btn view-btn" title="View" onClick={(e) => { e.stopPropagation(); setSelectedInvoice(invoice); setShowViewModal(true); }}><Eye size={16} /></button>
+                        <button className="action-btn edit-btn" title="Edit" onClick={(e) => { e.stopPropagation(); setSelectedInvoice(invoice); setShowEditModal(true); }}><Pencil size={16} /></button>
+                        <button className="action-btn delete-btn" title="Delete" onClick={(e) => { e.stopPropagation(); onDeleteInvoice(invoice.id); }} style={{ color: '#ef4444' }}><Trash2 size={16} /></button>
                       </div>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
