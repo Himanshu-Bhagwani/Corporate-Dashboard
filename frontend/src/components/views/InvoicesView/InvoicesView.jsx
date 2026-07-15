@@ -125,7 +125,7 @@ const InvoicesView = ({
       return 0;
     });
     return copy;
-  }, [invoices, sortField, sortDir]);
+  }, [filteredInvoices, sortField, sortDir]);
 
   const toggleSort = (field) => {
     if (sortField === field) {
