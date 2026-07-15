@@ -10,6 +10,8 @@ const InvoicesView = ({
   loading,
   onCreateInvoice,
   onUpdateInvoice,
+  onDeleteInvoice,
+  onClearAllInvoices,
   setActiveView,
   onParseOCR,
 }) => {
@@ -20,12 +22,23 @@ const InvoicesView = ({
   const [sortField, setSortField] = useState('due_date');
   const [sortDir, setSortDir] = useState('desc');
   const [filterType, setFilterType] = useState('all');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
   const { currentCompany } = useAuth();
 
   const filteredInvoices = useMemo(() => {
-    if (filterType === 'all') return invoices;
-    return invoices.filter(i => (i.type || 'receivable').toLowerCase() === filterType);
-  }, [invoices, filterType]);
+    let result = invoices;
+    if (filterType !== 'all') {
+      result = result.filter(i => (i.type || 'receivable').toLowerCase() === filterType);
+    }
+    if (fromDate) {
+      result = result.filter(i => new Date(i.issue_date) >= new Date(fromDate));
+    }
+    if (toDate) {
+      result = result.filter(i => new Date(i.issue_date) <= new Date(toDate));
+    }
+    return result;
+  }, [invoices, filterType, fromDate, toDate]);
 
   const [trendWindow, setTrendWindow] = useState('30D');
   const [baseMeasure, setBaseMeasure] = useState('invoice_amount');
@@ -486,13 +499,13 @@ const InvoicesView = ({
       {/* Stats Cards */}
       <div className="stats-grid-4">
         {/* Receivables */}
-        <div className="stat-card-simple" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', alignItems: 'stretch', background: '#ffffff', border: '1px solid #e2e8f0' }}>
+        <div className="stat-card-simple" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', alignItems: 'stretch', background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.05) 0%, rgba(16, 185, 129, 0.15) 100%)', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '15px', color: '#64748b', fontWeight: 600 }}>Receivables</span>
+            <span style={{ fontSize: '15px', color: '#1e293b', fontWeight: 600 }}>Receivables</span>
             <div className="stat-icon-wrapper-small green" style={{ width: '28px', height: '28px' }}><DollarSign size={14} /></div>
           </div>
           <div style={{ fontSize: '24px', fontWeight: 700, color: '#1e293b' }}>{formatAmount(stats.recTotal)}</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '13px', color: '#64748b', marginTop: 'auto' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '13px', color: '#475569', marginTop: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span>Overdue</span><span style={{ color: '#ef4444', fontWeight: 500 }}>{formatAmount(stats.recOverdue)}</span>
             </div>
@@ -503,13 +516,13 @@ const InvoicesView = ({
         </div>
 
         {/* Payables */}
-        <div className="stat-card-simple" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', alignItems: 'stretch', background: '#ffffff', border: '1px solid #e2e8f0' }}>
+        <div className="stat-card-simple" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', alignItems: 'stretch', background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.05) 0%, rgba(59, 130, 246, 0.15) 100%)', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '15px', color: '#64748b', fontWeight: 600 }}>Payables</span>
+            <span style={{ fontSize: '15px', color: '#1e293b', fontWeight: 600 }}>Payables</span>
             <div className="stat-icon-wrapper-small blue" style={{ width: '28px', height: '28px' }}><DollarSign size={14} /></div>
           </div>
           <div style={{ fontSize: '24px', fontWeight: 700, color: '#1e293b' }}>{formatAmount(stats.payTotal)}</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '13px', color: '#64748b', marginTop: 'auto' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '13px', color: '#475569', marginTop: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span>Upcoming</span><span style={{ color: '#1e293b', fontWeight: 500 }}>{formatAmount(stats.payUpcoming)}</span>
             </div>
@@ -520,12 +533,12 @@ const InvoicesView = ({
         </div>
 
         {/* Invoice Health */}
-        <div className="stat-card-simple" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', alignItems: 'stretch', background: '#ffffff', border: '1px solid #e2e8f0' }}>
+        <div className="stat-card-simple" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', alignItems: 'stretch', background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.05) 0%, rgba(139, 92, 246, 0.15) 100%)', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '15px', color: '#64748b', fontWeight: 600 }}>Invoice Health</span>
-            <div className="stat-icon-wrapper-small" style={{ width: '28px', height: '28px', background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6' }}><CheckCircle size={14} /></div>
+            <span style={{ fontSize: '15px', color: '#1e293b', fontWeight: 600 }}>Invoice Health</span>
+            <div className="stat-icon-wrapper-small" style={{ width: '28px', height: '28px', background: 'rgba(139, 92, 246, 0.2)', color: '#8b5cf6' }}><CheckCircle size={14} /></div>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px', color: '#64748b', marginTop: '8px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px', color: '#475569', marginTop: '8px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }}></span> Paid</div>
               <span style={{ color: '#1e293b', fontWeight: 600 }}>{stats.healthPaid}</span>
@@ -542,13 +555,13 @@ const InvoicesView = ({
         </div>
 
         {/* Collections */}
-        <div className="stat-card-simple" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', alignItems: 'stretch', background: '#ffffff', border: '1px solid #e2e8f0' }}>
+        <div className="stat-card-simple" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', alignItems: 'stretch', background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.05) 0%, rgba(6, 182, 212, 0.15) 100%)', border: '1px solid rgba(6, 182, 212, 0.3)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '15px', color: '#64748b', fontWeight: 600 }}>Collections</span>
-            <div className="stat-icon-wrapper-small" style={{ width: '28px', height: '28px', background: 'rgba(6, 182, 212, 0.15)', color: '#06b6d4' }}><AlertTriangle size={14} /></div>
+            <span style={{ fontSize: '15px', color: '#1e293b', fontWeight: 600 }}>Collections</span>
+            <div className="stat-icon-wrapper-small" style={{ width: '28px', height: '28px', background: 'rgba(6, 182, 212, 0.2)', color: '#06b6d4' }}><AlertTriangle size={14} /></div>
           </div>
           <div style={{ fontSize: '24px', fontWeight: 700, color: '#1e293b' }}>{formatAmount(stats.recCollected)}</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '13px', color: '#64748b', marginTop: 'auto' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '13px', color: '#475569', marginTop: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span>Collection Rate</span><span style={{ color: '#10b981', fontWeight: 500 }}>{stats.collectionRate.toFixed(0)}%</span>
             </div>
@@ -623,7 +636,7 @@ const InvoicesView = ({
                     const rVal = baseMeasure === 'invoice_count' ? s.receivable > 0 ? s.raw_count : 0 : s.receivable;
                     const pVal = baseMeasure === 'invoice_count' ? s.payable > 0 ? s.raw_count : 0 : s.payable;
                     return (
-                      <div key={idx} title={`Period: ${s.period}\nReceivable: ${rVal}\nPayable: ${pVal}`} style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%', gap: '2px' }}>
+                      <div key={idx} className="volume-trend-bar" title={`Period: ${s.period}\nReceivable: ${formatAmount(rVal)}\nPayable: ${formatAmount(pVal)}`} style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%', gap: '2px', position: 'relative' }}>
                         {pVal > 0 && <div style={{ width: '100%', background: '#f97316', height: `${(pVal / maxVal) * 100}%`, borderRadius: rVal > 0 ? '4px 4px 0 0' : '4px' }}></div>}
                         {rVal > 0 && <div style={{ width: '100%', background: '#10b981', height: `${(rVal / maxVal) * 100}%`, borderRadius: pVal > 0 ? '0 0 4px 4px' : '4px' }}></div>}
                       </div>
@@ -642,7 +655,28 @@ const InvoicesView = ({
       {/* Invoices Table */}
       {!loading && (
         <div className="table-container">
-          <table className="data-table">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.25rem', borderBottom: '1px solid #f1f5f9' }}>
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 500 }}>From</span>
+              <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', color: '#334155', background: '#f8fafc', outline: 'none' }} />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 500 }}>To</span>
+              <input type="date" value={toDate} onChange={e => setToDate(e.target.value)} style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', color: '#334155', background: '#f8fafc', outline: 'none' }} />
+            </div>
+            {(fromDate || toDate) && (
+              <button onClick={() => { setFromDate(''); setToDate(''); }} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <X size={14} /> Clear
+              </button>
+            )}
+          </div>
+          <button className="btn-secondary" style={{ color: '#ef4444', borderColor: '#fecaca', background: '#fef2f2' }} onClick={onClearAllInvoices}>
+            <X size={16} /> Clear All
+          </button>
+        </div>
+        
+        <table className="data-table">
             <thead>
               <tr>
                 <th onClick={() => toggleSort('invoice_number')} style={{ cursor: 'pointer' }}>
@@ -704,20 +738,9 @@ const InvoicesView = ({
                     <td>{statusBadge(invoice.status)}</td>
                     <td>
                       <div className="action-buttons">
-                        <button
-                          className="action-btn edit"
-                          title="View"
-                          onClick={() => { setSelectedInvoice(invoice); setShowViewModal(true); }}
-                        >
-                          <Eye size={16} />
-                        </button>
-                        <button
-                          className="action-btn edit"
-                          title="Edit"
-                          onClick={() => { setSelectedInvoice(invoice); setShowEditModal(true); }}
-                        >
-                          <Pencil size={16} />
-                        </button>
+                        <button className="action-btn view-btn" title="View" onClick={() => { setSelectedInvoice(invoice); setShowViewModal(true); }}><Eye size={16} /></button>
+                        <button className="action-btn edit-btn" title="Edit" onClick={() => { setSelectedInvoice(invoice); setShowEditModal(true); }}><Pencil size={16} /></button>
+                        <button className="action-btn delete-btn" title="Delete" onClick={() => onDeleteInvoice(invoice.id)} style={{ color: '#ef4444' }}><X size={16} /></button>
                       </div>
                     </td>
                   </tr>

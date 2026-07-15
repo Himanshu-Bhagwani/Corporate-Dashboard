@@ -292,4 +292,45 @@ const getVolumeTrend = async (req, res) => {
   }
 };
 
-module.exports = { getInvoices, createInvoice, updateInvoice, getVolumeTrend };
+const deleteInvoice = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const companyId = req.headers['x-company-id'];
+
+    if (!companyId) return res.status(400).json({ error: 'Company ID required' });
+
+    const result = await pool.query(
+      'DELETE FROM invoices WHERE id = $1 AND company_id = $2 RETURNING *',
+      [id, companyId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Invoice not found or unauthorized' });
+    }
+
+    res.json({ message: 'Invoice deleted successfully', invoice: result.rows[0] });
+  } catch (err) {
+    console.error('Delete invoice error:', err);
+    res.status(500).json({ error: 'Failed to delete invoice' });
+  }
+};
+
+const deleteAllInvoices = async (req, res) => {
+  try {
+    const companyId = req.headers['x-company-id'];
+
+    if (!companyId) return res.status(400).json({ error: 'Company ID required' });
+
+    const result = await pool.query(
+      'DELETE FROM invoices WHERE company_id = $1 RETURNING *',
+      [companyId]
+    );
+
+    res.json({ message: 'All invoices deleted successfully', count: result.rowCount });
+  } catch (err) {
+    console.error('Delete all invoices error:', err);
+    res.status(500).json({ error: 'Failed to delete all invoices' });
+  }
+};
+
+module.exports = { getInvoices, createInvoice, updateInvoice, getVolumeTrend, deleteInvoice, deleteAllInvoices };

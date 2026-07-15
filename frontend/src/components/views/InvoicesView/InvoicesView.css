@@ -9,6 +9,18 @@
   margin-bottom: 2rem;
 }
 
+/* Volume Trend Bar Animation */
+.volume-trend-bar {
+  transition: transform 0.2s ease, filter 0.2s ease;
+  transform-origin: bottom center;
+}
+
+.volume-trend-bar:hover {
+  transform: scaleY(1.05);
+  filter: brightness(1.05);
+  z-index: 10;
+}
+
 /* Orange variant for stat-icon (pending) */
 .stat-icon-wrapper-small.orange {
   background: linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(245, 158, 11, 0.1));

@@ -226,6 +226,22 @@ export const invoicesAPI = {
       headers: getHeaders(companyId)
     });
     return handleResponse(response);
+  },
+
+  delete: async (id, companyId) => {
+    const response = await fetch(`${BASE_URL}/invoices/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders(companyId)
+    });
+    return handleResponse(response);
+  },
+
+  deleteAll: async (companyId) => {
+    const response = await fetch(`${BASE_URL}/invoices/all`, {
+      method: 'DELETE',
+      headers: getHeaders(companyId)
+    });
+    return handleResponse(response);
   }
 };
 

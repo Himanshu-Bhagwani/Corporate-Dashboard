@@ -318,6 +318,28 @@ const MainLayout = () => {
     }
   };
 
+  const handleDeleteInvoice = async (id) => {
+    if (window.confirm('Are you sure you want to delete this invoice?')) {
+      try {
+        await invoicesAPI.delete(id, currentCompany.id);
+        fetchDashboardData();
+      } catch (err) {
+        console.error('Failed to delete invoice:', err);
+      }
+    }
+  };
+
+  const handleClearAllInvoices = async () => {
+    if (window.confirm('Are you sure you want to clear ALL invoices? This action cannot be undone.')) {
+      try {
+        await invoicesAPI.deleteAll(currentCompany.id);
+        fetchDashboardData();
+      } catch (err) {
+        console.error('Failed to clear all invoices:', err);
+      }
+    }
+  };
+
   // --- Compliance Handlers ---
   const handleMarkFiled = async (id) => {
     try {
@@ -607,6 +629,8 @@ const MainLayout = () => {
               loading={!dashboardSummary}
               onCreateInvoice={handleCreateInvoice}
               onUpdateInvoice={handleUpdateInvoice}
+              onDeleteInvoice={handleDeleteInvoice}
+              onClearAllInvoices={handleClearAllInvoices}
               setActiveView={setActiveView}
               onParseOCR={handleParseOCR}
             />
