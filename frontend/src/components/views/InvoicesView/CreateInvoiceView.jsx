@@ -1,11 +1,12 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import './CreateInvoiceView.css';
 import {
   ArrowLeft, Download, Save, Plus, Trash2, Building2, User, FileText,
-  List, Calculator, CreditCard, StickyNote, Image
+  List, Calculator, CreditCard, StickyNote, Image, RefreshCw, AlertCircle
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { invoicesAPI } from '../../../services/api';
 
 // ── Indian State Codes ──────────────────────────────────────────────
 const INDIAN_STATES = [
@@ -312,10 +313,27 @@ const CreateInvoiceView = ({ onBack, onCreateInvoice, currentCompany }) => {
     // Notes
     notes: '',
     // Placeholders for preview
-    _invoiceNumber: `INV-${new Date().getFullYear()}-XXXX`,
+    _invoiceNumber: 'Loading...',
     _ackNumber: '',
     _irn: '',
   });
+
+  // Fetch next invoice number
+  useEffect(() => {
+    const fetchNextNumber = async () => {
+      try {
+        const companyId = currentCompany?.id || localStorage.getItem('companyId');
+        if (!companyId) return;
+        const res = await invoicesAPI.getNextNumber(form.type, companyId);
+        if (res && res.invoiceNumber) {
+          setForm(prev => ({ ...prev, _invoiceNumber: res.invoiceNumber }));
+        }
+      } catch (err) {
+        console.error('Failed to fetch next invoice number:', err);
+      }
+    };
+    fetchNextNumber();
+  }, [form.type, currentCompany]);
 
   // Update form helper
   const upd = useCallback((key, val) => {
@@ -389,6 +407,11 @@ const CreateInvoiceView = ({ onBack, onCreateInvoice, currentCompany }) => {
     const reader = new FileReader();
     reader.onload = (ev) => upd('entity_logo', ev.target.result);
     reader.readAsDataURL(file);
+  };
+
+  const removeLogo = (e) => {
+    e.preventDefault();
+    upd('entity_logo', null);
   };
 
   // Download PDF
@@ -530,51 +553,92 @@ const CreateInvoiceView = ({ onBack, onCreateInvoice, currentCompany }) => {
 
           {/* ── Section 1: Entity Details ── */}
           <div className="ci-section">
-            <div className="ci-section-header">
+            <div className="ci-nic-box">
+              <div className="ci-nic-top">
+                <div className="ci-nic-title">
+                  <RefreshCw size={14} /> E-INVOICE STATUS (NIC SANDBOX V1.03)
+                </div>
+                <div className="ci-nic-status">PENDING VERIFICATION</div>
+              </div>
+              <div className="ci-nic-bottom">
+                <div className="ci-nic-desc">Mandatory registration required before invoice dispatch.</div>
+                <button className="ci-btn-irn">Generate IRN</button>
+              </div>
+            </div>
+
+            <div className="ci-section-header" style={{ borderBottom: 'none', marginBottom: 20 }}>
               <Building2 size={16} className="ci-section-icon" />
               <span className="ci-section-title">Your Entity Details</span>
             </div>
 
-            {/* Logo Uploader */}
-            <label className="ci-logo-uploader">
-              {form.entity_logo
-                ? <img src={form.entity_logo} className="ci-logo-preview" alt="logo" />
-                : <div className="ci-logo-placeholder"><Image size={20} /><span style={{ marginTop: 4, fontSize: 9 }}>Upload Logo</span></div>}
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 13, color: '#334155' }}>Company Logo</div>
-                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>PNG, JPG — appears on PDF</div>
+            <div className="ci-compliance-box">
+              <div className="ci-compliance-left">
+                <AlertCircle size={16} className="ci-compliance-icon" />
+                <div>
+                  <div className="ci-compliance-title">e-Invoicing Compliance Settings</div>
+                  <div className="ci-compliance-desc">Mandatory under Rule 48(4) for aggregate turnover exceeding ₹5 Crores.</div>
+                </div>
               </div>
-              <input type="file" accept="image/*" onChange={handleLogoUpload} style={{ display: 'none' }} />
-            </label>
-
-            <div className="ci-grid-2">
-              <div className="ci-field">
-                <label>Entity Name <span className="req">*</span></label>
-                <input value={form.entity_name} onChange={e => upd('entity_name', e.target.value)} placeholder="Your company name" />
-              </div>
-              <div className="ci-field">
-                <label>GSTIN</label>
-                <input value={form.entity_gstin} onChange={e => upd('entity_gstin', e.target.value)} placeholder="29ABCDE1234F1Z5" />
-              </div>
-              <div className="ci-field">
-                <label>PAN</label>
-                <input value={form.entity_pan} onChange={e => upd('entity_pan', e.target.value)} placeholder="ABCDE1234F" />
-              </div>
-              <div className="ci-field">
-                <label>Registration Number</label>
-                <input value={form.entity_reg} onChange={e => upd('entity_reg', e.target.value)} placeholder="e.g. MH2024ABC1234" />
+              <div className="ci-compliance-right">
+                <span className="ci-compliance-label">ANNUAL TURNOVER:</span>
+                <select className="ci-compliance-select">
+                  <option>Above ₹5 Crore (Mandatory)</option>
+                  <option>Below ₹5 Crore (Optional)</option>
+                </select>
               </div>
             </div>
-            <div className="ci-grid-2" style={{ marginTop: 14 }}>
-              <div className="ci-field">
-                <label>Billing Address</label>
-                <input value={form.entity_address} onChange={e => upd('entity_address', e.target.value)} placeholder="Full address" />
+
+            <div className="ci-entity-layout">
+              {/* Logo Uploader */}
+              <div className="ci-entity-left">
+                <label className="ci-logo-uploader">
+                  {form.entity_logo ? (
+                    <img src={form.entity_logo} className="ci-logo-preview" alt="logo" />
+                  ) : (
+                    <div className="ci-logo-placeholder">
+                      <Image size={24} color="#64748b" />
+                      <span>Upload Logo</span>
+                    </div>
+                  )}
+                  <input type="file" accept="image/*" onChange={handleLogoUpload} style={{ display: 'none' }} />
+                </label>
+                {form.entity_logo && (
+                  <div className="ci-logo-remove" onClick={removeLogo}>Remove logo</div>
+                )}
               </div>
-              <div className="ci-field">
-                <label>Supplier State Code <span className="req">*</span></label>
-                <select value={form.supplier_state} onChange={e => upd('supplier_state', e.target.value)}>
-                  {INDIAN_STATES.map(s => <option key={s}>{s}</option>)}
-                </select>
+
+              {/* Grid Details */}
+              <div className="ci-entity-right">
+                <div className="ci-grid-2">
+                  <div className="ci-field">
+                    <label>Entity Name <span className="req">*</span></label>
+                    <input value={form.entity_name} onChange={e => upd('entity_name', e.target.value)} placeholder="Your company name" />
+                  </div>
+                  <div className="ci-field">
+                    <label>GSTIN</label>
+                    <input value={form.entity_gstin} onChange={e => upd('entity_gstin', e.target.value)} placeholder="29ABCDE1234F1Z5" />
+                  </div>
+                  <div className="ci-field">
+                    <label>PAN</label>
+                    <input value={form.entity_pan} onChange={e => upd('entity_pan', e.target.value)} placeholder="ABCDE1234F" />
+                  </div>
+                  <div className="ci-field">
+                    <label>Registration Number</label>
+                    <input value={form.entity_reg} onChange={e => upd('entity_reg', e.target.value)} placeholder="e.g. MH2024ABC1234" />
+                  </div>
+                </div>
+                <div className="ci-grid-2" style={{ marginTop: 14 }}>
+                  <div className="ci-field">
+                    <label>Billing Address</label>
+                    <input value={form.entity_address} onChange={e => upd('entity_address', e.target.value)} placeholder="Full address" />
+                  </div>
+                  <div className="ci-field">
+                    <label>Supplier State Code <span className="req">*</span></label>
+                    <select value={form.supplier_state} onChange={e => upd('supplier_state', e.target.value)}>
+                      {INDIAN_STATES.map(s => <option key={s}>{s}</option>)}
+                    </select>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -674,6 +738,14 @@ const CreateInvoiceView = ({ onBack, onCreateInvoice, currentCompany }) => {
             </div>
 
             <div style={{ overflowX: 'auto' }}>
+              <datalist id="hsn-list">
+                <option value="998311">Management Consulting Services</option>
+                <option value="998313">Information Technology Services</option>
+                <option value="998314">Software Development Services</option>
+                <option value="998713">Technical Support Services</option>
+                <option value="998222">Accounting & Auditing Services</option>
+                <option value="998319">Other Professional Technical Services</option>
+              </datalist>
               <table className="ci-line-items-table">
                 <thead>
                   <tr>
@@ -698,8 +770,10 @@ const CreateInvoiceView = ({ onBack, onCreateInvoice, currentCompany }) => {
                         <input className="ci-li-input" value={item.description} style={{ marginTop: 4, fontSize: 11 }}
                           onChange={e => updItem(item.id, 'description', e.target.value)} placeholder="Description (optional)" />
                       </td>
-                      <td><input className="ci-li-input" value={item.hsn}
-                        onChange={e => updItem(item.id, 'hsn', e.target.value)} placeholder="HSN" /></td>
+                      <td>
+                        <input className="ci-li-input" list="hsn-list" value={item.hsn}
+                          onChange={e => updItem(item.id, 'hsn', e.target.value)} placeholder="HSN" />
+                      </td>
                       <td><input className="ci-li-input" type="number" min="0" value={item.quantity}
                         onChange={e => updItem(item.id, 'quantity', e.target.value)} /></td>
                       <td>

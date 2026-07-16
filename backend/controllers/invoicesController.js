@@ -60,6 +60,19 @@ const _generateIRN = (gstin, invoiceNumber, issueDate) => {
   return crypto.createHash('sha256').update(`${gstin_val}${invoiceNumber}${fy}${date_val}`).digest('hex');
 };
 
+const getNextNumber = async (req, res) => {
+  try {
+    const companyId = req.headers['x-company-id'];
+    if (!companyId) return res.status(400).json({ error: 'Company ID required' });
+    const { type = 'receivable' } = req.query;
+    const nextNumber = await _getNextInvoiceNumber(companyId, type);
+    res.json({ invoiceNumber: nextNumber });
+  } catch (error) {
+    console.error('Get next invoice number error:', error);
+    res.status(500).json({ error: 'Failed to fetch next invoice number' });
+  }
+};
+
 // POST create a new invoice
 const createInvoice = async (req, res) => {
   try {
@@ -392,4 +405,4 @@ const deleteAllInvoices = async (req, res) => {
   }
 };
 
-module.exports = { getInvoices, createInvoice, updateInvoice, getVolumeTrend, deleteInvoice, deleteAllInvoices };
+module.exports = { getInvoices, createInvoice, updateInvoice, getVolumeTrend, deleteInvoice, deleteAllInvoices, getNextNumber };

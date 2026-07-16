@@ -145,6 +145,90 @@
   box-shadow: 0 1px 4px rgba(0,0,0,0.08);
 }
 
+/* Compliance & e-Invoice Sections */
+.ci-nic-box {
+  background: #f8fafc;
+  border: 1.5px solid rgba(59, 130, 246, 0.2);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 24px;
+}
+.ci-nic-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.ci-nic-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #3b82f6;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.ci-nic-status {
+  padding: 4px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(59, 130, 246, 0.05);
+  color: #3b82f6;
+  text-transform: uppercase;
+}
+.ci-nic-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.ci-nic-desc { font-size: 13px; color: #3b82f6; }
+.ci-btn-irn {
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(59,130,246,0.3);
+}
+
+.ci-compliance-box {
+  background: #f8fafc;
+  border-radius: 10px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  border: 1px solid #e2e8f0;
+}
+.ci-compliance-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.ci-compliance-icon { color: #4F46E5; margin-top: 2px; }
+.ci-compliance-title { font-size: 14px; font-weight: 700; color: #1e293b; }
+.ci-compliance-desc { font-size: 12px; color: #64748b; margin-top: 4px; }
+.ci-compliance-right { display: flex; align-items: center; gap: 12px; }
+.ci-compliance-label { font-size: 11px; font-weight: 700; color: #1e293b; text-transform: uppercase; }
+.ci-compliance-select {
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e293b;
+  background: white;
+  min-width: 220px;
+  outline: none;
+}
+
 /* Form grid */
 .ci-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .ci-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
@@ -188,29 +272,53 @@
 
 .ci-field textarea { resize: vertical; min-height: 70px; }
 
+/* Entity Layout */
+.ci-entity-layout {
+  display: flex;
+  gap: 24px;
+}
+.ci-entity-left {
+  flex: 0 0 160px;
+  display: flex;
+  flex-direction: column;
+}
+.ci-entity-right {
+  flex: 1;
+}
+
 /* Logo uploader */
 .ci-logo-uploader {
+  width: 160px;
+  height: 120px;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 16px;
-  padding: 12px;
-  border: 2px dashed #e2e8f0;
-  border-radius: 10px;
+  justify-content: center;
+  gap: 8px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
   background: #f8fafc;
   cursor: pointer;
   transition: border-color 0.2s;
-  margin-bottom: 16px;
+  box-sizing: border-box;
 }
 .ci-logo-uploader:hover { border-color: #4F46E5; }
 .ci-logo-preview {
-  width: 56px; height: 56px; border-radius: 8px; object-fit: cover;
-  border: 1px solid #e2e8f0;
+  width: 100%; height: 100%; object-fit: contain; padding: 10px; box-sizing: border-box;
 }
 .ci-logo-placeholder {
-  width: 56px; height: 56px; border-radius: 8px;
-  background: #e8edf3; display: flex; align-items: center; justify-content: center;
-  color: #94a3b8; font-size: 10px; font-weight: 600; text-align: center;
+  width: 100%; height: 100%; border-radius: 12px;
+  background: transparent; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  color: #94a3b8; font-size: 10px; font-weight: 600; text-align: center; gap: 4px;
 }
+.ci-logo-remove {
+  font-size: 12px;
+  color: #64748b;
+  text-align: center;
+  margin-top: 8px;
+  cursor: pointer;
+}
+.ci-logo-remove:hover { color: #ef4444; }
 
 /* Line items */
 .ci-line-items-table {

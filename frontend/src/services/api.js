@@ -201,6 +201,12 @@ export const invoicesAPI = {
     });
     return handleResponse(response);
   },
+  getNextNumber: async (type, companyId) => {
+    const response = await fetch(`${BASE_URL}/invoices/next-number?type=${type}`, {
+      headers: getHeaders(companyId)
+    });
+    return handleResponse(response);
+  },
 
   create: async (invoice, companyId) => {
     const response = await fetch(`${BASE_URL}/invoices`, {
