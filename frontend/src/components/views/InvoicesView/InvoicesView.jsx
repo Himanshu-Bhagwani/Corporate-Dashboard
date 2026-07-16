@@ -900,7 +900,7 @@ const InvoicesView = ({
       {showEditModal && selectedInvoice && <EditInvoiceModal />}
       {showViewModal && selectedInvoice && <ViewInvoiceModal />}
 
-      <div style={{ position: 'absolute', top: '-9999px', left: '-9999px', visibility: 'hidden' }}>
+      <div style={{ position: 'absolute', top: '-9999px', left: '-9999px' }}>
         {selectedInvoices.map(id => {
           const inv = invoices.find(i => i.id === id);
           if (!inv) return null;

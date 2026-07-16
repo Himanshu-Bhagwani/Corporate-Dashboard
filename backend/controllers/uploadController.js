@@ -1,6 +1,6 @@
 const multer = require('multer');
 const { GoogleGenAI } = require('@google/genai');
-const pool = require('../config/db');
+const { pool } = require('../config/db');
 
 const upload = multer({ storage: multer.memoryStorage() });
 
