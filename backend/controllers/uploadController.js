@@ -49,7 +49,7 @@ If a field is not found, return null. Return nothing else.`;
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            model: 'llama3',
+            model: 'llama3.2:1b',
             prompt: ollamaPrompt,
             stream: false,
             format: 'json'
