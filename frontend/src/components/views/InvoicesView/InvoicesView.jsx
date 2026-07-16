@@ -71,7 +71,7 @@ const InvoicesView = ({
       }
     } catch (err) {
       console.error(err);
-      alert('Failed to upload and parse invoice.');
+      alert('Failed to upload: ' + (err.message || 'Unknown error'));
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';

@@ -11,11 +11,10 @@ const processUpload = async (req, res) => {
 
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
-    // Initialize Gemini API
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     if (!process.env.GEMINI_API_KEY) {
       return res.status(500).json({ error: 'GEMINI_API_KEY is not configured in the backend.' });
     }
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
     const mimeType = req.file.mimetype;
     const base64Data = req.file.buffer.toString('base64');
@@ -100,7 +99,7 @@ If a field is not found, return null. Return nothing else.`;
 
   } catch (error) {
     console.error('Upload process error:', error);
-    res.status(500).json({ error: 'Failed to process and save invoice' });
+    res.status(500).json({ error: error.message || 'Failed to process and save invoice' });
   }
 };
 

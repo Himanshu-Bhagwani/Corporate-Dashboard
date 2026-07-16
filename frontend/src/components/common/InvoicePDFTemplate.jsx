@@ -1,4 +1,5 @@
 import React from 'react';
+import './InvoicePDFTemplate.css';
 
 // ── Number to Words ─────────────────────────────────────────────────
 const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
