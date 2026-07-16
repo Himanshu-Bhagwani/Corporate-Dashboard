@@ -4,6 +4,7 @@ import EmbeddedHeader from '../../layout/EmbeddedHeader/EmbeddedHeader';
 import { FileText, PlusCircle, Eye, Pencil, ArrowUpDown, X, DollarSign, CheckCircle, Clock, AlertTriangle, Upload, ArrowUpRight, ArrowDownLeft, Trash2 } from 'lucide-react';
 import { invoicesAPI } from '../../../services/api';
 import { useAuth } from '../../../context/AuthContext';
+import CreateInvoiceView from './CreateInvoiceView';
 
 const InvoicesView = ({
   invoices,
@@ -16,6 +17,7 @@ const InvoicesView = ({
   onParseOCR,
 }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showCreatePage, setShowCreatePage] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
@@ -462,6 +464,14 @@ const InvoicesView = ({
 
   return (
     <>
+      {showCreatePage && (
+        <CreateInvoiceView
+          onBack={() => setShowCreatePage(false)}
+          onCreateInvoice={onCreateInvoice}
+          currentCompany={currentCompany}
+        />
+      )}
+      {!showCreatePage && <>
       <EmbeddedHeader />
       <div className="view-header">
         <div>
@@ -492,7 +502,7 @@ const InvoicesView = ({
               </button>
             ))}
           </div>
-          <button className="btn-primary btn-add-short" onClick={() => setShowCreateModal(true)}>
+          <button className="btn-primary btn-add-short" onClick={() => setShowCreatePage(true)}>
             <PlusCircle size={18} />
             Create Invoice
           </button>
@@ -761,6 +771,7 @@ const InvoicesView = ({
       {showCreateModal && <CreateInvoiceModal />}
       {showEditModal && selectedInvoice && <EditInvoiceModal />}
       {showViewModal && selectedInvoice && <ViewInvoiceModal />}
+    </>}
     </>
   );
 };
