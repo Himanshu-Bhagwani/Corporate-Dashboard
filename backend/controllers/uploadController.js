@@ -1,6 +1,16 @@
 const multer = require('multer');
 const { GoogleGenAI } = require('@google/genai');
 const { pool } = require('../config/db');
+const pdfParse = require('pdf-parse');
+
+const extractTextFromPDF = async (buffer) => {
+  try {
+    const data = await pdfParse(buffer);
+    return data.text;
+  } catch (e) {
+    return '';
+  }
+};
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -11,10 +21,7 @@ const processUpload = async (req, res) => {
 
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
-    if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({ error: 'GEMINI_API_KEY is not configured in the backend.' });
-    }
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    let extractedText = null;
 
     const mimeType = req.file.mimetype;
     const base64Data = req.file.buffer.toString('base64');
@@ -32,19 +39,61 @@ const processUpload = async (req, res) => {
 }
 If a field is not found, return null. Return nothing else.`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
-      contents: [
-        { inlineData: { data: base64Data, mimeType } },
-        prompt
-      ],
-      config: {
-        responseMimeType: 'application/json'
+    // 1. Try Ollama Locally First
+    try {
+      const pdfText = await extractTextFromPDF(req.file.buffer);
+      if (pdfText && pdfText.trim().length > 10) {
+        const ollamaPrompt = `${prompt}\n\nInvoice Text:\n${pdfText}`;
+        
+        const ollamaRes = await fetch(process.env.OLLAMA_URL || 'http://localhost:11434/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'llama3',
+            prompt: ollamaPrompt,
+            stream: false,
+            format: 'json'
+          }),
+          signal: AbortSignal.timeout(8000)
+        });
+        
+        if (ollamaRes.ok) {
+          const ollamaData = await ollamaRes.json();
+          extractedText = ollamaData.response;
+        }
       }
-    });
+    } catch (ollamaErr) {
+      console.log('Ollama failed/skipped, falling back to Gemini:', ollamaErr.message);
+    }
 
-    let extractedText = response.text;
-    if (!extractedText) throw new Error('Failed to extract data');
+    // 2. Fallback to Gemini
+    if (!extractedText) {
+      if (!process.env.GEMINI_API_KEY) {
+        return res.status(500).json({ error: 'GEMINI_API_KEY is missing and Ollama fallback failed.' });
+      }
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      
+      const tryGeminiModel = async (modelName) => {
+        const response = await ai.models.generateContent({
+          model: modelName,
+          contents: [
+            { inlineData: { data: base64Data, mimeType } },
+            prompt
+          ],
+          config: { responseMimeType: 'application/json' }
+        });
+        return response.text;
+      };
+
+      try {
+        extractedText = await tryGeminiModel('gemini-1.5-flash');
+      } catch (err) {
+        console.log('gemini-1.5-flash failed, trying gemini-1.5-pro...', err.message);
+        extractedText = await tryGeminiModel('gemini-1.5-pro');
+      }
+    }
+
+    if (!extractedText) throw new Error('Failed to extract data using Ollama and Gemini.');
     
     // Clean potential markdown blocks
     extractedText = extractedText.replace(/```json/g, '').replace(/```/g, '').trim();
