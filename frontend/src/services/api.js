@@ -207,6 +207,14 @@ export const invoicesAPI = {
     });
     return handleResponse(response);
   },
+  generateIRN: async (data, companyId) => {
+    const response = await fetch(`${BASE_URL}/invoices/generate-irn`, {
+      method: 'POST',
+      headers: getHeaders(companyId),
+      body: JSON.stringify(data),
+    });
+    return handleResponse(response);
+  },
 
   create: async (invoice, companyId) => {
     const response = await fetch(`${BASE_URL}/invoices`, {

@@ -153,6 +153,11 @@
   padding: 16px;
   margin-bottom: 24px;
 }
+.ci-nic-box.active {
+  background: #064e3b;
+  border-color: #059669;
+  color: #a7f3d0;
+}
 .ci-nic-top {
   display: flex;
   justify-content: space-between;
@@ -169,6 +174,9 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
+.ci-nic-box.active .ci-nic-title {
+  color: #34d399;
+}
 .ci-nic-status {
   padding: 4px 10px;
   border-radius: 12px;
@@ -179,12 +187,18 @@
   color: #3b82f6;
   text-transform: uppercase;
 }
+.ci-nic-box.active .ci-nic-status {
+  border: 1px solid rgba(16, 185, 129, 0.5);
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+}
 .ci-nic-bottom {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 .ci-nic-desc { font-size: 13px; color: #3b82f6; }
+.ci-nic-box.active .ci-nic-desc { color: #a7f3d0; }
 .ci-btn-irn {
   background: #3b82f6;
   color: white;
@@ -195,6 +209,53 @@
   font-weight: 600;
   cursor: pointer;
   box-shadow: 0 2px 4px rgba(59,130,246,0.3);
+}
+.ci-btn-irn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.ci-irn-display {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+.ci-irn-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: #6ee7b7;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+.ci-irn-hash {
+  background: #022c22;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-family: monospace;
+  font-size: 11px;
+  color: #34d399;
+  word-break: break-all;
+  margin-bottom: 12px;
+}
+.ci-irn-meta {
+  display: flex;
+  justify-content: space-between;
+}
+.ci-irn-meta-block {
+  display: flex;
+  flex-direction: column;
+}
+.ci-irn-meta-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: #a7f3d0;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+.ci-irn-meta-value {
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffffff;
 }
 
 .ci-compliance-box {
@@ -558,18 +619,58 @@
 .ci-pdf-thin-divider { border: none; border-top: 1px solid #e5e7eb; margin: 8px 0; }
 
 /* ACK row */
-.ci-pdf-ack-row {
+.ci-pdf-irn-box {
+  border: 1px solid #111827;
+  border-radius: 8px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+.ci-pdf-irn-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.ci-pdf-irn-badge {
+  background: #10b981;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 8px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.ci-pdf-irn-status {
+  font-size: 8px;
+  font-weight: 700;
+  color: #6b7280;
+  text-transform: uppercase;
+}
+.ci-pdf-irn-label {
+  font-size: 9px;
+  font-weight: 800;
+  color: #111827;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.ci-pdf-irn-hash {
+  border: 1px solid #e5e7eb;
+  background: #f8fafc;
+  padding: 8px 10px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 9px;
+  color: #111827;
+  margin-bottom: 12px;
+  word-break: break-all;
+}
+.ci-pdf-irn-meta {
   display: flex;
   gap: 32px;
-  padding: 10px 14px;
-  border: 1.5px solid #10b981;
-  border-radius: 6px;
-  margin-bottom: 14px;
-  background: rgba(16,185,129,0.02);
 }
 .ci-pdf-ack-block { display: flex; flex-direction: column; gap: 2px; }
-.ci-pdf-ack-label { font-size: 9px; font-weight: 800; color: #10b981; text-transform: uppercase; letter-spacing: 0.08em; }
-.ci-pdf-ack-value { font-size: 11px; font-weight: 600; color: #111827; font-family: monospace; }
+.ci-pdf-ack-label { font-size: 8px; font-weight: 800; color: #111827; text-transform: uppercase; }
+.ci-pdf-ack-value { font-size: 10px; font-weight: 600; color: #111827; }
 
 /* Bill To section */
 .ci-pdf-bill-area {

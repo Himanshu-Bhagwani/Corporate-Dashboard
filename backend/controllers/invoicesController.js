@@ -60,6 +60,23 @@ const _generateIRN = (gstin, invoiceNumber, issueDate) => {
   return crypto.createHash('sha256').update(`${gstin_val}${invoiceNumber}${fy}${date_val}`).digest('hex');
 };
 
+const generateIRN = async (req, res) => {
+  try {
+    const { gstin, invoiceNumber, issueDate } = req.body;
+    const irn = _generateIRN(gstin, invoiceNumber, issueDate);
+    const ackNumber = `ACK-${new Date().getFullYear()}-INV-${String(Math.floor(Math.random() * 99999)).padStart(5, '0')}`;
+    const ackDate = new Date().toLocaleString('en-IN', {
+      day: 'numeric', month: 'numeric', year: 'numeric',
+      hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: true
+    }).replace(',', '');
+    
+    res.json({ irn, ackNumber, ackDate });
+  } catch (error) {
+    console.error('Generate IRN error:', error);
+    res.status(500).json({ error: 'Failed to generate IRN' });
+  }
+};
+
 const getNextNumber = async (req, res) => {
   try {
     const companyId = req.headers['x-company-id'];
@@ -405,4 +422,4 @@ const deleteAllInvoices = async (req, res) => {
   }
 };
 
-module.exports = { getInvoices, createInvoice, updateInvoice, getVolumeTrend, deleteInvoice, deleteAllInvoices, getNextNumber };
+module.exports = { getInvoices, createInvoice, updateInvoice, getVolumeTrend, deleteInvoice, deleteAllInvoices, getNextNumber, generateIRN };

@@ -134,23 +134,33 @@ const InvoicePDF = React.forwardRef(({ form, totals, taxScheme }, ref) => {
 
         <hr className="ci-pdf-divider" />
 
+        <hr className="ci-pdf-divider" />
+
         {/* ACK + IRN row */}
-        <div className="ci-pdf-ack-row">
-          <div className="ci-pdf-ack-block">
-            <span className="ci-pdf-ack-label">ACK Number</span>
-            <span className="ci-pdf-ack-value">{form._ackNumber || 'ACK-XXXX-INV-XXXXX'}</span>
+        {form._irn ? (
+          <div className="ci-pdf-irn-box">
+            <div className="ci-pdf-irn-top">
+              <span className="ci-pdf-irn-badge">IRP NIC SECURE</span>
+              <span className="ci-pdf-irn-status">STATUS: E-INVOICE GENERATED</span>
+            </div>
+            <div className="ci-pdf-irn-label">INVOICE REFERENCE NUMBER (IRN)</div>
+            <div className="ci-pdf-irn-hash">{form._irn}</div>
+            <div className="ci-pdf-irn-meta">
+              <div className="ci-pdf-ack-block">
+                <span className="ci-pdf-ack-label">ACKNOWLEDGEMENT NUMBER</span>
+                <span className="ci-pdf-ack-value">{form._ackNumber}</span>
+              </div>
+              <div className="ci-pdf-ack-block">
+                <span className="ci-pdf-ack-label">ACKNOWLEDGEMENT DATE</span>
+                <span className="ci-pdf-ack-value">{form._ackDate || invDate}</span>
+              </div>
+            </div>
           </div>
-          <div className="ci-pdf-ack-block">
-            <span className="ci-pdf-ack-label">Acknowledgement Date</span>
-            <span className="ci-pdf-ack-value">{invDate}</span>
+        ) : (
+          <div className="ci-pdf-irn-box" style={{ padding: '24px 14px', textAlign: 'center' }}>
+            <span style={{ fontSize: 10, color: '#9ca3af', textTransform: 'uppercase' }}>No IRN Generated</span>
           </div>
-          <div className="ci-pdf-ack-block" style={{ flex: 1 }}>
-            <span className="ci-pdf-ack-label">IRN</span>
-            <span className="ci-pdf-ack-value" style={{ fontSize: 9, wordBreak: 'break-all' }}>
-              {form._irn || '(generated on save)'}
-            </span>
-          </div>
-        </div>
+        )}
 
         {/* Bill To */}
         <div className="ci-pdf-bill-area">
@@ -315,7 +325,9 @@ const CreateInvoiceView = ({ onBack, onCreateInvoice, currentCompany }) => {
     // Placeholders for preview
     _invoiceNumber: 'Loading...',
     _ackNumber: '',
+    _ackDate: '',
     _irn: '',
+    _irnLoading: false,
   });
 
   // Fetch next invoice number
@@ -451,6 +463,35 @@ const CreateInvoiceView = ({ onBack, onCreateInvoice, currentCompany }) => {
     }
   };
 
+  // Generate IRN manually
+  const handleGenerateIRN = async () => {
+    if (!form.entity_gstin) return setError('Entity GSTIN is required to generate IRN.');
+    if (!form._invoiceNumber || form._invoiceNumber.includes('Loading')) return setError('Invoice number is not ready yet.');
+    
+    setForm(prev => ({ ...prev, _irnLoading: true }));
+    setError('');
+    
+    try {
+      const companyId = currentCompany?.id || localStorage.getItem('companyId');
+      const res = await invoicesAPI.generateIRN({
+        gstin: form.entity_gstin,
+        invoiceNumber: form._invoiceNumber,
+        issueDate: form.issue_date
+      }, companyId);
+      
+      setForm(prev => ({
+        ...prev,
+        _irn: res.irn,
+        _ackNumber: res.ackNumber,
+        _ackDate: res.ackDate,
+        _irnLoading: false
+      }));
+    } catch (err) {
+      setError('Failed to generate IRN.');
+      setForm(prev => ({ ...prev, _irnLoading: false }));
+    }
+  };
+
   // Save invoice
   const handleSave = async () => {
     if (!form.client_name.trim()) return setError('Client / Vendor name is required.');
@@ -553,17 +594,39 @@ const CreateInvoiceView = ({ onBack, onCreateInvoice, currentCompany }) => {
 
           {/* ── Section 1: Entity Details ── */}
           <div className="ci-section">
-            <div className="ci-nic-box">
+            <div className={`ci-nic-box ${form._irn ? 'active' : ''}`}>
               <div className="ci-nic-top">
                 <div className="ci-nic-title">
                   <RefreshCw size={14} /> E-INVOICE STATUS (NIC SANDBOX V1.03)
                 </div>
-                <div className="ci-nic-status">PENDING VERIFICATION</div>
+                <div className="ci-nic-status">
+                  {form._irn ? 'ACTIVE & REGISTERED' : 'PENDING VERIFICATION'}
+                </div>
               </div>
-              <div className="ci-nic-bottom">
-                <div className="ci-nic-desc">Mandatory registration required before invoice dispatch.</div>
-                <button className="ci-btn-irn">Generate IRN</button>
-              </div>
+              
+              {!form._irn ? (
+                <div className="ci-nic-bottom">
+                  <div className="ci-nic-desc">Mandatory registration required before invoice dispatch.</div>
+                  <button className="ci-btn-irn" onClick={handleGenerateIRN} disabled={form._irnLoading}>
+                    {form._irnLoading ? 'Generating...' : 'Generate IRN'}
+                  </button>
+                </div>
+              ) : (
+                <div className="ci-irn-display">
+                  <div className="ci-irn-label">INVOICE REFERENCE NUMBER (IRN)</div>
+                  <div className="ci-irn-hash">{form._irn}</div>
+                  <div className="ci-irn-meta">
+                    <div className="ci-irn-meta-block">
+                      <span className="ci-irn-meta-label">ACK NUMBER</span>
+                      <span className="ci-irn-meta-value">{form._ackNumber}</span>
+                    </div>
+                    <div className="ci-irn-meta-block" style={{ marginRight: '30px' }}>
+                      <span className="ci-irn-meta-label">ACK DATE</span>
+                      <span className="ci-irn-meta-value">{form._ackDate}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="ci-section-header" style={{ borderBottom: 'none', marginBottom: 20 }}>
