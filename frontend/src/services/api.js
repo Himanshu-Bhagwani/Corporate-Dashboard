@@ -215,6 +215,17 @@ export const invoicesAPI = {
     });
     return handleResponse(response);
   },
+  uploadInvoice: async (formData, companyId) => {
+    // Note: When using FormData, do not set 'Content-Type' header. Fetch will set it with the boundary.
+    const headers = getHeaders(companyId);
+    delete headers['Content-Type'];
+    const response = await fetch(`${BASE_URL}/invoices/upload`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+    return handleResponse(response);
+  },
 
   create: async (invoice, companyId) => {
     const response = await fetch(`${BASE_URL}/invoices`, {

@@ -1,10 +1,15 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import './InvoicesView.css';
 import EmbeddedHeader from '../../layout/EmbeddedHeader/EmbeddedHeader';
-import { FileText, PlusCircle, Eye, Pencil, ArrowUpDown, X, DollarSign, CheckCircle, Clock, AlertTriangle, Upload, ArrowUpRight, ArrowDownLeft, Trash2 } from 'lucide-react';
+import { FileText, PlusCircle, Eye, Pencil, ArrowUpDown, X, DollarSign, CheckCircle, Clock, AlertTriangle, Upload, ArrowUpRight, ArrowDownLeft, Trash2, Download } from 'lucide-react';
 import { invoicesAPI } from '../../../services/api';
 import { useAuth } from '../../../context/AuthContext';
 import CreateInvoiceView from './CreateInvoiceView';
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
+import InvoicePDFTemplate, { amountInWords, fmtINR } from '../../common/InvoicePDFTemplate';
 
 const InvoicesView = ({
   invoices,
@@ -26,6 +31,12 @@ const InvoicesView = ({
   const [filterType, setFilterType] = useState('all');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  
+  const [selectedInvoices, setSelectedInvoices] = useState([]);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef(null);
+
   const { currentCompany } = useAuth();
 
   const filteredInvoices = useMemo(() => {
@@ -41,6 +52,96 @@ const InvoicesView = ({
     }
     return result;
   }, [invoices, filterType, fromDate, toDate]);
+
+  
+  const handleUploadInvoice = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('invoiceFile', file);
+      const companyId = currentCompany?.id || localStorage.getItem('companyId');
+      const res = await invoicesAPI.uploadInvoice(formData, companyId);
+      // Add the new invoice to state by calling onCreateInvoice, but since it's already in DB,
+      // it might be better to just trigger a refresh or prepend it to state if possible.
+      // Assuming parent provides a way, or we just rely on onCreateInvoice.
+      if (res && res.invoice) {
+         window.location.reload(); // Simple refresh for now to update table
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Failed to upload and parse invoice.');
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleExportPDF = async () => {
+    if (selectedInvoices.length === 0) return alert('Select at least one invoice.');
+    setIsExporting(true);
+    try {
+      const pdf = new jsPDF('p', 'pt', 'a4');
+      for (let i = 0; i < selectedInvoices.length; i++) {
+        const invId = selectedInvoices[i];
+        const elem = document.getElementById('hidden-pdf-' + invId);
+        if (elem) {
+          const canvas = await html2canvas(elem, { scale: 2 });
+          const imgData = canvas.toDataURL('image/png');
+          const pdfWidth = pdf.internal.pageSize.getWidth();
+          const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+          if (i > 0) pdf.addPage();
+          pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+        }
+      }
+      pdf.save('Exported_Invoices.pdf');
+    } catch (err) {
+      console.error(err);
+      alert('Failed to export PDF');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportZIP = async () => {
+    if (selectedInvoices.length === 0) return alert('Select at least one invoice.');
+    setIsExporting(true);
+    try {
+      const zip = new JSZip();
+      for (let i = 0; i < selectedInvoices.length; i++) {
+        const invId = selectedInvoices[i];
+        const invoice = invoices.find(inv => inv.id === invId);
+        const elem = document.getElementById('hidden-pdf-' + invId);
+        if (elem) {
+          const canvas = await html2canvas(elem, { scale: 2 });
+          const imgData = canvas.toDataURL('image/png');
+          const pdf = new jsPDF('p', 'pt', 'a4');
+          const pdfWidth = pdf.internal.pageSize.getWidth();
+          const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+          pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+          const pdfBlob = pdf.output('blob');
+          zip.file(`Invoice_${invoice.invoice_number || invId}.pdf`, pdfBlob);
+        }
+      }
+      const content = await zip.generateAsync({ type: 'blob' });
+      saveAs(content, 'Exported_Invoices.zip');
+    } catch (err) {
+      console.error(err);
+      alert('Failed to export ZIP');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const toggleSelectAll = (e) => {
+    if (e.target.checked) setSelectedInvoices(sortedInvoices.map(i => i.id));
+    else setSelectedInvoices([]);
+  };
+
+  const toggleSelectInvoice = (id) => {
+    setSelectedInvoices(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
 
   const [trendWindow, setTrendWindow] = useState('30D');
   const [baseMeasure, setBaseMeasure] = useState('invoice_amount');
@@ -502,6 +603,27 @@ const InvoicesView = ({
               </button>
             ))}
           </div>
+          
+          <div style={{ position: 'relative' }}>
+            <button className="btn-secondary btn-add-short" onClick={() => {
+              const el = document.getElementById('exportMenu');
+              if (el) el.classList.toggle('show');
+            }} disabled={isExporting}>
+              <Download size={18} />
+              {isExporting ? 'Exporting...' : 'Export'}
+            </button>
+            <div id="exportMenu" className="export-menu" style={{ position: 'absolute', top: '100%', right: 0, background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px', zIndex: 10, display: 'none', flexDirection: 'column', gap: '4px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', width: '160px', marginTop: '4px' }}>
+              <button onClick={() => { document.getElementById('exportMenu').classList.remove('show'); handleExportPDF(); }} style={{ background: 'none', border: 'none', padding: '6px 12px', textAlign: 'left', cursor: 'pointer', borderRadius: '4px', fontSize: '13px' }}>Multi-page PDF</button>
+              <button onClick={() => { document.getElementById('exportMenu').classList.remove('show'); handleExportZIP(); }} style={{ background: 'none', border: 'none', padding: '6px 12px', textAlign: 'left', cursor: 'pointer', borderRadius: '4px', fontSize: '13px' }}>ZIP of PDFs</button>
+            </div>
+          </div>
+          
+          <label className="btn-secondary btn-add-short" style={{ cursor: isUploading ? 'wait' : 'pointer' }}>
+            <Upload size={18} />
+            {isUploading ? 'Uploading...' : 'Upload Invoice'}
+            <input type="file" accept=".pdf,.csv" onChange={handleUploadInvoice} style={{ display: 'none' }} ref={fileInputRef} disabled={isUploading} />
+          </label>
+
           <button className="btn-primary btn-add-short" onClick={() => setShowCreatePage(true)}>
             <PlusCircle size={18} />
             Create Invoice
@@ -695,7 +817,8 @@ const InvoicesView = ({
         <table className="data-table">
             <thead>
               <tr>
-                <th onClick={() => toggleSort('invoice_number')} style={{ cursor: 'pointer' }}>
+                <th style={{ width: 40 }}><input type="checkbox" onChange={toggleSelectAll} checked={sortedInvoices.length > 0 && selectedInvoices.length === sortedInvoices.length} /></th>
+                <th onClick={() => handleSort('invoice_number')} className="sortable" style={{ cursor: 'pointer' }}>
                   INVOICE # <ArrowUpDown size={12} style={{ verticalAlign: 'middle', marginLeft: 4, opacity: 0.5 }} />
                 </th>
                 <th onClick={() => toggleSort('client_name')} style={{ cursor: 'pointer' }}>
@@ -720,40 +843,45 @@ const InvoicesView = ({
             <tbody>
               {sortedInvoices.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="empty-table-message">
-                    No invoices found. Create one to get started!
+                  <td colSpan="11" className="empty-table-message">
+                    <div className="empty-state">
+                      <div className="empty-icon"><FileText size={48} /></div>
+                      <h3>No invoices found</h3>
+                      <p>You haven't created any invoices matching this criteria.</p>
+                    </div>
                   </td>
                 </tr>
               ) : (
-                sortedInvoices.map(invoice => {
-                  const paidAmount = invoice.status === 'paid' ? invoice.amount : (invoice.amount_paid || 0);
-                  const outstandingAmount = invoice.status === 'paid' ? 0 : (invoice.balance || invoice.amount);
+                sortedInvoices.map(inv => {
+                  const paidAmount = inv.status === 'paid' ? inv.amount : (inv.amount_paid || 0);
+                  const outstandingAmount = inv.status === 'paid' ? 0 : (inv.balance || inv.amount);
                   return (
-                  <tr key={invoice.id} className={invoice.status === 'paid' ? 'row-paid clickable-row' : 'clickable-row'} style={{ cursor: 'pointer' }} onClick={(e) => { if (!e.target.closest('button')) { setSelectedInvoice(invoice); setShowViewModal(true); } }}>
-                    <td><span className="table-main-text" style={{ fontWeight: 600 }}>{invoice.invoice_number}</span></td>
-                    <td><span className="table-secondary-text" style={{ color: '#4F46E5', fontWeight: 500 }}>{invoice.client_name || invoice.vendor_name || '-'}</span></td>
+                  <tr key={inv.id} className={inv.status === 'paid' ? 'row-paid clickable-row' : 'clickable-row'} style={{ cursor: 'pointer' }} onClick={(e) => { if (!e.target.closest('button')) { setSelectedInvoice(inv); setShowViewModal(true); } }}>
+                    <td><input type="checkbox" checked={selectedInvoices.includes(inv.id)} onChange={() => toggleSelectInvoice(inv.id)} /></td>
+                    <td><span className="table-main-text" style={{ fontWeight: 600 }}>{inv.invoice_number}</span></td>
+                    <td><span className="table-secondary-text" style={{ color: '#4F46E5', fontWeight: 500 }}>{inv.client_name || inv.vendor_name || '-'}</span></td>
                     <td>
-                      {invoice.type === 'payable' ? (
+                      {inv.type === 'payable' ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#EF4444', fontWeight: 500, fontSize: '13px', textTransform: 'capitalize' }}>
-                          <ArrowUpRight size={14} /> {invoice.type}
+                          <ArrowUpRight size={14} /> {inv.type}
                         </div>
                       ) : (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#10B981', fontWeight: 500, fontSize: '13px', textTransform: 'capitalize' }}>
-                          <ArrowDownLeft size={14} /> {invoice.type || 'receivable'}
+                          <ArrowDownLeft size={14} /> {inv.type || 'receivable'}
                         </div>
                       )}
                     </td>
-                    <td><span className="table-main-text" style={{ fontWeight: 600 }}>{formatAmount(invoice.amount)}</span></td>
-                    <td><span className="table-secondary-text">{formatDate(invoice.issue_date)}</span></td>
-                    <td><span className="table-secondary-text">{formatDate(invoice.due_date)}</span></td>
+                    <td><span className="table-main-text" style={{ fontWeight: 600 }}>{formatAmount(inv.amount)}</span></td>
+                    <td><span className="table-secondary-text">{formatDate(inv.issue_date)}</span></td>
+                    <td><span className="table-secondary-text">{formatDate(inv.due_date)}</span></td>
                     <td><span className="table-secondary-text">{formatAmount(paidAmount)}</span></td>
                     <td><span className="table-secondary-text" style={{ color: outstandingAmount > 0 ? '#f97316' : '#64748b' }}>{formatAmount(outstandingAmount)}</span></td>
-                    <td>{statusBadge(invoice.status)}</td>
+                    <td>{statusBadge(inv.status)}</td>
                     <td>
                       <div className="action-buttons">
-                        <button className="action-btn view-btn" title="View" onClick={(e) => { e.stopPropagation(); setSelectedInvoice(invoice); setShowViewModal(true); }}><Eye size={16} /></button>
-                        <button className="action-btn edit-btn" title="Edit" onClick={(e) => { e.stopPropagation(); setSelectedInvoice(invoice); setShowEditModal(true); }}><Pencil size={16} /></button>
-                        <button className="action-btn delete-btn" title="Delete" onClick={(e) => { e.stopPropagation(); onDeleteInvoice(invoice.id); }} style={{ color: '#ef4444' }}><Trash2 size={16} /></button>
+                        <button className="action-btn view-btn" title="View" onClick={(e) => { e.stopPropagation(); setSelectedInvoice(inv); setShowViewModal(true); }}><Eye size={16} /></button>
+                        <button className="action-btn edit-btn" title="Edit" onClick={(e) => { e.stopPropagation(); setSelectedInvoice(inv); setShowEditModal(true); }}><Pencil size={16} /></button>
+                        <button className="action-btn delete-btn" title="Delete" onClick={(e) => { e.stopPropagation(); onDeleteInvoice(inv.id); }} style={{ color: '#ef4444' }}><Trash2 size={16} /></button>
                       </div>
                     </td>
                   </tr>
@@ -771,7 +899,41 @@ const InvoicesView = ({
       {showCreateModal && <CreateInvoiceModal />}
       {showEditModal && selectedInvoice && <EditInvoiceModal />}
       {showViewModal && selectedInvoice && <ViewInvoiceModal />}
+
+      <div style={{ position: 'absolute', top: '-9999px', left: '-9999px', visibility: 'hidden' }}>
+        {selectedInvoices.map(id => {
+          const inv = invoices.find(i => i.id === id);
+          if (!inv) return null;
+          // Reconstruct totals roughly for the template
+          const lItems = Array.isArray(inv.line_items) ? inv.line_items : (typeof inv.line_items === 'string' ? JSON.parse(inv.line_items || '[]') : []);
+          let sub = 0, cgst = 0, sgst = 0, igst = 0, cess = 0, disc = 0;
+          lItems.forEach(item => {
+             const base = (parseFloat(item.quantity) || 0) * (parseFloat(item.unit_price) || 0);
+             const d = base * ((parseFloat(item.discount_percent) || 0) / 100);
+             const taxable = base - d;
+             const t = taxable * ((parseFloat(item.tax_percent) || 0) / 100);
+             const c = taxable * ((parseFloat(item.cess_percent) || 0) / 100);
+             sub += taxable; disc += d; cess += c;
+             if (inv.tax_scheme === 'IGST') igst += t;
+             else { cgst += t / 2; sgst += t / 2; }
+          });
+          const totals = { subtotal: sub, totalDiscount: disc, cgstTotal: cgst, sgstTotal: sgst, igstTotal: igst, cessTotal: cess, grandTotal: parseFloat(inv.grand_total) || 0, avgTax: lItems.length > 0 ? lItems[0].tax_percent : 18 };
+          return (
+            <div key={id} id={'hidden-pdf-' + id}>
+              <InvoicePDFTemplate form={inv} totals={totals} taxScheme={inv.tax_scheme || 'CGST+SGST'} />
+            </div>
+          );
+        })}
+      </div>
     </>}
+    <style>{`
+      .export-menu.show {
+        display: flex !important;
+      }
+      .export-menu button:hover {
+        background: #f1f5f9 !important;
+      }
+    `}</style>
     </>
   );
 };
