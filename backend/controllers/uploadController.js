@@ -54,7 +54,7 @@ If a field is not found, return null. Return nothing else.`;
             stream: false,
             format: 'json'
           }),
-          signal: AbortSignal.timeout(8000)
+          signal: AbortSignal.timeout(45000)
         });
         
         if (ollamaRes.ok) {
