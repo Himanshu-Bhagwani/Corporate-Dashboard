@@ -18,6 +18,7 @@ const InvoicesView = ({
   onUpdateInvoice,
   onDeleteInvoice,
   onClearAllInvoices,
+  onRefreshInvoices,
   setActiveView,
   onParseOCR,
 }) => {
@@ -63,11 +64,8 @@ const InvoicesView = ({
       formData.append('invoiceFile', file);
       const companyId = currentCompany?.id || localStorage.getItem('companyId');
       const res = await invoicesAPI.uploadInvoice(formData, companyId);
-      // Add the new invoice to state by calling onCreateInvoice, but since it's already in DB,
-      // it might be better to just trigger a refresh or prepend it to state if possible.
-      // Assuming parent provides a way, or we just rely on onCreateInvoice.
-      if (res && res.invoice) {
-         window.location.reload(); // Simple refresh for now to update table
+      if (res && res.invoice && typeof onRefreshInvoices === 'function') {
+        await onRefreshInvoices();
       }
     } catch (err) {
       console.error(err);
@@ -621,7 +619,7 @@ const InvoicesView = ({
           <label className="btn-secondary btn-add-short" style={{ cursor: isUploading ? 'wait' : 'pointer' }}>
             <Upload size={18} />
             {isUploading ? 'Uploading...' : 'Upload Invoice'}
-            <input type="file" accept=".pdf,.csv" onChange={handleUploadInvoice} style={{ display: 'none' }} ref={fileInputRef} disabled={isUploading} />
+            <input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,image/*" onChange={handleUploadInvoice} style={{ display: 'none' }} ref={fileInputRef} disabled={isUploading} />
           </label>
 
           <button className="btn-primary btn-add-short" onClick={() => setShowCreatePage(true)}>
@@ -856,8 +854,8 @@ const InvoicesView = ({
                   const paidAmount = inv.status === 'paid' ? inv.amount : (inv.amount_paid || 0);
                   const outstandingAmount = inv.status === 'paid' ? 0 : (inv.balance || inv.amount);
                   return (
-                  <tr key={inv.id} className={inv.status === 'paid' ? 'row-paid clickable-row' : 'clickable-row'} style={{ cursor: 'pointer' }} onClick={(e) => { if (!e.target.closest('button')) { setSelectedInvoice(inv); setShowViewModal(true); } }}>
-                    <td><input type="checkbox" checked={selectedInvoices.includes(inv.id)} onChange={() => toggleSelectInvoice(inv.id)} /></td>
+                  <tr key={inv.id} className={inv.status === 'paid' ? 'row-paid clickable-row' : 'clickable-row'} style={{ cursor: 'pointer' }} onClick={(e) => { if (e.target.closest('button') || e.target.closest('input') || e.target.closest('.row-select-cell')) return; setSelectedInvoice(inv); setShowViewModal(true); }}>
+                    <td className="row-select-cell" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selectedInvoices.includes(inv.id)} onChange={() => toggleSelectInvoice(inv.id)} /></td>
                     <td><span className="table-main-text" style={{ fontWeight: 600 }}>{inv.invoice_number}</span></td>
                     <td><span className="table-secondary-text" style={{ color: '#4F46E5', fontWeight: 500 }}>{inv.client_name || inv.vendor_name || '-'}</span></td>
                     <td>

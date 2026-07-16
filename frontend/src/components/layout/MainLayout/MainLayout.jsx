@@ -340,6 +340,16 @@ const MainLayout = () => {
     }
   };
 
+  const handleRefreshInvoices = async () => {
+    if (!currentCompany) return;
+    try {
+      const data = await invoicesAPI.getAll(currentCompany.id);
+      setInvoices(data);
+    } catch (err) {
+      console.error('Failed to refresh invoices:', err);
+    }
+  };
+
   // --- Compliance Handlers ---
   const handleMarkFiled = async (id) => {
     try {
@@ -631,6 +641,7 @@ const MainLayout = () => {
               onUpdateInvoice={handleUpdateInvoice}
               onDeleteInvoice={handleDeleteInvoice}
               onClearAllInvoices={handleClearAllInvoices}
+              onRefreshInvoices={handleRefreshInvoices}
               setActiveView={setActiveView}
               onParseOCR={handleParseOCR}
             />
