@@ -851,12 +851,21 @@ const InvoicesView = ({
                 </tr>
               ) : (
                 sortedInvoices.map(inv => {
-                  const paidAmount = inv.status === 'paid' ? inv.amount : (inv.amount_paid || 0);
-                  const outstandingAmount = inv.status === 'paid' ? 0 : (inv.balance || inv.amount);
+                  const amtNum = parseFloat(inv.amount || 0);
+                  const paidNum = parseFloat(inv.amount_paid || 0);
+                  const paidAmount = inv.status === 'paid' ? amtNum : paidNum;
+                  const outstandingAmount = inv.status === 'paid' ? 0 : Math.max(0, amtNum - paidNum);
                   return (
-                  <tr key={inv.id} className={inv.status === 'paid' ? 'row-paid clickable-row' : 'clickable-row'} style={{ cursor: 'pointer' }} onClick={(e) => { if (e.target.closest('button') || e.target.closest('input') || e.target.closest('.row-select-cell')) return; setSelectedInvoice(inv); setShowViewModal(true); }}>
-                    <td className="row-select-cell" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={selectedInvoices.includes(inv.id)} onChange={() => toggleSelectInvoice(inv.id)} /></td>
-                    <td><span className="table-main-text" style={{ fontWeight: 600 }}>{inv.invoice_number}</span></td>
+                  <tr key={inv.id} className={inv.status === 'paid' ? 'row-paid clickable-row' : 'clickable-row'} style={{ cursor: 'pointer' }} onClick={(e) => { if (e.target.closest('button') || e.target.closest('input') || e.target.closest('label') || e.target.closest('.row-select-cell')) return; setSelectedInvoice(inv); setShowViewModal(true); }}>
+                    <td className="row-select-cell" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedInvoices.includes(inv.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => { e.stopPropagation(); toggleSelectInvoice(inv.id); }}
+                      />
+                    </td>
+                    <td><span className="table-main-text" style={{ fontWeight: 600, color: '#64748b' }}>{inv.invoice_number ? (String(inv.invoice_number).startsWith('#') ? inv.invoice_number : `#${inv.invoice_number}`) : '-'}</span></td>
                     <td><span className="table-secondary-text" style={{ color: '#4F46E5', fontWeight: 500 }}>{inv.client_name || inv.vendor_name || '-'}</span></td>
                     <td>
                       {inv.type === 'payable' ? (

@@ -23,14 +23,17 @@ const PROMPT = `Extract the following fields from this invoice and return ONLY a
   "seller_name": "",
   "buyer_name": "",
   "gstin_seller": "",
-  "gstin_buyer": ""
+  "gstin_buyer": "",
+  "type": ""
 }
 Rules:
+- invoice_number: keep the full identifier as-is, e.g. "INV-2026-0015". Do NOT truncate it. If the header shows "#INV-2026-0015", return "INV-2026-0015".
 - invoice_date and due_date must be in YYYY-MM-DD format.
 - total_amount must be a plain number (no currency symbol, no commas). If the invoice shows "TOTAL DUE" or "Grand Total", use that.
 - seller_name is the entity issuing the invoice (usually near the top, above "BILL TO").
 - buyer_name is the entity in the "BILL TO" section.
 - gstin_seller / gstin_buyer are the 15-char GST numbers of seller / buyer respectively.
+- type: read the "TYPE" field on the invoice. Return "receivable" if it says Receivable / Sales / Outward. Return "payable" if it says Payable / Purchase / Inward. If unclear, return null.
 - If a field is not found, return null.
 Return nothing else — no markdown, no code fences, no commentary.`;
 
@@ -66,8 +69,12 @@ const regexExtract = (text) => {
   const out = {};
   const cleaned = text.replace(/\s+/g, ' ');
 
-  // Invoice number: #INV-2026-0015 or Invoice No: INV/2026/0015 etc
-  const invMatch = cleaned.match(/#?\s*(?:INV|INVOICE(?:\s*(?:NO|NUMBER|#))?)[\s:#-]*([A-Z0-9][A-Z0-9\-\/]{3,25})/i);
+  // Invoice number — target the full identifier like INV-2026-0015 (with optional
+  // leading #). Prefer this pattern over label-based matching so we never truncate
+  // "INVOICE" into "OICE" or capture partial prefixes.
+  const invMatch = cleaned.match(/#\s*((?:INV|CN|DN)[-\/][A-Z0-9]{1,10}[-\/][A-Z0-9]{1,10})/i)
+                || cleaned.match(/\b((?:INV|CN|DN)[-\/][A-Z0-9]{1,10}[-\/][A-Z0-9]{1,10})\b/i)
+                || cleaned.match(/INVOICE\s*(?:NO|NUMBER|#)\s*[:#-]?\s*([A-Z0-9][A-Z0-9\-\/]{3,25})/i);
   if (invMatch) out.invoice_number = invMatch[1].trim();
 
   // Invoice date
@@ -86,6 +93,14 @@ const regexExtract = (text) => {
   const gstinMatches = [...cleaned.matchAll(/GSTIN[\s:]*([0-9A-Z]{6,15})/gi)].map(m => m[1]);
   if (gstinMatches[0]) out.gstin_seller = gstinMatches[0];
   if (gstinMatches[1]) out.gstin_buyer = gstinMatches[1];
+
+  // Type: read the labelled TYPE field. "Receivable" / "Payable" / "Sales" / "Purchase".
+  const typeMatch = cleaned.match(/\bTYPE\b[\s:]*([A-Za-z]+)/i);
+  if (typeMatch) {
+    const t = typeMatch[1].toLowerCase();
+    if (/(receivable|sales|outward|sale)/.test(t)) out.type = 'receivable';
+    else if (/(payable|purchase|inward|expense)/.test(t)) out.type = 'payable';
+  }
 
   return out;
 };
@@ -149,7 +164,7 @@ const safeParseJSON = (raw) => {
 
 // Merge extractor outputs, preferring the first non-null value per field
 const mergeExtractions = (...results) => {
-  const keys = ['invoice_number', 'invoice_date', 'due_date', 'total_amount', 'seller_name', 'buyer_name', 'gstin_seller', 'gstin_buyer'];
+  const keys = ['invoice_number', 'invoice_date', 'due_date', 'total_amount', 'seller_name', 'buyer_name', 'gstin_seller', 'gstin_buyer', 'type'];
   const merged = {};
   for (const k of keys) {
     merged[k] = null;
@@ -218,16 +233,23 @@ const processUpload = async (req, res) => {
     }
 
     // Normalize fields
-    const type = 'payable';
+    const rawType = (data.type && String(data.type).trim().toLowerCase()) || '';
+    const type = (rawType === 'receivable' || rawType === 'payable') ? rawType : 'payable';
     const sellerName = data.seller_name && String(data.seller_name).trim();
     const buyerName = data.buyer_name && String(data.buyer_name).trim();
-    const clientName = sellerName || buyerName || 'Unknown Vendor';
+    // For a receivable we bill the buyer; for a payable the seller is our vendor.
+    const clientName = (type === 'receivable' ? buyerName : sellerName) || sellerName || buyerName || 'Unknown Vendor';
     const amount = parseAmount(data.total_amount);
 
     let issueDate = parseDate(data.invoice_date) || new Date().toISOString().slice(0, 10);
     let dueDate = parseDate(data.due_date) || issueDate;
 
-    const invoiceNumber = (data.invoice_number && String(data.invoice_number).trim()) || `UP-${Date.now()}`;
+    // Strip stray leading "#" and any surrounding whitespace/punctuation. Guard
+    // against a model returning "INVOICE" or a fragment like "OICE".
+    let invoiceNumber = (data.invoice_number && String(data.invoice_number).trim().replace(/^#\s*/, '')) || '';
+    if (!invoiceNumber || /^(inv|invoice|oice|ice)$/i.test(invoiceNumber) || invoiceNumber.length < 5) {
+      invoiceNumber = `UP-${Date.now()}`;
+    }
 
     const invResult = await pool.query(
       `INSERT INTO invoices (
