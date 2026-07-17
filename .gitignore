@@ -73,3 +73,5 @@ ollama_data/
 
 CLAUDE.md
 .claude/
+.agent/skills/
+.agent/skills
