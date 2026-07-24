@@ -30,6 +30,7 @@ frontend/.env.production
 
 # Vite cache
 frontend/.vite/
+public/
 
 # =========================
 # BACKEND (Node + Express)
