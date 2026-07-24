@@ -33,6 +33,35 @@ export const AuthProvider = ({ children }) => {
     return () => window.removeEventListener('soda:session-expired', onExpired);
   }, []);
 
+  // Heartbeat: proactively notice a server-side session revocation (e.g. an
+  // Apeilo lockdown) so the user is signed out AUTOMATICALLY — no manual
+  // refresh. An idle tab makes no requests, so revocation would otherwise only
+  // take effect on the attacker's next click. We poll the lightweight
+  // /api/auth/me every 10s, and also re-check the instant the tab regains focus
+  // (covering the case where the attacker switches back to the SODA tab).
+  useEffect(() => {
+    if (!token) return;
+    let alive = true;
+    const check = async () => {
+      try {
+        const r = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } });
+        if (!alive || r.status !== 401) return;
+        // Any 401 here means the token is no longer valid (revoked or expired).
+        const data = await r.json().catch(() => ({}));
+        sessionStorage.setItem('auth_signed_out_reason', data.error || 'Your session was ended.');
+        window.dispatchEvent(new CustomEvent('soda:session-expired'));
+      } catch { /* transient network error — try again next tick */ }
+    };
+    const id = setInterval(check, 10000);
+    const onVisible = () => { if (document.visibilityState === 'visible') check(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      alive = false;
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [token]);
+
   const fetchUser = async () => {
     try {
       const response = await fetch('/api/auth/me', {
@@ -78,7 +107,13 @@ export const AuthProvider = ({ children }) => {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error || 'Login failed');
+      const e = new Error(error.error || 'Login failed');
+      // Preserve structured fields (e.g. the Apeilo timed lock) so the login
+      // screen can show a countdown instead of a generic message.
+      e.code = error.code;
+      e.lockedUntil = error.locked_until;
+      e.remainingSeconds = error.remaining_seconds;
+      throw e;
     }
 
     const data = await response.json();

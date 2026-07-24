@@ -142,6 +142,12 @@ export function createApeilo(config) {
     return res.json();
   }
 
+  async function get(path) {
+    const res = await fetch(apiUrl + path, { headers: { "X-Api-Key": config.apiKey } });
+    if (!res.ok) throw new Error(`Apeilo ${path} -> ${res.status}`);
+    return res.json();
+  }
+
   function normalise(event, raw, detail) {
     const result = {
       event,
@@ -222,10 +228,30 @@ export function createApeilo(config) {
           success: true,   // a real sign-in — this is what shapes their baseline
         });
         clearFailures(uid); // a successful sign-in resets the counter
-        return res;
+
+        // A success right after a brute-force burst can't be trusted on its own.
+        // Signal the app to hold access until the owner confirms on Apeilo.
+        const STEP_UP_THRESHOLD = 5;
+        return {
+          result: res,
+          failedAttempts,
+          stepUpRequired: failedAttempts >= STEP_UP_THRESHOLD,
+        };
       } catch (e) {
         log("identify failed (non-fatal)", e?.message || e);
-        return null;
+        return { result: null, failedAttempts: 0, stepUpRequired: false };
+      }
+    },
+
+    /**
+     * Poll the step-up status for a suspicious success.
+     * Returns { status: 'pending' | 'confirmed' | 'denied' | 'none' }.
+     */
+    async getStepUpStatus(userId) {
+      try {
+        return await get(`/identity/${encodeURIComponent(userId || config.userId)}/stepup-status`);
+      } catch {
+        return { status: "pending" };   // keep waiting on a transient error
       }
     },
 

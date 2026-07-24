@@ -106,6 +106,9 @@ connectDB().then(async () => {
     // rejected, which is how "log out everywhere" works. NULL = never revoked,
     // so existing sessions are unaffected by this migration.
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS refresh_valid_from TIMESTAMPTZ;`);
+    // Apeilo-triggered timed login lock. New logins are refused until this
+    // instant; NULL means not locked.
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS login_locked_until TIMESTAMPTZ;`);
 
     await pool.query(`ALTER TABLE user_companies ADD COLUMN IF NOT EXISTS last_selected_at TIMESTAMP;`);
     await pool.query(`UPDATE user_companies SET last_selected_at = created_at WHERE last_selected_at IS NULL;`);

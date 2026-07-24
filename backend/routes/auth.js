@@ -45,6 +45,23 @@ router.post('/login', async (req, res) => {
     if (!email || !password) return res.status(400).json({ error: 'Email and password are required.' });
     const result = await pool.query('SELECT * FROM users WHERE email = $1', [email.toLowerCase()]);
     const user = result.rows[0];
+
+    // Apeilo timed lock: refuse new logins while an account is blocked, and tell
+    // the client how long is left so it can show a countdown. Checked after the
+    // user lookup but before the password compare, so a locked account can't be
+    // probed. (Runs on a genuine account only — unknown emails still fall
+    // through to the constant-time invalid-credentials path below.)
+    if (user && user.login_locked_until) {
+      const remainingMs = new Date(user.login_locked_until).getTime() - Date.now();
+      if (remainingMs > 0) {
+        return res.status(423).json({
+          error: 'Access to this account is temporarily blocked by a security hold.',
+          code: 'ACCOUNT_LOCKED',
+          locked_until: new Date(user.login_locked_until).toISOString(),
+          remaining_seconds: Math.ceil(remainingMs / 1000),
+        });
+      }
+    }
     const dummyHash = '$2b$12$invalidhashfortiming00000000000000000000000000000000000000';
     const hash = user ? user.password_hash : dummyHash;
     const valid = hash ? await bcrypt.compare(password, hash) : false;

@@ -46,6 +46,7 @@ export function ApeiloProvider({
 }) {
   const [toast, setToast]       = useState(null);
   const [consentAsk, setConsentAsk] = useState(false);
+  const [stepUp, setStepUp]     = useState(null);   // { userId } while access is held
   const timer          = useRef(null);
   const identifiedFor  = useRef(null);
   const pendingIdent   = useRef(null);
@@ -74,9 +75,22 @@ export function ApeiloProvider({
   );
 
   // Run identification (register + GPS + score) once consent is settled.
-  const runIdentify = useCallback((uid) => {
-    client.identify({ userId: uid, name, email });
+  // If the sign-in succeeded right after a brute-force burst, hold access and
+  // require the account owner to confirm on the Apeilo dashboard.
+  const runIdentify = useCallback(async (uid) => {
+    const out = await client.identify({ userId: uid, name, email });
+    if (out && out.stepUpRequired) setStepUp({ userId: uid });
   }, [client, name, email]);
+
+  function forceSignOut(reason) {
+    try {
+      localStorage.removeItem("token");
+      localStorage.removeItem("refreshToken");
+      localStorage.removeItem("user");
+      if (reason) sessionStorage.setItem("auth_signed_out_reason", reason);
+      window.dispatchEvent(new CustomEvent("soda:session-expired"));
+    } catch { /* ignore */ }
+  }
 
   useEffect(() => {
     client.setUser(userId);
@@ -119,6 +133,15 @@ export function ApeiloProvider({
     <ApeiloContext.Provider value={client}>
       {children}
       {consentAsk && <ConsentModal onAccept={acceptConsent} onDecline={declineConsent} />}
+      {stepUp && (
+        <StepUpGate
+          client={client}
+          userId={stepUp.userId}
+          onConfirmed={() => setStepUp(null)}
+          onDenied={() => { setStepUp(null); forceSignOut("This sign-in was reported as not you."); }}
+          onCancel={() => { setStepUp(null); forceSignOut("Sign-in not confirmed."); }}
+        />
+      )}
       {toast && <ThreatToast result={toast} onClose={() => setToast(null)} />}
     </ApeiloContext.Provider>
   );
@@ -152,6 +175,52 @@ const btnGhost = {
   fontSize: 13, fontWeight: 700, color: "#94a3b8",
   background: "transparent", border: "1px solid rgba(255,255,255,0.14)",
 };
+
+function StepUpGate({ client, userId, onConfirmed, onDenied, onCancel }) {
+  // Poll Apeilo until the account owner answers the step-up challenge there.
+  useEffect(() => {
+    let alive = true;
+    const poll = async () => {
+      const { status } = await client.getStepUpStatus(userId);
+      if (!alive) return;
+      if (status === "confirmed") onConfirmed();
+      else if (status === "denied") onDenied();
+      else if (status === "none") onConfirmed(); // nothing outstanding — let through
+    };
+    poll();
+    const id = setInterval(poll, 3000);
+    return () => { alive = false; clearInterval(id); };
+  }, [client, userId, onConfirmed, onDenied]);
+
+  return (
+    <div style={{ ...overlay, background: "rgba(3,7,18,0.92)" }} role="dialog" aria-modal="true">
+      <div style={{ ...card, textAlign: "center" }}>
+        <div style={{ fontSize: 30, marginBottom: 10 }}>🛡️</div>
+        <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 10 }}>
+          One more step to sign in
+        </div>
+        <p style={{ fontSize: 13, lineHeight: 1.65, color: "#cbd5e1", marginBottom: 18 }}>
+          This sign-in came right after several failed attempts, so we&apos;ve paused
+          access. Confirm it was you in the <b style={{ color: "#fff" }}>Apeilo dashboard</b>
+          {" "}(the “Was this you?” prompt) to continue.
+        </p>
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+          fontSize: 12.5, color: "#94a3b8", marginBottom: 20,
+        }}>
+          <span style={{
+            width: 14, height: 14, border: "2px solid rgba(148,163,184,0.35)",
+            borderTopColor: "#94a3b8", borderRadius: "50%",
+            display: "inline-block", animation: "apeilo-spin 0.8s linear infinite",
+          }} />
+          Waiting for confirmation…
+        </div>
+        <style>{`@keyframes apeilo-spin { to { transform: rotate(360deg); } }`}</style>
+        <button style={btnGhost} onClick={onCancel}>Cancel and sign out</button>
+      </div>
+    </div>
+  );
+}
 
 function ConsentModal({ onAccept, onDecline }) {
   return (

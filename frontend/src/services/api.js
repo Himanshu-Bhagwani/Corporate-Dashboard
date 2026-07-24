@@ -27,6 +27,19 @@ async function handleResponse(response) {
   }
 
   if (!response.ok) {
+    // A security hold ended this session server-side — sign the user out
+    // immediately, wherever in the app the failing request came from.
+    if (response.status === 401 && data.code === 'SESSION_REVOKED') {
+      try {
+        localStorage.removeItem('token');
+        localStorage.removeItem('refreshToken');
+        localStorage.removeItem('user');
+        sessionStorage.setItem('auth_signed_out_reason', data.error || 'Your session was ended for security.');
+        // Reuse AuthContext's existing logout listener so the UI drops straight
+        // to the login screen instead of leaving broken requests behind.
+        window.dispatchEvent(new CustomEvent('soda:session-expired'));
+      } catch { /* ignore */ }
+    }
     throw new Error(data.error || `Error ${response.status}: ${response.statusText}`);
   }
   return data;

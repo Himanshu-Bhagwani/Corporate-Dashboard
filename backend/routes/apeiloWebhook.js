@@ -19,6 +19,7 @@
 const express = require("express");
 const crypto = require("crypto");
 const { pool } = require("../config/db");
+const { revokeSessions } = require("../middleware/auth");
 
 const router = express.Router();
 
@@ -54,49 +55,40 @@ router.post("/webhook", express.raw({ type: "*/*" }), async (req, res) => {
       `${(threat.primary_threats || []).join(", ")} (score ${threat.risk_score})`,
   );
 
-  // ── account.lockdown — secure a confirmed-compromised account ──────────
+  // ── account.lockdown — block login access for a period ─────────────────
   if (threat.event_type === "account.lockdown") {
-    const actions = (threat.details && threat.details.actions) || [];
+    const d = threat.details || {};
     const email = String(threat.user_id || "").toLowerCase();
-    const applied = [];
+    const lockMinutes = Math.max(1, Math.min(1440, parseInt(d.lock_minutes, 10) || 15));
+    const lockUntil = d.lock_until ? new Date(d.lock_until) : new Date(Date.now() + lockMinutes * 60000);
 
-    if (actions.includes("logout_all") && email) {
-      try {
-        // Invalidate every refresh token issued before now. Access tokens are
-        // short-lived (15m) and expire on their own, so the account is fully
-        // signed out within one access-token lifetime — with no per-request
-        // database lookup on the hot path.
-        // Cut-off is stamped from the APP clock, not the database clock.
-        // It is compared against a JWT `iat`, which this same process issues —
-        // using NOW() would mix two clocks, and any drift could leave a
-        // legitimate user unable to sign back in at all.
-        const r = await pool.query(
-          "UPDATE users SET refresh_valid_from = $2 WHERE email = $1 RETURNING id",
-          [email, new Date()],
-        );
-        if (r.rowCount > 0) {
-          applied.push("logout_all");
-          console.warn(`[Apeilo] Revoked all sessions for ${email}`);
-        } else {
-          console.warn(`[Apeilo] logout_all requested for unknown user ${email}`);
-        }
-      } catch (err) {
-        console.error("[Apeilo] logout_all failed:", err.message);
-      }
-    }
-
-    if (actions.includes("force_password_reset")) {
-      // Not enforced yet on purpose: SODA has no password-reset channel (no
-      // email delivery), and Google-only accounts have no password at all —
-      // enforcing it would lock those users out permanently. Surfaced as an
-      // operator recommendation until a reset flow exists.
-      console.warn(
-        `[Apeilo] RECOMMENDED: force a password reset for ${email}. ` +
-          `Not applied automatically — no reset channel is configured.`,
+    try {
+      // Two things at once:
+      //  1. login_locked_until  — refuse NEW logins until this instant
+      //     (checked in routes/auth.js, shown as a countdown to the user).
+      //  2. refresh_valid_from  — kill EXISTING sessions: refresh tokens issued
+      //     before now stop working, and the 15-min access token expires on its
+      //     own, so an already-signed-in attacker is out within one lifetime —
+      //     no per-request DB lookup on the hot path.
+      // Timestamps are stamped from the app clock (compared against JWT `iat`,
+      // which this same process issues) rather than NOW(), to avoid clock drift.
+      const r = await pool.query(
+        "UPDATE users SET login_locked_until = $2, refresh_valid_from = $3 WHERE email = $1 RETURNING id",
+        [email, lockUntil, new Date()],
       );
+      if (r.rowCount > 0) {
+        // Instant boot: reject every access token this account already holds,
+        // starting now — the attacker is signed out on their next request.
+        revokeSessions(email, Date.now());
+        console.warn(`[Apeilo] Locked login for ${email} until ${lockUntil.toISOString()} (${lockMinutes} min) + revoked active sessions`);
+        return res.json({ received: true, locked: true, lock_until: lockUntil.toISOString(), lock_minutes: lockMinutes });
+      }
+      console.warn(`[Apeilo] lockdown requested for unknown user ${email}`);
+      return res.json({ received: true, locked: false, reason: "unknown_user" });
+    } catch (err) {
+      console.error("[Apeilo] lockdown failed:", err.message);
+      return res.status(500).json({ received: true, locked: false, error: "lock_failed" });
     }
-
-    return res.json({ received: true, applied });
   }
 
   // TODO for SODA — other reactions, e.g.:
