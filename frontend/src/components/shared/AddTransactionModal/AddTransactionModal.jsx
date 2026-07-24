@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import './AddTransactionModal.css';
+import { useApeilo } from '../../../context/ApeiloContext';
 
 const CORPORATE_INCOME_CATEGORIES = [
   'Sales',
@@ -28,6 +29,7 @@ const CORPORATE_EXPENSE_CATEGORIES = [
 ];
 
 const AddTransactionModal = ({ onClose, onSubmit, accounts, onGoToAccounts }) => {
+  const apeilo = useApeilo();
   const today = new Date().toISOString().slice(0, 10);
 
   const [formData, setFormData] = useState({
@@ -64,15 +66,20 @@ const AddTransactionModal = ({ onClose, onSubmit, accounts, onGoToAccounts }) =>
     if (!formData.date) return setError('Please select a date.');
 
     setError('');
+    const amount = parseFloat(formData.amount);
     onSubmit({
       name: formData.name.trim(),
       type: formData.type,
       category: formData.category,
       account_id: parseInt(formData.account_id),
-      amount: parseFloat(formData.amount),
+      amount,
       date: formData.date,
       notes: formData.notes.trim() || null,
     });
+
+    // Score this transaction for fraud on Apeilo (fire-and-forget — never blocks
+    // or breaks the real transaction submit).
+    apeilo.trackTransaction({ amount }).catch(() => {});
   };
 
   return (

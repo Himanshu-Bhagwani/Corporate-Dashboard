@@ -4,8 +4,10 @@ import {
   Search, BookOpen, Users, Truck, ChevronDown, ChevronRight,
   Plus, Pencil, Check, X, Trash2, TrendingUp, TrendingDown,
   DollarSign, Building2, PieChart, ChevronsDown, ChevronsUp, Filter,
-  Star, UserPlus, Mail, Phone, ChevronUp
+  Star, UserPlus, Mail, Phone, ChevronUp, FileUp
 } from 'lucide-react';
+import { accountingAPI } from '../../../services/api';
+import { useAuth } from '../../../context/AuthContext';
 import './AccountingView.css';
 
 const formatINR = (value) => `₹${(Number(value) || 0).toLocaleString('en-IN')}`;
@@ -38,13 +40,34 @@ const AccountingView = ({
   onCreateAccount,
   onUpdateAccount,
   onDeleteAccount,
+  onClearAccountType,
   onCreateContact,
   onUpdateContact,
   onDeleteContact,
   onToggleImportant,
   loading
 }) => {
+  const { currentCompany } = useAuth();
   const [activeTab, setActiveTab] = useState('ledger');
+
+  // Balance Sheet / P&L statement upload state
+  const [uploadingStatement, setUploadingStatement] = useState(false);
+  const [statementResult, setStatementResult] = useState(null);
+
+  const handleStatementUpload = async (file) => {
+    if (!file || !currentCompany) return;
+    setUploadingStatement(true);
+    setStatementResult(null);
+    try {
+      const result = await accountingAPI.uploadStatement(file, currentCompany.id);
+      setStatementResult({ ok: true, ...result });
+      if (onFetchChartOfAccounts) onFetchChartOfAccounts();
+    } catch (err) {
+      setStatementResult({ ok: false, error: err.message || 'Upload failed' });
+    } finally {
+      setUploadingStatement(false);
+    }
+  };
 
   // Ledger state
   const [ledgerSearch, setLedgerSearch] = useState('');
@@ -69,6 +92,8 @@ const AccountingView = ({
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [addForm, setAddForm] = useState({ name: '', account_type: 'Asset', description: '', opening_balance: '' });
+  const [confirmClearType, setConfirmClearType] = useState(null);
+  const [clearingType, setClearingType] = useState(null);
 
   // Debounced search for ledger
   useEffect(() => {
@@ -213,6 +238,21 @@ const AccountingView = ({
       await onDeleteAccount(id);
     } catch (err) {
       console.error('Failed to delete account:', err);
+    }
+  };
+
+  // Clear every saved account under one heading. Live rows (marked "live") are
+  // derived from transactions/loans/invoices, so they come back on reload.
+  const handleClearType = async (type) => {
+    if (!onClearAccountType) return;
+    setClearingType(type);
+    try {
+      await onClearAccountType(type);
+      setConfirmClearType(null);
+    } catch (err) {
+      console.error('Failed to clear accounts:', err);
+    } finally {
+      setClearingType(null);
     }
   };
 
@@ -541,11 +581,49 @@ const AccountingView = ({
             Collapse All
           </button>
         </div>
-        <button className="coa-add-btn" onClick={() => setShowAddModal(true)}>
-          <Plus size={16} />
-          Add Account
-        </button>
+        <div style={{ display: 'flex', gap: '0.6rem' }}>
+          <label className="coa-toggle-btn" style={{ cursor: uploadingStatement ? 'wait' : 'pointer' }}>
+            <FileUp size={14} />
+            {uploadingStatement ? 'Importing…' : 'Upload Balance Sheet / P&L'}
+            <input
+              type="file"
+              accept=".csv,.pdf"
+              hidden
+              disabled={uploadingStatement}
+              onChange={(e) => { handleStatementUpload(e.target.files[0]); e.target.value = ''; }}
+            />
+          </label>
+          <button className="coa-add-btn" onClick={() => setShowAddModal(true)}>
+            <Plus size={16} />
+            Add Account
+          </button>
+        </div>
       </div>
+
+      {statementResult && (
+        <div
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem',
+            padding: '0.7rem 1rem', borderRadius: 12, marginBottom: '1rem',
+            background: statementResult.ok ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.07)',
+            border: `1px solid ${statementResult.ok ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
+            color: statementResult.ok ? '#059669' : '#dc2626',
+            fontSize: '0.82rem', fontWeight: 600,
+          }}
+        >
+          <span>
+            {statementResult.ok
+              ? `Statement imported — ${statementResult.created} account${statementResult.created === 1 ? '' : 's'} added, ${statementResult.updated} updated in your Chart of Accounts.`
+              : statementResult.error}
+          </span>
+          <button
+            onClick={() => setStatementResult(null)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', display: 'flex' }}
+          >
+            <X size={15} />
+          </button>
+        </div>
+      )}
 
       <div className="coa-summary-grid">
         {ACCOUNT_TYPES.map(type => (
@@ -587,8 +665,19 @@ const AccountingView = ({
                   <div className="coa-group-subtitle">{accounts.length} accounts</div>
                 </div>
               </div>
-              <div className="coa-group-total" style={{ color: TYPE_COLORS[type].color }}>
-                {formatINR(typeTotals[type])}
+              <div className="coa-group-right">
+                <div className="coa-group-total" style={{ color: TYPE_COLORS[type].color }}>
+                  {formatINR(typeTotals[type])}
+                </div>
+                {onClearAccountType && accounts.some(a => !a.is_virtual) && (
+                  <button
+                    className="coa-clear-btn"
+                    title={`Clear all ${type} accounts`}
+                    onClick={(e) => { e.stopPropagation(); setConfirmClearType(type); }}
+                  >
+                    <Trash2 size={13} /> Clear All
+                  </button>
+                )}
               </div>
             </div>
 
@@ -800,6 +889,41 @@ const AccountingView = ({
               >
                 <Plus size={16} />
                 {contactModalLoading ? 'Adding...' : `Add ${contactForm.contact_type === 'customer' ? 'Customer' : 'Vendor'}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Clear Account Type Confirmation ── */}
+      {confirmClearType && (
+        <div className="modal-overlay" onClick={() => setConfirmClearType(null)}>
+          <div className="coa-modal" style={{ maxWidth: '420px' }} onClick={(e) => e.stopPropagation()}>
+            <div className="coa-modal-header">
+              <h2>Clear {confirmClearType} Accounts</h2>
+              <button className="coa-modal-close" onClick={() => setConfirmClearType(null)}><X size={20} /></button>
+            </div>
+            <div className="coa-modal-body">
+              <p style={{ color: '#4a5568', fontSize: '15px', marginBottom: '10px' }}>
+                Delete all{' '}
+                <strong>{(groupedAccounts[confirmClearType] || []).filter(a => !a.is_virtual).length}</strong>{' '}
+                saved {confirmClearType.toLowerCase()} account{(groupedAccounts[confirmClearType] || []).filter(a => !a.is_virtual).length === 1 ? '' : 's'}?
+              </p>
+              <p style={{ color: '#718096', fontSize: '13px' }}>
+                Your transactions, invoices and loans are not touched. Rows marked <em>(live)</em> are calculated from that
+                data and will reappear.
+              </p>
+            </div>
+            <div className="coa-modal-footer">
+              <button className="coa-modal-cancel" onClick={() => setConfirmClearType(null)}>Cancel</button>
+              <button
+                className="coa-modal-submit"
+                style={{ background: 'linear-gradient(135deg, #ef4444, #dc2626)' }}
+                onClick={() => handleClearType(confirmClearType)}
+                disabled={clearingType === confirmClearType}
+              >
+                <Trash2 size={16} />
+                {clearingType === confirmClearType ? 'Clearing...' : 'Clear All'}
               </button>
             </div>
           </div>

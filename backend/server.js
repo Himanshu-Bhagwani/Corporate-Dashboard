@@ -60,6 +60,7 @@ const financialMetricsRoutes = require('./routes/financialMetrics');
 const verifyRoutes         = require('./routes/verify');
 const tallyRoutes          = require('./routes/tally');
 const automationRulesRoutes = require('./routes/automationRules');
+const loansRoutes          = require('./routes/loans');
 
 const app = express();
 
@@ -75,6 +76,12 @@ app.use(cors(corsOptions));
 app.use(extractClientIp);
 app.use(hpp());
 app.use(securityLogger);
+
+// ─── Apeilo threat webhook ────────────────────────────────────────────────────
+// MUST be mounted before express.json(): the route verifies an HMAC over the
+// raw request body, so the global JSON parser must not consume it first.
+app.use('/api/apeilo', require('./routes/apeiloWebhook'));
+
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ limit: '20mb', extended: true }));
 app.use(jsonDepthGuard);
@@ -95,6 +102,11 @@ connectDB().then(async () => {
 
   // Run legacy inline alters sequentially to ensure missing columns are created
   try {
+    // Session revocation cut-off. Refresh tokens issued before this instant are
+    // rejected, which is how "log out everywhere" works. NULL = never revoked,
+    // so existing sessions are unaffected by this migration.
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS refresh_valid_from TIMESTAMPTZ;`);
+
     await pool.query(`ALTER TABLE user_companies ADD COLUMN IF NOT EXISTS last_selected_at TIMESTAMP;`);
     await pool.query(`UPDATE user_companies SET last_selected_at = created_at WHERE last_selected_at IS NULL;`);
 
@@ -194,7 +206,15 @@ connectDB().then(async () => {
 });
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
-app.use('/api/auth',              authLimiter, authRoutes);
+// Brute-force protection belongs only on the endpoints that verify credentials.
+// Mounting it on all of /api/auth also counted /auth/me (called on every page
+// load) and /auth/refresh (called every 15 min), so ordinary use tripped the
+// "too many login attempts" limit. Those two stay covered by the general
+// apiLimiter (200 req/min) applied above.
+app.use('/api/auth/login',    authLimiter);
+app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/google',   authLimiter);
+app.use('/api/auth',              authRoutes);
 app.use('/api/companies',         companyRoutes);
 app.use('/api/transactions',      transactionRoutes);
 app.use('/api/accounts',          accountRoutes);
@@ -212,6 +232,7 @@ app.use('/api/financial-metrics', financialMetricsRoutes);
 app.use('/api/verify',            verifyRoutes);
 app.use('/api/tally',             tallyRoutes);
 app.use('/api/automation-rules',  automationRulesRoutes);
+app.use('/api/loans',             loansRoutes);
 app.get('/api/verify-db', async (req, res) => {
   try {
     const companiesCols = await pool.query(

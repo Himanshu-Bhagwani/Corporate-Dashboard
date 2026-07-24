@@ -18,6 +18,21 @@ export const AuthProvider = ({ children }) => {
     }
   }, [token]);
 
+  // The fetch interceptor fires this when the refresh token is rejected —
+  // expired, or revoked by an Apeilo "log out everywhere" lockdown. Drop
+  // straight to the login screen instead of leaving broken requests behind.
+  useEffect(() => {
+    const onExpired = () => {
+      setUser(null);
+      setToken(null);
+      setCurrentCompany(null);
+      setCompanies([]);
+      setLoading(false);
+    };
+    window.addEventListener('soda:session-expired', onExpired);
+    return () => window.removeEventListener('soda:session-expired', onExpired);
+  }, []);
+
   const fetchUser = async () => {
     try {
       const response = await fetch('/api/auth/me', {
@@ -70,6 +85,9 @@ export const AuthProvider = ({ children }) => {
     setToken(data.token);
     setUser(data.user);
     localStorage.setItem('token', data.token);
+    // Keep the refresh token so the session can be renewed silently — without
+    // this the access token expires after 15 minutes and the app breaks.
+    if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
     return data;
   };
 
@@ -89,6 +107,9 @@ export const AuthProvider = ({ children }) => {
     setToken(data.token);
     setUser(data.user);
     localStorage.setItem('token', data.token);
+    // Keep the refresh token so the session can be renewed silently — without
+    // this the access token expires after 15 minutes and the app breaks.
+    if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
     return data;
   };
 
@@ -108,6 +129,9 @@ export const AuthProvider = ({ children }) => {
     setToken(data.token);
     setUser(data.user);
     localStorage.setItem('token', data.token);
+    // Keep the refresh token so the session can be renewed silently — without
+    // this the access token expires after 15 minutes and the app breaks.
+    if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
     return data;
   };
 
@@ -117,6 +141,7 @@ export const AuthProvider = ({ children }) => {
     setCurrentCompany(null);
     setCompanies([]);
     localStorage.removeItem('token');
+    localStorage.removeItem('refreshToken');
   };
 
   const switchCompany = (company) => {

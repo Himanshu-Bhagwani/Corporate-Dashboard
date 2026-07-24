@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import './InvoicesView.css';
 import EmbeddedHeader from '../../layout/EmbeddedHeader/EmbeddedHeader';
-import { FileText, PlusCircle, Eye, Pencil, ArrowUpDown, X, DollarSign, CheckCircle, Clock, AlertTriangle, Upload, ArrowUpRight, ArrowDownLeft, Trash2, Download } from 'lucide-react';
+import { FileText, PlusCircle, Eye, Pencil, ArrowUpDown, X, DollarSign, CheckCircle, Clock, AlertTriangle, Upload, ArrowUpRight, ArrowDownLeft, Trash2, Download, ChevronDown } from 'lucide-react';
 import { invoicesAPI } from '../../../services/api';
 import { useAuth } from '../../../context/AuthContext';
 import CreateInvoiceView from './CreateInvoiceView';
@@ -10,6 +10,8 @@ import { saveAs } from 'file-saver';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import InvoicePDFTemplate, { amountInWords, fmtINR } from '../../common/InvoicePDFTemplate';
+import InvoiceDetailDrawer from './InvoiceDetailDrawer';
+import { PaymentModal, CreditNoteModal, DebitNoteModal } from './InvoiceActionModals';
 
 const InvoicesView = ({
   invoices,
@@ -21,12 +23,27 @@ const InvoicesView = ({
   onRefreshInvoices,
   setActiveView,
   onParseOCR,
+  openCreate,
+  onConsumeNavigate,
 }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showCreatePage, setShowCreatePage] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingInvoice, setEditingInvoice] = useState(null);
   const [showViewModal, setShowViewModal] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
+  const [drawerRefresh, setDrawerRefresh] = useState(0);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showCreditModal, setShowCreditModal] = useState(false);
+  const [showDebitModal, setShowDebitModal] = useState(false);
+  const [statusMenuFor, setStatusMenuFor] = useState(null);
+
+  // Close the status menu on any outside click
+  useEffect(() => {
+    if (statusMenuFor === null) return;
+    const close = () => setStatusMenuFor(null);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [statusMenuFor]);
   const [sortField, setSortField] = useState('due_date');
   const [sortDir, setSortDir] = useState('desc');
   const [filterType, setFilterType] = useState('all');
@@ -39,6 +56,13 @@ const InvoicesView = ({
   const fileInputRef = useRef(null);
 
   const { currentCompany } = useAuth();
+
+  useEffect(() => {
+    if (openCreate) {
+      setShowCreatePage(true);
+      if (typeof onConsumeNavigate === 'function') onConsumeNavigate();
+    }
+  }, [openCreate, onConsumeNavigate]);
 
   const filteredInvoices = useMemo(() => {
     let result = invoices;
@@ -563,14 +587,16 @@ const InvoicesView = ({
 
   return (
     <>
-      {showCreatePage && (
+      {(showCreatePage || editingInvoice) && (
         <CreateInvoiceView
-          onBack={() => setShowCreatePage(false)}
+          onBack={() => { setShowCreatePage(false); setEditingInvoice(null); }}
           onCreateInvoice={onCreateInvoice}
+          onUpdateInvoice={onUpdateInvoice}
           currentCompany={currentCompany}
+          initialInvoice={editingInvoice}
         />
       )}
-      {!showCreatePage && <>
+      {!(showCreatePage || editingInvoice) && <>
       <EmbeddedHeader />
       <div className="view-header">
         <div>
@@ -619,7 +645,7 @@ const InvoicesView = ({
           <label className="btn-secondary btn-add-short" style={{ cursor: isUploading ? 'wait' : 'pointer' }}>
             <Upload size={18} />
             {isUploading ? 'Uploading...' : 'Upload Invoice'}
-            <input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,image/*" onChange={handleUploadInvoice} style={{ display: 'none' }} ref={fileInputRef} disabled={isUploading} />
+            <input type="file" accept=".pdf,.csv,.png,.jpg,.jpeg,.webp,image/*" onChange={handleUploadInvoice} style={{ display: 'none' }} ref={fileInputRef} disabled={isUploading} />
           </label>
 
           <button className="btn-primary btn-add-short" onClick={() => setShowCreatePage(true)}>
@@ -764,21 +790,59 @@ const InvoicesView = ({
                 </div>
               </div>
               
-              {/* Stacked Bar visualization */}
-              <div style={{ height: '140px', display: 'flex', alignItems: 'flex-end', gap: '8px', padding: '1rem 0 0', marginTop: '1rem', borderTop: '1px solid #e2e8f0', justifyContent: 'space-between' }}>
-                {(() => {
-                  const maxVal = Math.max(...volumeData.series.map(s => baseMeasure === 'invoice_count' ? s.raw_count : s.raw_amount), 1);
-                  return volumeData.series.map((s, idx) => {
-                    const rVal = baseMeasure === 'invoice_count' ? s.receivable > 0 ? s.raw_count : 0 : s.receivable;
-                    const pVal = baseMeasure === 'invoice_count' ? s.payable > 0 ? s.raw_count : 0 : s.payable;
-                    return (
-                      <div key={idx} className="volume-trend-bar" title={`Period: ${s.period}\nReceivable: ${formatAmount(rVal)}\nPayable: ${formatAmount(pVal)}`} style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%', gap: '2px', position: 'relative' }}>
-                        {pVal > 0 && <div style={{ width: '100%', background: '#f97316', height: `${(pVal / maxVal) * 100}%`, borderRadius: rVal > 0 ? '4px 4px 0 0' : '4px' }}></div>}
-                        {rVal > 0 && <div style={{ width: '100%', background: '#10b981', height: `${(rVal / maxVal) * 100}%`, borderRadius: pVal > 0 ? '0 0 4px 4px' : '4px' }}></div>}
-                      </div>
+              {/* Grouped Bar visualization — receivable & payable side-by-side per period */}
+              <div>
+                <div style={{ height: '140px', display: 'flex', alignItems: 'flex-end', gap: '8px', padding: '1rem 0 0', marginTop: '1rem', borderTop: '1px solid #e2e8f0', justifyContent: 'space-between' }}>
+                  {(() => {
+                    const maxVal = Math.max(
+                      ...volumeData.series.map(s => baseMeasure === 'invoice_count'
+                        ? Math.max(s.raw_count || 0, 0)
+                        : Math.max(s.receivable || 0, s.payable || 0)),
+                      1
                     );
-                  });
-                })()}
+                    return volumeData.series.map((s, idx) => {
+                      const rVal = baseMeasure === 'invoice_count' ? (s.receivable > 0 ? s.raw_count : 0) : s.receivable;
+                      const pVal = baseMeasure === 'invoice_count' ? (s.payable > 0 ? s.raw_count : 0) : s.payable;
+                      return (
+                        <div
+                          key={idx}
+                          className="volume-trend-bar"
+                          title={`Period: ${s.period}\nReceivable: ${formatAmount(rVal)}\nPayable: ${formatAmount(pVal)}`}
+                          style={{ flex: 1, display: 'flex', flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', height: '100%', gap: '5px' }}
+                        >
+                          <div
+                            style={{
+                              flex: 1,
+                              maxWidth: '36px',
+                              background: '#10b981',
+                              height: `${((rVal || 0) / maxVal) * 100}%`,
+                              borderRadius: '4px 0 0 4px',
+                              minHeight: rVal > 0 ? '2px' : 0
+                            }}
+                          />
+                          <div
+                            style={{
+                              flex: 1,
+                              maxWidth: '36px',
+                              background: '#f97316',
+                              height: `${((pVal || 0) / maxVal) * 100}%`,
+                              borderRadius: '0 4px 4px 0',
+                              minHeight: pVal > 0 ? '2px' : 0
+                            }}
+                          />
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', marginTop: '10px', fontSize: '12px', color: '#475569' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: '#10b981' }}></span> Receivable
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: '#f97316' }}></span> Payable
+                  </div>
+                </div>
               </div>
             </>
           )}
@@ -853,8 +917,11 @@ const InvoicesView = ({
                 sortedInvoices.map(inv => {
                   const amtNum = parseFloat(inv.amount || 0);
                   const paidNum = parseFloat(inv.amount_paid || 0);
-                  const paidAmount = inv.status === 'paid' ? amtNum : paidNum;
-                  const outstandingAmount = inv.status === 'paid' ? 0 : Math.max(0, amtNum - paidNum);
+                  const paidAmount = inv.status === 'paid' ? (parseFloat(inv.revised_total ?? amtNum)) : paidNum;
+                  const backendOutstanding = inv.outstanding !== undefined ? parseFloat(inv.outstanding) : null;
+                  const outstandingAmount = inv.status === 'paid'
+                    ? 0
+                    : (backendOutstanding !== null ? backendOutstanding : Math.max(0, amtNum - paidNum));
                   return (
                   <tr key={inv.id} className={inv.status === 'paid' ? 'row-paid clickable-row' : 'clickable-row'} style={{ cursor: 'pointer' }} onClick={(e) => { if (e.target.closest('button') || e.target.closest('input') || e.target.closest('label') || e.target.closest('.row-select-cell')) return; setSelectedInvoice(inv); setShowViewModal(true); }}>
                     <td className="row-select-cell" onClick={(e) => e.stopPropagation()}>
@@ -883,11 +950,37 @@ const InvoicesView = ({
                     <td><span className="table-secondary-text">{formatDate(inv.due_date)}</span></td>
                     <td><span className="table-secondary-text">{formatAmount(paidAmount)}</span></td>
                     <td><span className="table-secondary-text" style={{ color: outstandingAmount > 0 ? '#f97316' : '#64748b' }}>{formatAmount(outstandingAmount)}</span></td>
-                    <td>{statusBadge(inv.status)}</td>
+                    <td onClick={(e) => e.stopPropagation()}>
+                      <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        {statusBadge(inv.status)}
+                        <button
+                          type="button"
+                          title="Change status"
+                          className="status-chevron-btn"
+                          onClick={(e) => { e.stopPropagation(); setStatusMenuFor(statusMenuFor === inv.id ? null : inv.id); }}
+                        >
+                          <ChevronDown size={14} />
+                        </button>
+                        {statusMenuFor === inv.id && (
+                          <div className="status-dropdown-menu" onClick={(e) => e.stopPropagation()}>
+                            {['paid', 'overdue', 'pending'].map(s => (
+                              <button
+                                key={s}
+                                type="button"
+                                className="status-dropdown-option"
+                                onClick={() => { setStatusMenuFor(null); if (s !== inv.status) onUpdateInvoice(inv.id, { status: s }); }}
+                              >
+                                {statusBadge(s)}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </td>
                     <td>
                       <div className="action-buttons">
                         <button className="action-btn view-btn" title="View" onClick={(e) => { e.stopPropagation(); setSelectedInvoice(inv); setShowViewModal(true); }}><Eye size={16} /></button>
-                        <button className="action-btn edit-btn" title="Edit" onClick={(e) => { e.stopPropagation(); setSelectedInvoice(inv); setShowEditModal(true); }}><Pencil size={16} /></button>
+                        <button className="action-btn edit-btn" title="Edit" onClick={(e) => { e.stopPropagation(); setEditingInvoice(inv); }}><Pencil size={16} /></button>
                         <button className="action-btn delete-btn" title="Delete" onClick={(e) => { e.stopPropagation(); onDeleteInvoice(inv.id); }} style={{ color: '#ef4444' }}><Trash2 size={16} /></button>
                       </div>
                     </td>
@@ -904,8 +997,90 @@ const InvoicesView = ({
       )}
 
       {showCreateModal && <CreateInvoiceModal />}
-      {showEditModal && selectedInvoice && <EditInvoiceModal />}
-      {showViewModal && selectedInvoice && <ViewInvoiceModal />}
+      {showViewModal && selectedInvoice && (
+        <InvoiceDetailDrawer
+          invoice={selectedInvoice}
+          refreshKey={drawerRefresh}
+          onClose={() => { setShowViewModal(false); setSelectedInvoice(null); }}
+          onDownloadPDF={async () => {
+            const invId = selectedInvoice.id;
+            const elem = document.getElementById('drawer-pdf-' + invId);
+            if (!elem) return;
+            try {
+              const canvas = await html2canvas(elem, { scale: 2 });
+              const imgData = canvas.toDataURL('image/png');
+              const pdf = new jsPDF('p', 'pt', 'a4');
+              const pdfWidth = pdf.internal.pageSize.getWidth();
+              const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+              pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+              pdf.save(`Invoice_${selectedInvoice.invoice_number || invId}.pdf`);
+            } catch (err) {
+              console.error(err);
+            }
+          }}
+          onOpenPayment={() => setShowPaymentModal(true)}
+          onOpenCreditNote={() => setShowCreditModal(true)}
+          onOpenDebitNote={() => setShowDebitModal(true)}
+        />
+      )}
+      {showViewModal && selectedInvoice && showPaymentModal && (
+        <PaymentModal
+          invoice={selectedInvoice}
+          outstanding={parseFloat(selectedInvoice.outstanding ?? selectedInvoice.amount) || 0}
+          onClose={() => setShowPaymentModal(false)}
+          onSaved={async () => {
+            if (typeof onRefreshInvoices === 'function') await onRefreshInvoices();
+            setDrawerRefresh(k => k + 1);
+          }}
+        />
+      )}
+      {showViewModal && selectedInvoice && showCreditModal && (
+        <CreditNoteModal
+          invoice={selectedInvoice}
+          outstanding={parseFloat(selectedInvoice.outstanding ?? selectedInvoice.amount) || 0}
+          onClose={() => setShowCreditModal(false)}
+          onSaved={async () => {
+            if (typeof onRefreshInvoices === 'function') await onRefreshInvoices();
+            setDrawerRefresh(k => k + 1);
+          }}
+        />
+      )}
+      {showViewModal && selectedInvoice && showDebitModal && (
+        <DebitNoteModal
+          invoice={selectedInvoice}
+          outstanding={parseFloat(selectedInvoice.outstanding ?? selectedInvoice.amount) || 0}
+          onClose={() => setShowDebitModal(false)}
+          onSaved={async () => {
+            if (typeof onRefreshInvoices === 'function') await onRefreshInvoices();
+            setDrawerRefresh(k => k + 1);
+          }}
+        />
+      )}
+      {showViewModal && selectedInvoice && (
+        <div style={{ position: 'absolute', top: '-9999px', left: '-9999px' }}>
+          {(() => {
+            const inv = selectedInvoice;
+            const lItems = Array.isArray(inv.line_items) ? inv.line_items : (typeof inv.line_items === 'string' ? (() => { try { return JSON.parse(inv.line_items || '[]'); } catch { return []; } })() : []);
+            let sub = 0, cgst = 0, sgst = 0, igst = 0, cess = 0, disc = 0;
+            lItems.forEach(item => {
+              const base = (parseFloat(item.quantity) || 0) * (parseFloat(item.unit_price) || 0);
+              const d = base * ((parseFloat(item.discount_percent) || 0) / 100);
+              const taxable = base - d;
+              const t = taxable * ((parseFloat(item.tax_percent) || 0) / 100);
+              const c = taxable * ((parseFloat(item.cess_percent) || 0) / 100);
+              sub += taxable; disc += d; cess += c;
+              if (inv.tax_scheme === 'IGST') igst += t;
+              else { cgst += t / 2; sgst += t / 2; }
+            });
+            const totals = { subtotal: sub, totalDiscount: disc, cgstTotal: cgst, sgstTotal: sgst, igstTotal: igst, cessTotal: cess, grandTotal: parseFloat(inv.grand_total || inv.amount) || 0, avgTax: lItems.length > 0 ? (parseFloat(lItems[0].tax_percent) || 18) : 18 };
+            return (
+              <div id={'drawer-pdf-' + inv.id}>
+                <InvoicePDFTemplate form={inv} totals={totals} taxScheme={inv.tax_scheme || 'CGST+SGST'} />
+              </div>
+            );
+          })()}
+        </div>
+      )}
 
       <div style={{ position: 'absolute', top: '-9999px', left: '-9999px' }}>
         {selectedInvoices.map(id => {

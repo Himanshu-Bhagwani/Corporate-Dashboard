@@ -36,6 +36,7 @@ services:
       OLLAMA_URL: http://ollama:11434/api/generate
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
+      APEILO_WEBHOOK_SECRET: ${APEILO_WEBHOOK_SECRET}
     depends_on:
       db:
         condition: service_healthy
@@ -45,6 +46,8 @@ services:
       context: ./frontend
       args:
         VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID}
+        VITE_APEILO_URL: ${VITE_APEILO_URL}
+        VITE_APEILO_API_KEY: ${VITE_APEILO_API_KEY}
     restart: always
     ports:
       - "5173:80"

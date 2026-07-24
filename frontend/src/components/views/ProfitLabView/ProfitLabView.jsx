@@ -82,14 +82,21 @@ const ProfitLabView = () => {
     s.Q1 !== null || s.Q2 !== null || s.Q3 !== null || s.Q4 !== null
   ).slice(0, 6);
 
-  // Monthly P&L for chart — last 12 months
+  // Monthly P&L for chart — include the year so multi-year imports don't
+  // produce duplicate "Jul, Aug… Jul, Aug" labels
   const monthlyChartData = history.map(m => ({
-    name:      m.name?.split(' ')[0] || '',
+    name:      m.name ? m.name.replace(/ 20(\d\d)$/, " '$1") : '',
     revenue:   m.revenue,
     expenses:  m.expenses,
     netProfit: m.netProfit ?? (m.revenue - m.expenses),
     margin:    parseFloat(m.margin ?? 0)
   }));
+
+  // Split point for the margin gradient: green above 0%, red below.
+  const marginVals = monthlyChartData.map(d => d.margin);
+  const mMax = Math.max(...marginVals, 0);
+  const mMin = Math.min(...marginVals, 0);
+  const zeroOffset = mMax === mMin ? 1 : mMax / (mMax - mMin);
 
   return (
     <>
@@ -305,16 +312,35 @@ const ProfitLabView = () => {
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={monthlyChartData} margin={{ top: 10, right: 20, bottom: 0, left: 0 }}>
                 <defs>
-                  <linearGradient id="marginGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor="#10b981" stopOpacity={0.25} />
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                  {/* Green above 0%, red below — the split point is where zero sits on the Y axis */}
+                  <linearGradient id="marginStroke" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset={zeroOffset} stopColor="#10b981" />
+                    <stop offset={zeroOffset} stopColor="#ef4444" />
+                  </linearGradient>
+                  <linearGradient id="marginFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stopColor="#10b981" stopOpacity={0.22} />
+                    <stop offset={zeroOffset} stopColor="#10b981" stopOpacity={0.02} />
+                    <stop offset={zeroOffset} stopColor="#ef4444" stopOpacity={0.02} />
+                    <stop offset="1" stopColor="#ef4444" stopOpacity={0.22} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
                 <YAxis tickFormatter={v => `${v}%`} axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} width={48} />
-                <Tooltip formatter={v => [`${v}%`, 'Margin']} contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0' }} />
-                <Area type="monotone" dataKey="margin" name="Margin %" stroke="#10b981" strokeWidth={2.5} fill="url(#marginGrad)" dot={{ r: 3, fill: '#10b981' }} />
+                <Tooltip
+                  formatter={v => [`${v}%`, 'Margin']}
+                  contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0' }}
+                  labelFormatter={l => l}
+                />
+                <Area
+                  type="monotone" dataKey="margin" name="Margin %"
+                  stroke="url(#marginStroke)" strokeWidth={2.5} fill="url(#marginFill)"
+                  dot={(props) => {
+                    const { cx, cy, payload, index } = props;
+                    const c = payload.margin >= 0 ? '#10b981' : '#ef4444';
+                    return <circle key={index} cx={cx} cy={cy} r={3} fill={c} stroke="#fff" strokeWidth={1} />;
+                  }}
+                />
               </AreaChart>
             </ResponsiveContainer>
           )}

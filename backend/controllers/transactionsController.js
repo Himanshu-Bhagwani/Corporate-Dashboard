@@ -282,10 +282,38 @@ const uploadCSV = async (req, res) => {
       return res.status(400).json({ error: 'No valid rows found in CSV' });
     }
 
-    // Regex-based categorization (instant, no AI call)
-    const autoCategorize = (desc, notes) => {
-      if (!desc && !notes) return 'Misc';
-      const d = ((desc || '') + ' ' + (notes || '')).toLowerCase();
+    // Regex-based categorization (instant, no AI call).
+    // Type-aware: income rows only ever get income categories — an income row
+    // must never land in an expense category like Software or Marketing just
+    // because the payer's name contains that word (it wrecks margin analytics).
+    // Returns a category, or null when nothing matched, so the caller can
+    // decide whether to retry against a wider slice of the text.
+    const classify = (text, txnType) => {
+      const d = text;
+
+      if (txnType === 'income') {
+        // Financing inflows are NOT operating revenue — keep them separate
+        if (d.includes('investment') || d.includes('capital contribution') ||
+            d.includes('capital') || d.includes('funding') || d.includes('investor') ||
+            d.includes('bridge') || d.includes('seed round') || d.includes('series ')) return 'Capital Infusion';
+
+        if (d.includes('dividend') || d.includes('share') || d.includes('mutual fund') ||
+            d.includes('zerodha') || d.includes('groww') || d.includes('stock')) return 'Shares';
+
+        if (d.includes('consulting') || d.includes('advisory') || d.includes('consultant')) return 'Consulting';
+
+        if (d.includes('interest')) return 'Interest Income';
+
+        if (d.includes('refund') || d.includes('reimbursement') || d.includes('overpayment') ||
+            d.includes('credit note') || d.includes('adjustment') || d.includes('advance repayment')) return 'Misc';
+
+        if (d.includes('sale') || d.includes('revenue') || d.includes('invoice') ||
+            d.includes('payment received') || d.includes('product purchase') ||
+            d.includes('subscription') || d.includes('service') || d.includes('fee') ||
+            d.includes('collection') || d.includes('incoming')) return 'Sales';
+
+        return null;
+      }
 
       if (d.includes('salary') || d.includes('salaries') || d.includes('payroll') ||
           d.includes('wages') || d.includes('stipend') || d.includes('payslip') ||
@@ -337,27 +365,67 @@ const uploadCSV = async (req, res) => {
           d.includes('conference') || d.includes('course') || d.includes('certification') ||
           d.includes('udemy') || d.includes('coursera') || d.includes('education')) return 'Training';
 
+      // Capital purchases before consumables: an equipment or machinery buy is
+      // an asset, not an office-supplies expense, and CapEx must stay out of
+      // operating expenses so it is only ever subtracted in Free Cash Flow.
+      if (d.includes('equipment') || d.includes('machinery') || d.includes('vehicle') ||
+          d.includes('furniture') || d.includes('laptop') || d.includes('computer') ||
+          d.includes('hardware') || d.includes('plant and machinery') ||
+          d.includes('capital expenditure') || d.includes('capex')) return 'Equipment';
+
       if (d.includes('stationery') || d.includes('office supply') || d.includes('supplies') ||
-          d.includes('printer') || d.includes('furniture') || d.includes('equipment') ||
-          d.includes('laptop') || d.includes('computer') || d.includes('hardware') ||
+          d.includes('printer') ||
           d.includes('amazon') || d.includes('flipkart')) return 'Office supplies';
 
       if (d.includes('maintenance') || d.includes('repair') || d.includes('amc') ||
           d.includes('housekeeping') || d.includes('cleaning') || d.includes('security')) return 'Maintainance';
 
-      if (d.includes('sales') || d.includes('revenue') || d.includes('invoice') ||
-          d.includes('payment received') || d.includes('collection') || d.includes('refund') ||
-          d.includes('cashback') || d.includes('incoming')) return 'Sales';
+      // Money going OUT is never "Sales". Refunds and discounts handed back to
+      // customers reduce what was actually earned; a vendor invoice paid is an
+      // ordinary operating cost. Labelling either "Sales" made the expense
+      // breakdown unreadable.
+      if (d.includes('refund') || d.includes('cashback') || d.includes('discount') ||
+          d.includes('credit note') || d.includes('write-off')) return 'Refunds & Discounts';
+
+      if (d.includes('commission') || d.includes('brokerage')) return 'Commissions';
+
+      if (d.includes('bonus') || d.includes('incentive') || d.includes('gratuity')) return 'Salaries';
+
+      if (d.includes('reimbursement') || d.includes('expense claim')) return 'Reimbursements';
+
+      if (d.includes('invoice') || d.includes('vendor payment') || d.includes('bill payment') ||
+          d.includes('service charge') || d.includes('service fee') ||
+          d.includes('operating expense')) return 'Operating Expenses';
 
       if (d.includes('share') || d.includes('equity') || d.includes('dividend') ||
           d.includes('mutual fund') || d.includes('zerodha') || d.includes('groww') ||
-          d.includes('stock') || d.includes('investment')) return 'Shares';
+          d.includes('stock') || d.includes('investment') || d.includes('distribution') ||
+          d.includes('return on investment')) return 'Shares';
 
-      return 'Misc';
+      if (d.includes('loan') && (d.includes('interest') || d.includes('emi'))) return 'Loan Interest';
+      if (d.includes('loan') || d.includes('repayment')) return 'Loan Repayment';
+
+      return null;
+    };
+
+    // Statement lines are usually "<what happened> - <counterparty>". Matching
+    // the whole string lets the COUNTERPARTY'S NAME choose the category:
+    // "Equipment purchase - Insurance Partners LLC" was landing in Insurance,
+    // and "Maintenance fee - Insurance Partners LLC" likewise. Classify on the
+    // part before the dash first, then fall back to the full text for bank
+    // narrations that have no separator.
+    const autoCategorize = (desc, notes, txnType) => {
+      if (!desc && !notes) return 'Misc';
+      const full = ((desc || '') + ' ' + (notes || '')).toLowerCase().trim();
+      const head = full.split(/\s+[-–—]\s+/)[0];
+
+      return classify(head, txnType)
+          ?? classify(full, txnType)
+          ?? (txnType === 'income' ? 'Sales' : 'Misc');
     };
 
     results.forEach(txn => {
-      txn.category = autoCategorize(txn.name, txn.notes);
+      txn.category = autoCategorize(txn.name, txn.notes, txn.type);
     });
 
     // Bulk insert

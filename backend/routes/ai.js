@@ -11,7 +11,8 @@ const {
   exportChatPDF,
   executePlan,
   getActivePlans,
-  updatePlanStatus
+  updatePlanStatus,
+  getAiProvider
 } = require('../controllers/aiController');
 const { authenticateToken } = require('../middleware/auth');
 
@@ -26,5 +27,6 @@ router.get('/chat-export', authenticateToken, exportChatPDF);
 router.post('/execute-plan', authenticateToken, executePlan);
 router.get('/active-plans', authenticateToken, getActivePlans);
 router.patch('/active-plans/:id', authenticateToken, updatePlanStatus);
+router.get('/provider', authenticateToken, getAiProvider);
 
 module.exports = router;

@@ -197,7 +197,10 @@ const fetchPnLData = async (companyId, dateSQL, baseParams) => {
     .filter(r => /purchase|cogs|cost of goods|raw material|direct|inventory/i.test(r.cat))
     .reduce((s, r) => s + parseFloat(r.total), 0);
 
-  const cogsVal = cogsExp > 0 ? cogsExp : totalExp * 0.6;
+  // COGS is reported only when direct-cost categories actually exist. The old
+  // fallback assumed 60% of every expense was cost of goods, which invented a
+  // gross margin for businesses that had never recorded one.
+  const cogsVal = cogsExp;
   const net = formulas.netIncome(totalRev, totalExp);
   const gp = formulas.grossProfit(totalRev, cogsVal);
   const ebitVal = formulas.ebit(totalRev, totalExp, interestExp, taxExp);
@@ -209,7 +212,10 @@ const fetchPnLData = async (companyId, dateSQL, baseParams) => {
     netProfitMargin: formulas.netProfitMargin(net, totalRev),
     ebit: ebitVal,
     operatingProfit: ebitVal,
-    interestCoverage: formulas.interestCoverage(ebitVal, Math.max(1, interestExp)),
+    // null rather than a number divided by a fabricated 1 — no interest-bearing
+    // debt recorded means the ratio genuinely does not apply.
+    interestCoverage: interestExp > 0 ? formulas.interestCoverage(ebitVal, interestExp) : null,
+    hasCogsData: cogsExp > 0,
   };
 };
 
@@ -244,31 +250,65 @@ const fetchTaxData = async (companyId, dateSQL, baseParams) => {
   const base = Math.max(0, net * 0.25);
   const sc   = base * 0.07;
   const cess = (base + sc) * 0.04;
+
+  // GST from the tax actually charged on invoices, not a flat 18% of every
+  // bank movement — the old estimate taxed salaries and investor money too.
+  const gstRes = await pool.query(`
+    SELECT type,
+           COALESCE(SUM(COALESCE(cgst_total,0) + COALESCE(sgst_total,0) + COALESCE(igst_total,0)), 0) AS tax
+    FROM invoices WHERE company_id = $1 GROUP BY type`, [companyId]);
+  const outputGST = parseFloat(gstRes.rows.find(r => r.type === 'receivable')?.tax || 0);
+  const inputGST  = parseFloat(gstRes.rows.find(r => r.type === 'payable')?.tax || 0);
+
   return {
     income, expense, net, baseTax: base, surcharge: sc, cess,
     totalTax: base + sc + cess,
-    outputGST: income * 0.18,
-    inputGST:  expense * 0.18,
-    netGST:    Math.max(0, income * 0.18 - expense * 0.18)
+    outputGST,
+    inputGST,
+    netGST: Math.max(0, outputGST - inputGST),
+    // Corporate tax here is an indicative 25% + surcharge + cess on book profit.
+    // Actual liability needs the tax computation (disallowances, depreciation
+    // under s.32, MAT), which this system does not hold.
+    taxIsEstimate: true,
   };
 };
 
-const fetchGSTData = async (companyId, dateSQL, baseParams) => {
+// GST comes from the tax actually charged on invoices — cgst/sgst/igst are
+// stored per invoice at the rate the user picked per line. The previous version
+// applied a flat 18% to every bank credit and debit, which reported GST on
+// salary payments, investor money and other non-taxable flows alike.
+const fetchGSTData = async (companyId) => {
   const result = await pool.query(`
-    SELECT TO_CHAR(date,'YYYY-MM') AS month, type, SUM(amount) AS total
-    FROM transactions WHERE company_id = $1 ${dateSQL}
-    GROUP BY month, type ORDER BY month ASC`, baseParams);
+    SELECT TO_CHAR(issue_date,'YYYY-MM') AS month,
+           type,
+           COALESCE(SUM(COALESCE(cgst_total,0) + COALESCE(sgst_total,0) + COALESCE(igst_total,0)), 0) AS tax,
+           COALESCE(SUM(COALESCE(subtotal, amount, 0)), 0) AS taxable
+    FROM invoices
+    WHERE company_id = $1 AND issue_date IS NOT NULL
+    GROUP BY month, type
+    ORDER BY month ASC`, [companyId]);
+
   const monthMap = {};
   result.rows.forEach(r => {
-    if (!monthMap[r.month]) monthMap[r.month] = { inc: 0, exp: 0 };
-    if (r.type === 'income')  monthMap[r.month].inc = parseFloat(r.total);
-    if (r.type === 'expense') monthMap[r.month].exp = parseFloat(r.total);
+    if (!monthMap[r.month]) monthMap[r.month] = { output: 0, input: 0, outputBase: 0, inputBase: 0 };
+    // Output tax = GST you charged customers. Input tax credit = GST suppliers
+    // charged you on purchase invoices.
+    if (r.type === 'receivable') {
+      monthMap[r.month].output = parseFloat(r.tax);
+      monthMap[r.month].outputBase = parseFloat(r.taxable);
+    } else {
+      monthMap[r.month].input = parseFloat(r.tax);
+      monthMap[r.month].inputBase = parseFloat(r.taxable);
+    }
   });
+
   return Object.entries(monthMap).map(([k, d]) => ({
     label:  toMonthLabel(k),
-    output: d.inc * 0.18,
-    input:  d.exp * 0.18,
-    net:    Math.max(0, d.inc * 0.18 - d.exp * 0.18)
+    output: d.output,
+    input:  d.input,
+    net:    Math.max(0, d.output - d.input),
+    taxableSales:    d.outputBase,
+    taxablePurchases: d.inputBase,
   }));
 };
 
@@ -350,16 +390,38 @@ const queryPnL = async (companyId, fyEndYear = null) => {
     pool.query(`SELECT COALESCE(SUM(amount), 0) as total FROM invoices WHERE company_id = $1 AND type = 'receivable' AND status IN ('pending','overdue')`, [companyId]),
     pool.query(`SELECT COALESCE(SUM(amount), 0) as total FROM invoices WHERE company_id = $1 AND type = 'payable' AND status IN ('pending','overdue')`, [companyId]),
   ]);
+
+  // Revenue splits into operating turnover and other income. "Other income"
+  // was hardcoded to zero even though the data — interest earned, dividends
+  // received and similar — is right there in the transaction categories.
+  const { NON_OPERATING_INCOME: NOI } = require('../utils/nonOperatingCategories');
+  const otherIncRes = await pool.query(
+    `SELECT
+       COALESCE(SUM(CASE WHEN date >= $2 AND date <= $3 THEN amount END), 0) as fy1,
+       COALESCE(SUM(CASE WHEN date >= $4 AND date <= $5 THEN amount END), 0) as fy2
+     FROM transactions
+     WHERE company_id = $1 AND type = 'income'
+       AND (COALESCE(category,'') = ANY($6) OR COALESCE(category,'') ILIKE '%interest%')`,
+    [companyId, fy1Start, fy1End, fy2Start, fy2End, NOI]
+  );
+  const otherInc1 = parseFloat(otherIncRes.rows[0]?.fy1 || 0);
+  const otherInc2 = parseFloat(otherIncRes.rows[0]?.fy2 || 0);
   const buckets = { cogs: [0,0], employee: [0,0], finance: [0,0], depreciation: [0,0], other: [0,0] };
+  // Non-operating expenses (dividends paid, distributions, capital purchases)
+  // are excluded from the P&L entirely — they belong on the balance sheet or in
+  // the movement of equity, not in the statement of profit.
+  const { NON_OPERATING_EXPENSE } = require('../utils/nonOperatingCategories');
   expRes.rows.forEach(r => {
-    const cat = (r.category || '').toLowerCase();
+    const raw = r.category || 'Other';
+    if (NON_OPERATING_EXPENSE.includes(raw)) return;
+    const cat = raw.toLowerCase();
     const v1 = parseFloat(r.fy1 || 0), v2 = parseFloat(r.fy2 || 0);
     let b;
-    if (/salary|salaries|payroll|wages|stipend|employee/.test(cat))                b = 'employee';
-    else if (/purchase|cogs|cost of goods|raw material|direct|inventory/.test(cat)) b = 'cogs';
-    else if (/interest|bank charge|finance|loan/.test(cat))                         b = 'finance';
-    else if (/depreciation|amortization/.test(cat))                                 b = 'depreciation';
-    else                                                                             b = 'other';
+    if (/salary|salaries|payroll|wages|stipend|employee|bonus|commission/.test(cat))     b = 'employee';
+    else if (/purchase|cogs|cost of goods|raw material|direct|inventory|freight|subcontract/.test(cat)) b = 'cogs';
+    else if (/interest|bank charge|finance/.test(cat))                                    b = 'finance';
+    else if (/depreciation|amortization|amortisation/.test(cat))                          b = 'depreciation';
+    else                                                                                   b = 'other';
     buckets[b][0] += v1; buckets[b][1] += v2;
   });
   const fy1Rev = parseFloat(revRes.rows[0]?.fy1||0);
@@ -391,8 +453,20 @@ const queryPnL = async (companyId, fyEndYear = null) => {
   return {
     companyName: coRes.rows[0]?.name || '',
     fy1Label, fy2Label,
-    revenue: { fromOperations: [fy1Rev, fy2Rev], otherIncome: [0, 0] },
-    expenses: { cogs: buckets.cogs, employeeBenefits: buckets.employee, financeCosts: buckets.finance, depreciation: buckets.depreciation, other: buckets.other },
+    // Turnover excludes the non-operating inflows now shown on their own line.
+    revenue: {
+      fromOperations: [fy1Rev - otherInc1, fy2Rev - otherInc2],
+      otherIncome: [otherInc1, otherInc2],
+    },
+    expenses: {
+      cogs: buckets.cogs,
+      employeeBenefits: buckets.employee,
+      financeCosts: buckets.finance,
+      // No asset register, so depreciation is unknown rather than nil.
+      depreciation: [null, null],
+      other: buckets.other,
+    },
+    dataGaps: PNL_GAPS,
     income: parseFloat(allRevRes.rows[0]?.total||0),
     expense: parseFloat(allExpRes.rows[0]?.total||0),
     netProfit: parseFloat(allRevRes.rows[0]?.total||0) - parseFloat(allExpRes.rows[0]?.total||0),
@@ -400,6 +474,23 @@ const queryPnL = async (companyId, fyEndYear = null) => {
     ratios2,
   };
 };
+
+// Lines a bookkeeping system fed by bank statements and invoices genuinely
+// cannot derive — each needs a register this app does not hold. Surfaced to the
+// viewer so an empty cell reads as "not available" rather than "zero".
+const BALANCE_SHEET_GAPS = [
+  { line: 'Property, Plant & Equipment (net)', needs: 'Fixed-asset register with useful lives — capital purchases are shown at cost, before depreciation' },
+  { line: 'Intangible assets & capital WIP', needs: 'Asset register' },
+  { line: 'Inventories', needs: 'Stock register or closing-stock valuation' },
+  { line: 'Deferred tax asset / liability', needs: 'Tax computation with timing differences' },
+  { line: 'Long-term & short-term provisions', needs: 'Gratuity / leave-encashment actuarial workings' },
+  { line: 'Investments and short-term loans', needs: 'Investment register' },
+];
+
+const PNL_GAPS = [
+  { line: 'Cost of goods sold', needs: 'Purchases and closing stock — shown only when direct-cost categories are recorded' },
+  { line: 'Depreciation & amortisation', needs: 'Fixed-asset register with useful lives' },
+];
 
 const queryBalanceSheet = async (companyId, fyEndYear = null) => {
   const { fy1Start, fy1End, fy2Start, fy2End, fy1Label, fy2Label } = getFYRanges(fyEndYear);
@@ -432,18 +523,92 @@ const queryBalanceSheet = async (companyId, fyEndYear = null) => {
   const cashFY2 = cashFY1 - fy1Net;
   const tradeRec = parseFloat(recRes.rows[0]?.total||0);
   const tradePay = parseFloat(payRes.rows[0]?.total||0);
-  const totalAssetsFY1 = cashFY1 + tradeRec;
-  const totalAssetsFY2 = cashFY2;
-  const partnersFY1 = totalAssetsFY1 - tradePay - fy1Net;
-  const partnersFY2 = totalAssetsFY2 - fy2Net;
+  // ── Lines that CAN be derived from data this app already holds ──────────
+  // Previously every one of these was hardcoded to zero, which is why the
+  // statement looked empty even for a company with loans and equipment.
+  const [loanRes, gstTdsRes, capexRes] = await Promise.all([
+    // Bank borrowings still outstanding
+    pool.query(
+      `SELECT COALESCE(SUM(outstanding_principal),0) AS total FROM loans
+        WHERE company_id = $1 AND status IN ('DISBURSED','REPAYMENT_ACTIVE')`, [companyId]
+    ).catch(() => ({ rows: [{ total: 0 }] })),
+    // Statutory dues not yet paid
+    pool.query(
+      `SELECT COALESCE(SUM(net_tax_payable),0) AS total FROM compliance_events
+        WHERE company_id = $1 AND status = 'PENDING'`, [companyId]
+    ).catch(() => ({ rows: [{ total: 0 }] })),
+    // Capital purchases, at cost. Net book value needs a depreciation register,
+    // so this is flagged as a gap rather than presented as written-down value.
+    pool.query(
+      `SELECT
+         COALESCE(SUM(CASE WHEN date >= $2 AND date <= $3 THEN amount END),0) AS fy1,
+         COALESCE(SUM(CASE WHEN date >= $4 AND date <= $5 THEN amount END),0) AS fy2
+       FROM transactions
+       WHERE company_id = $1 AND type = 'expense' AND category = 'Equipment'`,
+      [companyId, fy1Start, fy1End, fy2Start, fy2End]
+    ),
+  ]);
+
+  const longTermDebt = parseFloat(loanRes.rows[0]?.total || 0);
+  const statutoryDues = parseFloat(gstTdsRes.rows[0]?.total || 0);
+  const ppeFY1 = parseFloat(capexRes.rows[0]?.fy1 || 0);
+  const ppeFY2 = parseFloat(capexRes.rows[0]?.fy2 || 0);
+
+  // Owner capital from the Chart of Accounts — coaRes was already being
+  // fetched here and then discarded.
+  const coaEquity = coaRes.rows
+    .filter(r => r.account_type === 'Equity' && !/retained earnings/i.test(r.name))
+    .reduce((s, r) => s + (parseFloat(r.opening_balance) || 0), 0);
+
+  const totalAssetsFY1 = cashFY1 + tradeRec + ppeFY1;
+  const totalAssetsFY2 = cashFY2 + ppeFY2;
+  // Prefer recorded capital; fall back to the balancing figure when the Chart
+  // of Accounts has no equity rows yet.
+  const derivedPartnersFY1 = totalAssetsFY1 - tradePay - longTermDebt - statutoryDues - fy1Net;
+  const partnersFY1 = coaEquity > 0 ? coaEquity : derivedPartnersFY1;
+  const partnersFY2 = coaEquity > 0 ? coaEquity : (totalAssetsFY2 - fy2Net);
+
   return {
     companyName: coRes.rows[0]?.name || '',
     fy1Label, fy2Label,
-    equity: { partnersContribution: [Math.max(0,partnersFY1), Math.max(0,partnersFY2)], partnersCurrentAccount: [0,0], reservesAndSurplus: [fy1Net, fy2Net] },
-    nonCurrentLiabilities: { longTermBorrowings: [0,0], deferredTaxLiabilities: [0,0], otherLongTermLiabilities: [0,0], longTermProvisions: [0,0] },
-    currentLiabilities: { shortTermBorrowings: [0,0], tradePayables: [tradePay, 0], otherCurrentLiabilities: [0,0], shortTermProvisions: [0,0] },
-    nonCurrentAssets: { ppe: [0,0], intangibleAssets: [0,0], capitalWIP: [0,0], intangibleUnderDev: [0,0], nonCurrentInvestments: [0,0], deferredTaxAssets: [0,0], longTermLoans: [0,0], otherNonCurrent: [0,0] },
-    currentAssets: { currentInvestments: [0,0], inventories: [0,0], tradeReceivables: [tradeRec, 0], cashAndBank: [cashFY1, cashFY2], shortTermLoans: [0,0], otherCurrent: [0,0] },
+    equity: {
+      partnersContribution: [Math.max(0, partnersFY1), Math.max(0, partnersFY2)],
+      partnersCurrentAccount: [0, 0],
+      reservesAndSurplus: [fy1Net, fy2Net],
+    },
+    nonCurrentLiabilities: {
+      longTermBorrowings: [longTermDebt, 0],
+      deferredTaxLiabilities: [null, null],
+      otherLongTermLiabilities: [0, 0],
+      longTermProvisions: [null, null],
+    },
+    currentLiabilities: {
+      shortTermBorrowings: [0, 0],
+      tradePayables: [tradePay, 0],
+      otherCurrentLiabilities: [statutoryDues, 0],
+      shortTermProvisions: [null, null],
+    },
+    nonCurrentAssets: {
+      ppe: [ppeFY1, ppeFY2],
+      intangibleAssets: [null, null],
+      capitalWIP: [null, null],
+      intangibleUnderDev: [null, null],
+      nonCurrentInvestments: [null, null],
+      deferredTaxAssets: [null, null],
+      longTermLoans: [null, null],
+      otherNonCurrent: [0, 0],
+    },
+    currentAssets: {
+      currentInvestments: [null, null],
+      inventories: [null, null],
+      tradeReceivables: [tradeRec, 0],
+      cashAndBank: [cashFY1, cashFY2],
+      shortTermLoans: [null, null],
+      otherCurrent: [0, 0],
+    },
+    // Rendered as an explanatory note under the statement.
+    dataGaps: BALANCE_SHEET_GAPS,
+    ppeAtCost: true,
   };
 };
 
@@ -459,62 +624,21 @@ const getPnL = async (req, res) => {
 };
 
 // Returns statutory two-FY format consumed by the Balance Sheet viewer
+// Returns statutory two-FY format consumed by the Balance Sheet viewer.
+//
+// Delegates to queryBalanceSheet — the exports (PDF/Excel) already used that,
+// while this endpoint carried a second copy that still hardcoded loans, PPE and
+// statutory dues to zero. One implementation means the screen and the
+// downloaded statement can no longer disagree.
 const getBalanceSheet = async (req, res) => {
   try {
     const companyId = getCompanyId(req);
     const fyEndYear = req.query.fy ? parseInt(req.query.fy, 10) : null;
-    const { fy1Start, fy1End, fy2Start, fy2End, fy1Label, fy2Label } = getFYRanges(fyEndYear);
+    const { fy1Start, fy1End } = getFYRanges(fyEndYear);
 
-    const companyRes = await pool.query(`SELECT name FROM companies WHERE id = $1`, [companyId]);
-    const companyName = companyRes.rows[0]?.name || '';
+    const sheet = await queryBalanceSheet(companyId, fyEndYear);
 
-    const profitRes = await pool.query(`
-      SELECT
-        COALESCE(SUM(CASE WHEN type = 'income' AND date >= $2 AND date <= $3 THEN amount
-                          WHEN type = 'expense' AND date >= $2 AND date <= $3 THEN -amount END), 0) as fy1_net,
-        COALESCE(SUM(CASE WHEN type = 'income' AND date >= $4 AND date <= $5 THEN amount
-                          WHEN type = 'expense' AND date >= $4 AND date <= $5 THEN -amount END), 0) as fy2_net
-      FROM transactions WHERE company_id = $1
-    `, [companyId, fy1Start, fy1End, fy2Start, fy2End]);
-
-    const fy1Net = parseFloat(profitRes.rows[0]?.fy1_net || 0);
-    const fy2Net = parseFloat(profitRes.rows[0]?.fy2_net || 0);
-
-    // Cash in bank — per-account balance (opening + linked income − linked expenses)
-    const accountsRes = await pool.query(`
-      SELECT COALESCE(SUM(
-        a.opening_balance
-        + COALESCE(inc.total_income, 0)
-        - COALESCE(exp.total_expense, 0)
-      ), 0) AS cash_in_bank
-      FROM accounts a
-      LEFT JOIN (SELECT account_id, SUM(amount) AS total_income FROM transactions
-        WHERE company_id = $1 AND type = 'income' AND account_id IS NOT NULL GROUP BY account_id) inc ON inc.account_id = a.id
-      LEFT JOIN (SELECT account_id, SUM(amount) AS total_expense FROM transactions
-        WHERE company_id = $1 AND type = 'expense' AND account_id IS NOT NULL GROUP BY account_id) exp ON exp.account_id = a.id
-      WHERE a.company_id = $1
-    `, [companyId]);
-
-    const cashFY1 = parseFloat(accountsRes.rows[0]?.cash_in_bank || 0);
-    const cashFY2 = cashFY1 - fy1Net;
-
-    const recRes = await pool.query(`
-      SELECT COALESCE(SUM(amount), 0) as total FROM invoices
-      WHERE company_id = $1 AND type = 'receivable' AND status IN ('pending', 'overdue')
-    `, [companyId]);
-    const tradeRec = parseFloat(recRes.rows[0]?.total || 0);
-
-    const payRes = await pool.query(`
-      SELECT COALESCE(SUM(amount), 0) as total FROM invoices
-      WHERE company_id = $1 AND type = 'payable' AND status IN ('pending', 'overdue')
-    `, [companyId]);
-    const tradePay = parseFloat(payRes.rows[0]?.total || 0);
-
-    const totalAssetsFY1 = cashFY1 + tradeRec;
-    const totalAssetsFY2 = cashFY2;
-    const partnersFY1    = totalAssetsFY1 - tradePay - fy1Net;
-    const partnersFY2    = totalAssetsFY2 - fy2Net;
-
+    // Per-bank-account balances, shown alongside the statement.
     const acctRes = await pool.query(`
       SELECT a.id, a.name, a.type, a.opening_balance,
         COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount ELSE -t.amount END), 0) as net
@@ -524,72 +648,47 @@ const getBalanceSheet = async (req, res) => {
       GROUP BY a.id, a.name, a.type, a.opening_balance
     `, [companyId]);
 
-    const [revQ, expQ] = await Promise.all([
-      pool.query(`SELECT COALESCE(SUM(CASE WHEN date >= $2 AND date <= $3 THEN amount END), 0) as total FROM transactions WHERE company_id = $1 AND type = 'income'`, [companyId, fy1Start, fy1End]),
-      pool.query(`SELECT COALESCE(SUM(CASE WHEN date >= $2 AND date <= $3 THEN amount END), 0) as total FROM transactions WHERE company_id = $1 AND type = 'expense'`, [companyId, fy1Start, fy1End]),
+    // Ratios for the FY on display, from real recorded categories.
+    const [revQ, expQ, catRes] = await Promise.all([
+      pool.query(`SELECT COALESCE(SUM(CASE WHEN date >= $2 AND date <= $3 THEN amount END), 0) as total
+                    FROM transactions WHERE company_id = $1 AND type = 'income'`, [companyId, fy1Start, fy1End]),
+      pool.query(`SELECT COALESCE(SUM(CASE WHEN date >= $2 AND date <= $3 THEN amount END), 0) as total
+                    FROM transactions WHERE company_id = $1 AND type = 'expense'`, [companyId, fy1Start, fy1End]),
+      pool.query(`SELECT COALESCE(category,'Other') AS cat, COALESCE(SUM(amount),0) AS total
+                    FROM transactions
+                   WHERE company_id = $1 AND type = 'expense' AND date >= $2 AND date <= $3
+                   GROUP BY COALESCE(category,'Other')`, [companyId, fy1Start, fy1End]),
     ]);
-    const fy1Rev = parseFloat(revQ.rows[0]?.total||0);
-    const fy1Exp = parseFloat(expQ.rows[0]?.total||0);
+    const fy1Rev = parseFloat(revQ.rows[0]?.total || 0);
+    const fy1Exp = parseFloat(expQ.rows[0]?.total || 0);
+    const sumWhere = (re) => catRes.rows
+      .filter(r => re.test(r.cat))
+      .reduce((s, r) => s + parseFloat(r.total), 0);
+
     const ratios = formulas.computeAllRatios({
       revenue: fy1Rev,
       expenses: fy1Exp,
-      cash: cashFY1,
-      receivables: tradeRec,
-      payables: tradePay,
-      cogsAmount: fy1Exp * 0.6,
-      interestExpense: fy1Exp * 0.05,
+      cash: sheet.currentAssets.cashAndBank[0],
+      receivables: sheet.currentAssets.tradeReceivables[0],
+      payables: sheet.currentLiabilities.tradePayables[0],
+      cogsAmount: sumWhere(/purchase|cogs|cost of goods|raw material|direct|inventory|freight|subcontract/i),
+      interestExpense: sumWhere(/interest|bank charge|finance/i),
       retainedEarnings: fy1Rev - fy1Exp,
     });
 
     res.json({
-      companyName,
-      fy1Label,
-      fy2Label,
-      equity: {
-        partnersContribution:   [Math.max(0, partnersFY1), Math.max(0, partnersFY2)],
-        partnersCurrentAccount: [0, 0],
-        reservesAndSurplus:     [fy1Net, fy2Net]
-      },
-      nonCurrentLiabilities: {
-        longTermBorrowings:       [0, 0],
-        deferredTaxLiabilities:   [0, 0],
-        otherLongTermLiabilities: [0, 0],
-        longTermProvisions:       [0, 0]
-      },
-      currentLiabilities: {
-        shortTermBorrowings:     [0, 0],
-        tradePayables:           [tradePay, 0],
-        otherCurrentLiabilities: [0, 0],
-        shortTermProvisions:     [0, 0]
-      },
-      nonCurrentAssets: {
-        ppe:                   [0, 0],
-        intangibleAssets:      [0, 0],
-        capitalWIP:            [0, 0],
-        intangibleUnderDev:    [0, 0],
-        nonCurrentInvestments: [0, 0],
-        deferredTaxAssets:     [0, 0],
-        longTermLoans:         [0, 0],
-        otherNonCurrent:       [0, 0]
-      },
-      currentAssets: {
-        currentInvestments: [0, 0],
-        inventories:        [0, 0],
-        tradeReceivables:   [tradeRec, 0],
-        cashAndBank:        [cashFY1, cashFY2],
-        shortTermLoans:     [0, 0],
-        otherCurrent:       [0, 0]
-      },
+      ...sheet,
       assets: acctRes.rows.map(r => ({
         name: r.name,
-        balance: parseFloat(r.opening_balance) + parseFloat(r.net)
+        balance: parseFloat(r.opening_balance) + parseFloat(r.net),
       })),
-      liabilities:   [],
+      liabilities: [],
       equity_legacy: [],
       ratios,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 };
+
 
 const getCashFlow = async (req, res) => {
   try {
@@ -661,7 +760,7 @@ const getGST = async (req, res) => {
     const { from, to } = req.query;
     const { sql, params } = buildDateFilter(from, to);
     const base = [companyId, ...params];
-    const months = await fetchGSTData(companyId, sql, base);
+    const months = await fetchGSTData(companyId);
     const totOut = months.reduce((s, m) => s + m.output, 0);
     const totIn  = months.reduce((s, m) => s + m.input, 0);
     const itcUtil = totOut > 0 ? formulas.pct(totIn / totOut * 100) : 0;
@@ -1227,7 +1326,7 @@ const exportReport = async (req, res) => {
         });
 
       } else if (reportType === 'gst') {
-        const months = await fetchGSTData(companyId, sql, baseParams);
+        const months = await fetchGSTData(companyId);
         const totOut = months.reduce((s,m)=>s+m.output,0);
         const totIn  = months.reduce((s,m)=>s+m.input,0);
         const totNet = months.reduce((s,m)=>s+m.net,0);
@@ -1264,7 +1363,7 @@ const exportReport = async (req, res) => {
       else if (reportType === 'balance-sheet') rawAnal = await fetchBalanceSheetData(companyId, sql, baseParams);
       else if (reportType === 'cash-flow') rawAnal = await fetchCashFlowData(companyId, sql, baseParams);
       else if (reportType === 'tax')       rawAnal = await fetchTaxData(companyId, sql, baseParams);
-      else if (reportType === 'gst')       rawAnal = await fetchGSTData(companyId, sql, baseParams);
+      else if (reportType === 'gst')       rawAnal = await fetchGSTData(companyId);
 
       const analMetrics = rawAnal ? buildMetricsForAI(reportType, rawAnal) : {};
 
@@ -1490,7 +1589,7 @@ const exportReport = async (req, res) => {
         const sh = wb.addWorksheet('GST Report');
         xlSheetHeader(sh, 'GST Report', `Period: ${periodLabel}`);
         sh.columns = [{ key: 'm', width: 20 }, { key: 'out', width: 26 }, { key: 'inp', width: 26 }, { key: 'net', width: 26 }];
-        const months = await fetchGSTData(companyId, sql, baseParams);
+        const months = await fetchGSTData(companyId);
         xlHeader(sh.addRow(['Month', 'Output GST (Rs.)', 'Input GST (Rs.)', 'Net Payable (Rs.)']), 4);
         months.forEach((m, i) => {
           const row = sh.addRow([m.label, m.output, m.input, m.net]);
@@ -1507,7 +1606,7 @@ const exportReport = async (req, res) => {
       else if (reportType === 'balance-sheet') xlRawAnal = await fetchBalanceSheetData(companyId, sql, baseParams);
       else if (reportType === 'cash-flow') xlRawAnal = await fetchCashFlowData(companyId, sql, baseParams);
       else if (reportType === 'tax')       xlRawAnal = await fetchTaxData(companyId, sql, baseParams);
-      else if (reportType === 'gst')       xlRawAnal = await fetchGSTData(companyId, sql, baseParams);
+      else if (reportType === 'gst')       xlRawAnal = await fetchGSTData(companyId);
 
       const xlMetrics   = xlRawAnal ? buildMetricsForAI(reportType, xlRawAnal) : {};
       const xlSugg      = getFallbackSuggestions(reportType, xlMetrics);

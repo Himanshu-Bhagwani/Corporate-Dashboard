@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { GoogleOAuthProvider } from '@react-oauth/google'
+import './services/httpInterceptor'   // installs silent token refresh (side effect)
 import './index.css'
 import App from './App.jsx'
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './MainLayout.css';
+import { useApeilo } from '../../../context/ApeiloContext';
 import Sidebar from '../Sidebar/Sidebar';
 import DashboardView from '../../views/DashboardView/DashboardView';
 import TransactionsView from '../../views/TransactionsView/TransactionsView';
@@ -29,6 +30,34 @@ import { getComplianceScore } from '../../../services/complianceService';
 import { useAuth } from '../../../context/AuthContext';
 
 const MainLayout = () => {
+  const apeilo = useApeilo();
+
+  /**
+   * Send transactions imported from an uploaded PDF/CSV statement to Apeilo
+   * for fraud scoring, so imported spend is analysed just like manual entries.
+   * Fire-and-forget: never blocks or breaks the upload flow.
+   */
+  const scoreImportedTransactions = (uploadResult) => {
+    const rows = uploadResult?.transactions || uploadResult?.data?.transactions || [];
+    if (!Array.isArray(rows) || rows.length === 0) return;
+    const batch = rows
+      .map((t) => {
+        const amount = Math.abs(parseFloat(t.amount));
+        if (!isFinite(amount) || amount <= 0) return null;
+        // Use the statement's own date for the hour when it has one.
+        const when = t.date ? new Date(t.date) : null;
+        return {
+          amount,
+          hour: when && !isNaN(when) ? when.getHours() : undefined,
+        };
+      })
+      .filter(Boolean);
+    if (!batch.length) return;
+    apeilo
+      .trackTransactionBatch(batch, { source: 'statement_upload' })
+      .catch(() => {});
+  };
+
   const { currentCompany, companies, fetchCompanies } = useAuth();
   const [activeView, setActiveView] = useState('dashboard');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -240,10 +269,11 @@ const MainLayout = () => {
   // --- CSV Upload Handler ---
   const handleUploadCSV = async (file, accountId = null) => {
     try {
-      await transactionsAPI.uploadCSV(file, currentCompany.id, accountId);
+      const res = await transactionsAPI.uploadCSV(file, currentCompany.id, accountId);
       fetchTransactions();
       fetchAccounts();
       fetchDashboardData();
+      scoreImportedTransactions(res);   // feed the imported rows to Apeilo
     } catch (err) {
       console.error('Failed to upload CSV:', err);
       throw err;
@@ -266,10 +296,11 @@ const MainLayout = () => {
   // --- PDF Upload Handler ---
   const handleUploadPDF = async (file, accountId = null) => {
     try {
-      await transactionsAPI.uploadPDF(file, currentCompany.id, accountId);
+      const res = await transactionsAPI.uploadPDF(file, currentCompany.id, accountId);
       fetchTransactions();
       fetchAccounts();
       fetchDashboardData();
+      scoreImportedTransactions(res);   // feed the imported rows to Apeilo
     } catch (err) {
       console.error('Failed to upload PDF:', err);
       throw err;
@@ -433,6 +464,17 @@ const MainLayout = () => {
       fetchChartOfAccounts();
     } catch (err) {
       console.error('Failed to delete COA entry:', err);
+      throw err;
+    }
+  };
+
+  const handleClearCoaType = async (accountType) => {
+    try {
+      const result = await accountingAPI.clearChartOfAccountsType(accountType, currentCompany.id);
+      fetchChartOfAccounts();
+      return result;
+    } catch (err) {
+      console.error('Failed to clear COA type:', err);
       throw err;
     }
   };
@@ -644,6 +686,8 @@ const MainLayout = () => {
               onRefreshInvoices={handleRefreshInvoices}
               setActiveView={setActiveView}
               onParseOCR={handleParseOCR}
+              openCreate={Boolean(navigateTarget && navigateTarget.view === 'invoices' && navigateTarget.openCreate)}
+              onConsumeNavigate={() => setNavigateTarget(null)}
             />
           )}
           {activeView === 'cashflow' && (
@@ -672,6 +716,7 @@ const MainLayout = () => {
               onCreateAccount={handleCreateCoaEntry}
               onUpdateAccount={handleUpdateCoaEntry}
               onDeleteAccount={handleDeleteCoaEntry}
+              onClearAccountType={handleClearCoaType}
               onCreateContact={handleCreateContact}
               onUpdateContact={handleUpdateContact}
               onDeleteContact={handleDeleteContact}
@@ -701,6 +746,10 @@ const MainLayout = () => {
               userCibil={(() => {
                 try { return JSON.parse(localStorage.getItem('financialMetrics') || '{}').cibil || 0; } catch { return 0; }
               })()}
+              onTransactionsChanged={() => {
+                fetchTransactions();
+                fetchDashboardData();
+              }}
             />
           )}
           {activeView === 'financial-metrics' && (

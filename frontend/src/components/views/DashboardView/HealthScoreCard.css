@@ -334,3 +334,100 @@
 
   .hs-summary-pills { display: none; }
 }
+
+/* == Data-Required (gated) metric cards ========================== */
+.hs-metric-gated {
+  border-color: rgba(99, 102, 241, 0.25) !important;
+  background: linear-gradient(135deg, #fafbff 0%, #f5f6ff 100%);
+}
+
+.hs-status-gated { background: #6366f1; }
+
+.hs-pill-gated {
+  background: rgba(99, 102, 241, 0.1);
+  color: #6366f1;
+}
+
+.hs-metric-value-gated {
+  color: #6366f1 !important;
+  font-size: 1.05rem !important;
+  font-weight: 800;
+}
+
+.hs-req-box {
+  background: rgba(99, 102, 241, 0.06);
+  border: 1px dashed rgba(99, 102, 241, 0.3);
+  border-radius: 10px;
+  padding: 0.6rem 0.8rem;
+  margin: 0.5rem 0;
+}
+
+.hs-req-title {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #4f46e5;
+  margin-bottom: 0.3rem;
+}
+
+.hs-req-list {
+  margin: 0;
+  padding-left: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.hs-req-list li {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #4a5568;
+}
+
+.hs-req-hint {
+  font-size: 0.66rem;
+  color: #94a3b8;
+  margin-top: 0.35rem;
+  line-height: 1.4;
+}
+
+/* == Extra value chips (MoM/YoY, DSO/DPO/CCC) ==================== */
+.hs-metric-extra {
+  display: flex;
+  gap: 0.45rem;
+  margin: 0.35rem 0 0.5rem;
+  flex-wrap: wrap;
+}
+
+.hs-extra-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: #f8fafc;
+  border: 1px solid #eef2f7;
+  border-radius: 8px;
+  padding: 0.22rem 0.55rem;
+}
+
+.hs-extra-label {
+  font-size: 0.62rem;
+  font-weight: 800;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.hs-extra-value {
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+/* == Formula footnote on every card ============================== */
+.hs-metric-formula {
+  margin-top: 0.5rem;
+  padding-top: 0.45rem;
+  border-top: 1px dashed #eef2f7;
+  font-size: 0.64rem;
+  color: #94a3b8;
+  font-weight: 600;
+  font-style: italic;
+}

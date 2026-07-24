@@ -77,8 +77,49 @@ const blankRow = (key) => (
   </tr>
 );
 
+/**
+ * Explains the lines shown as "-".
+ *
+ * A dash means the figure needs a register this app doesn't keep — an asset
+ * register for depreciation, a stock register for inventory. Saying so is more
+ * honest than printing a zero, which would read as "nil" to an accountant.
+ */
+const DataGapNote = ({ gaps }) => {
+  if (!gaps || gaps.length === 0) return null;
+  return (
+    <div style={{
+      marginTop: 18, padding: '14px 16px', border: '1px solid #e2e8f0',
+      borderLeft: '3px solid #f59e0b', borderRadius: 6, background: '#fffbeb',
+      fontFamily: 'system-ui, sans-serif', fontSize: 12.5, lineHeight: 1.55, color: '#78350f',
+    }}>
+      <div style={{ fontWeight: 700, marginBottom: 6 }}>
+        Lines shown as “-” need bookkeeping data this workspace doesn’t hold
+      </div>
+      <div style={{ marginBottom: 8, color: '#92400e' }}>
+        Everything else on this statement is computed from your transactions, invoices,
+        loans and Chart of Accounts. To complete the rest, connect Tally
+        (Settings → Integrations) or import a trial balance.
+      </div>
+      <ul style={{ margin: 0, paddingLeft: 18 }}>
+        {gaps.map(g => (
+          <li key={g.line} style={{ marginBottom: 3 }}>
+            <b>{g.line}</b> — {g.needs}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+};
+
 // ─── Balance Sheet ──────────────────────────────────────────────────────────
-const BalanceSheetTable = ({ data, fy1Label, fy2Label }) => {
+const BalanceSheetTable = ({ data, fy1Label, fy2Label }) => (
+  <>
+    <BalanceSheetRows data={data} fy1Label={fy1Label} fy2Label={fy2Label} />
+    <DataGapNote gaps={data.dataGaps} />
+  </>
+);
+
+const BalanceSheetRows = ({ data, fy1Label, fy2Label }) => {
   const eq  = data.equity || {};
   const ncl = data.nonCurrentLiabilities || {};
   const cl  = data.currentLiabilities || {};
@@ -135,7 +176,7 @@ const BalanceSheetTable = ({ data, fy1Label, fy2Label }) => {
 
         {subHead('1. Non-current assets')}
         {row('(a) Property, Plant and Equipment and Intangible assets', '', null, null, 20)}
-        {row('(i)   Property, Plant and Equipment', '11', nca.ppe?.[0], nca.ppe?.[1], 40)}
+        {row(`(i)   Property, Plant and Equipment${data.ppeAtCost ? ' (at cost)' : ''}`, '11', nca.ppe?.[0], nca.ppe?.[1], 40)}
         {row('(ii)  Intangible assets', '11', nca.intangibleAssets?.[0], nca.intangibleAssets?.[1], 40)}
         {row('(iii) Capital work in progress', '11', nca.capitalWIP?.[0], nca.capitalWIP?.[1], 40)}
         {row('(iv)  Intangible assets under development', '11', nca.intangibleUnderDev?.[0], nca.intangibleUnderDev?.[1], 40)}
@@ -171,7 +212,14 @@ const BalanceSheetTable = ({ data, fy1Label, fy2Label }) => {
 };
 
 // ─── Profit & Loss ──────────────────────────────────────────────────────────
-const PnLTable = ({ data, fy1Label, fy2Label }) => {
+const PnLTable = ({ data, fy1Label, fy2Label }) => (
+  <>
+    <PnLRows data={data} fy1Label={fy1Label} fy2Label={fy2Label} />
+    <DataGapNote gaps={data.dataGaps} />
+  </>
+);
+
+const PnLRows = ({ data, fy1Label, fy2Label }) => {
   const rev = data.revenue || {};
   const exp = data.expenses || {};
 

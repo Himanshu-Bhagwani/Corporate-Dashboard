@@ -189,21 +189,90 @@ const InvoicePDFTemplate = React.forwardRef(({ form, totals, taxScheme }, ref) =
 
           {/* Totals */}
           <div className="ci-pdf-totals">
-            <div className="ci-pdf-totals-row"><span>Subtotal</span><span>{fmtINR(totals.subtotal)}</span></div>
-            {totals.totalDiscount > 0 && <div className="ci-pdf-totals-row"><span>Total Discount</span><span style={{ color: '#ef4444' }}>-{fmtINR(totals.totalDiscount)}</span></div>}
+            {/* Line-item subtotal (pre-discount, pre-tax) */}
+            <div className="ci-pdf-totals-row">
+              <span>Subtotal</span>
+              <span>{fmtINR((totals.subtotal || 0) + (totals.totalDiscount || 0))}</span>
+            </div>
+            {totals.totalDiscount > 0 && (
+              <div className="ci-pdf-totals-row">
+                <span>Discount</span>
+                <span style={{ color: '#ef4444' }}>-{fmtINR(totals.totalDiscount)}</span>
+              </div>
+            )}
+            <div className="ci-pdf-totals-row" style={{ borderTop: '1px dashed #e5e7eb', paddingTop: 6, marginTop: 2 }}>
+              <span>Taxable Value</span>
+              <span>{fmtINR(totals.subtotal)}</span>
+            </div>
             {taxScheme === 'IGST' ? (
-              totals.igstTotal > 0 && <div className="ci-pdf-totals-row"><span>IGST</span><span>{fmtINR(totals.igstTotal)}</span></div>
+              totals.igstTotal > 0 && (
+                <div className="ci-pdf-totals-row">
+                  <span>IGST ({totals.avgTax}%)</span>
+                  <span>{fmtINR(totals.igstTotal)}</span>
+                </div>
+              )
             ) : (
               <>
-                {totals.cgstTotal > 0 && <div className="ci-pdf-totals-row"><span>CGST ({totals.avgTax / 2}%)</span><span>{fmtINR(totals.cgstTotal)}</span></div>}
-                {totals.sgstTotal > 0 && <div className="ci-pdf-totals-row"><span>SGST ({totals.avgTax / 2}%)</span><span>{fmtINR(totals.sgstTotal)}</span></div>}
+                {totals.cgstTotal > 0 && (
+                  <div className="ci-pdf-totals-row">
+                    <span>CGST ({totals.avgTax / 2}%)</span>
+                    <span>{fmtINR(totals.cgstTotal)}</span>
+                  </div>
+                )}
+                {totals.sgstTotal > 0 && (
+                  <div className="ci-pdf-totals-row">
+                    <span>SGST ({totals.avgTax / 2}%)</span>
+                    <span>{fmtINR(totals.sgstTotal)}</span>
+                  </div>
+                )}
               </>
             )}
-            {totals.cessTotal > 0 && <div className="ci-pdf-totals-row"><span>Cess</span><span>{fmtINR(totals.cessTotal)}</span></div>}
+            {totals.cessTotal > 0 && (
+              <div className="ci-pdf-totals-row">
+                <span>CESS</span>
+                <span>{fmtINR(totals.cessTotal)}</span>
+              </div>
+            )}
             <div className="ci-pdf-totals-row total-due">
-              <span>Total Due</span><span>{fmtINR(totals.grandTotal)}</span>
+              <span>Total</span><span>{fmtINR(totals.grandTotal)}</span>
             </div>
-            <div className="ci-pdf-amount-words">{amountInWords(totals.grandTotal)}</div>
+            {parseFloat(form.debit_notes_total || 0) > 0 && (
+              <div className="ci-pdf-totals-row" style={{ color: '#d97706' }}>
+                <span>Debit Notes (+)</span>
+                <span>+{fmtINR(form.debit_notes_total)}</span>
+              </div>
+            )}
+            {parseFloat(form.credit_notes_total || 0) > 0 && (
+              <div className="ci-pdf-totals-row" style={{ color: '#059669' }}>
+                <span>Credit Notes (−)</span>
+                <span>-{fmtINR(form.credit_notes_total)}</span>
+              </div>
+            )}
+            {parseFloat(form.amount_paid || 0) > 0 && (
+              <div className="ci-pdf-totals-row" style={{ color: '#3b82f6' }}>
+                <span>Amount Paid</span>
+                <span>-{fmtINR(form.amount_paid)}</span>
+              </div>
+            )}
+            {(() => {
+              const grand = parseFloat(totals.grandTotal) || 0;
+              const dn = parseFloat(form.debit_notes_total || 0);
+              const cn = parseFloat(form.credit_notes_total || 0);
+              const paid = parseFloat(form.amount_paid || 0);
+              const backendOutstanding = form.outstanding !== undefined ? parseFloat(form.outstanding) : null;
+              const balance = backendOutstanding !== null
+                ? Math.max(0, backendOutstanding)
+                : Math.max(0, grand + dn - cn - paid);
+              return (
+                <>
+                  <div className="ci-pdf-totals-row" style={{ fontWeight: 800, color: '#111827', borderTop: '1px solid #111827', paddingTop: 6, marginTop: 2 }}>
+                    <span>Balance Due</span>
+                    <span>{fmtINR(balance)}</span>
+                  </div>
+                  <div className="ci-pdf-amount-words">{amountInWords(balance)}</div>
+                </>
+              );
+            })()}
           </div>
         </div>
 

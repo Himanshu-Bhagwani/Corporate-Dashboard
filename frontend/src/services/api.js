@@ -261,6 +261,40 @@ export const invoicesAPI = {
     return handleResponse(response);
   },
 
+  getAdjustments: async (id, companyId) => {
+    const response = await fetch(`${BASE_URL}/invoices/${id}/adjustments`, {
+      headers: getHeaders(companyId)
+    });
+    return handleResponse(response);
+  },
+
+  recordPayment: async (id, payload, companyId) => {
+    const response = await fetch(`${BASE_URL}/invoices/${id}/payment`, {
+      method: 'POST',
+      headers: getHeaders(companyId),
+      body: JSON.stringify(payload),
+    });
+    return handleResponse(response);
+  },
+
+  recordCreditNote: async (id, payload, companyId) => {
+    const response = await fetch(`${BASE_URL}/invoices/${id}/credit-note`, {
+      method: 'POST',
+      headers: getHeaders(companyId),
+      body: JSON.stringify(payload),
+    });
+    return handleResponse(response);
+  },
+
+  recordDebitNote: async (id, payload, companyId) => {
+    const response = await fetch(`${BASE_URL}/invoices/${id}/debit-note`, {
+      method: 'POST',
+      headers: getHeaders(companyId),
+      body: JSON.stringify(payload),
+    });
+    return handleResponse(response);
+  },
+
   deleteAll: async (companyId) => {
     const response = await fetch(`${BASE_URL}/invoices/all`, {
       method: 'DELETE',
@@ -306,6 +340,15 @@ export const complianceAPI = {
 };
 
 export const aiAPI = {
+  // Which model actually answers chats — so the header can say "Powered by Gemini"
+  getProvider: async () => {
+    const response = await fetch(`${BASE_URL}/ai/provider`, {
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+      },
+    });
+    return handleResponse(response);
+  },
   complianceReview: async (companyId, visibleScore, pendingCount, overdueCount) => {
     const response = await fetch(`${BASE_URL}/ai/compliance-review`, {
       method: 'POST',
@@ -471,6 +514,21 @@ export const accountingAPI = {
     return handleResponse(response);
   },
 
+  // Upload a Balance Sheet / P&L (CSV or PDF) — parses line items into the CoA
+  uploadStatement: async (file, companyId) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await fetch(`${BASE_URL}/accounting/upload-statement`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        'x-company-id': companyId,
+      },
+      body: formData,
+    });
+    return handleResponse(response);
+  },
+
   // Chart of Accounts
   getChartOfAccounts: async (companyId) => {
     const response = await fetch(`${BASE_URL}/accounting/chart-of-accounts`, {
@@ -499,6 +557,24 @@ export const accountingAPI = {
 
   deleteChartOfAccountsEntry: async (id, companyId) => {
     const response = await fetch(`${BASE_URL}/accounting/chart-of-accounts/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders(companyId),
+    });
+    return handleResponse(response);
+  },
+
+  // Push manually entered balance-sheet totals back into the Chart of Accounts
+  reconcileChartOfAccounts: async (totals, companyId) => {
+    const response = await fetch(`${BASE_URL}/accounting/chart-of-accounts/reconcile`, {
+      method: 'POST',
+      headers: getHeaders(companyId),
+      body: JSON.stringify(totals),
+    });
+    return handleResponse(response);
+  },
+
+  clearChartOfAccountsType: async (accountType, companyId) => {
+    const response = await fetch(`${BASE_URL}/accounting/chart-of-accounts/type/${encodeURIComponent(accountType)}`, {
       method: 'DELETE',
       headers: getHeaders(companyId),
     });
@@ -623,6 +699,80 @@ export const companiesAPI = {
       method: 'PUT',
       headers: getHeaders(companyId),
       body: JSON.stringify({ plan }),
+    });
+    return handleResponse(response);
+  },
+};
+
+export const loansAPI = {
+  // All loans + dashboard summary strip data
+  getAll: async (companyId) => {
+    const response = await fetch(`${BASE_URL}/loans`, {
+      headers: getHeaders(companyId),
+    });
+    return handleResponse(response);
+  },
+
+  // Company + financial data used to prefill the application form
+  getPrefill: async (companyId) => {
+    const response = await fetch(`${BASE_URL}/loans/prefill`, {
+      headers: getHeaders(companyId),
+    });
+    return handleResponse(response);
+  },
+
+  // Submit a new 4-step loan application
+  create: async (application, companyId) => {
+    const response = await fetch(`${BASE_URL}/loans`, {
+      method: 'POST',
+      headers: getHeaders(companyId),
+      body: JSON.stringify(application),
+    });
+    return handleResponse(response);
+  },
+
+  // Full detail: loan + status history + EMI schedule
+  getOne: async (id, companyId) => {
+    const response = await fetch(`${BASE_URL}/loans/${id}`, {
+      headers: getHeaders(companyId),
+    });
+    return handleResponse(response);
+  },
+
+  // Manual status move with an optional note
+  updateStatus: async (id, status, note, companyId) => {
+    const response = await fetch(`${BASE_URL}/loans/${id}/status`, {
+      method: 'PATCH',
+      headers: getHeaders(companyId),
+      body: JSON.stringify({ status, note }),
+    });
+    return handleResponse(response);
+  },
+
+  // Save sanction terms — auto-generates the EMI repayment schedule
+  saveSanction: async (id, sanction, companyId) => {
+    const response = await fetch(`${BASE_URL}/loans/${id}/sanction`, {
+      method: 'PUT',
+      headers: getHeaders(companyId),
+      body: JSON.stringify(sanction),
+    });
+    return handleResponse(response);
+  },
+
+  // Update one EMI row (marking PAID auto-creates debit transactions)
+  updateEmi: async (id, emiId, payload, companyId) => {
+    const response = await fetch(`${BASE_URL}/loans/${id}/emis/${emiId}`, {
+      method: 'PATCH',
+      headers: getHeaders(companyId),
+      body: JSON.stringify(payload),
+    });
+    return handleResponse(response);
+  },
+
+  delete: async (id, companyId) => {
+    const response = await fetch(`${BASE_URL}/loans/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders(companyId),
     });
     return handleResponse(response);
   },

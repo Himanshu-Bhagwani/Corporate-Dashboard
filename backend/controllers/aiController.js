@@ -177,15 +177,219 @@ If a field is missing, use null.`;
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
+// SHARED: Intent detection — route the question to the right data section
+// ══════════════════════════════════════════════════════════════════════════════
+const detectIntents = (message) => {
+  const m = (message || '').toLowerCase();
+  const intents = new Set();
+
+  if (/invoice|receivab|payab|outstanding|bill(s|ing)?\b|due date|deadline|client owes|owe|collection|credit note|debit note|irn/.test(m)) {
+    intents.add('invoices');
+  }
+  if (/complian|gst|tds|filing|roc|tax return|deadline|due filing|penalt/.test(m)) {
+    intents.add('compliance');
+  }
+  if (/account(ing)?\b|ledger|chart of accounts|journal|coa\b|contact|customer|vendor/.test(m)) {
+    intents.add('accounting');
+  }
+  if (/transaction|expense|spend|income|cost|categor|cash ?flow|salary|salaries|purchase/.test(m)) {
+    intents.add('transactions');
+  }
+  return intents;
+};
+
+// Fetch section-specific live data blocks based on detected intents.
+const buildSectionContext = async (companyId, intents) => {
+  const blocks = [];
+  const fmt = (n) => '₹' + (parseFloat(n) || 0).toLocaleString('en-IN');
+
+  if (intents.has('invoices')) {
+    let invRes;
+    try {
+      invRes = await pool.query(
+        `SELECT i.invoice_number, i.client_name, i.type, i.status,
+                COALESCE(i.grand_total, i.amount) AS total,
+                TO_CHAR(i.due_date, 'YYYY-MM-DD') AS due_date,
+                TO_CHAR(i.issue_date, 'YYYY-MM-DD') AS issue_date,
+                COALESCE(adj.payments, 0) AS paid,
+                COALESCE(adj.dn, 0) AS dn_total,
+                COALESCE(adj.cn, 0) AS cn_total
+         FROM invoices i
+         LEFT JOIN (
+           SELECT invoice_id,
+                  SUM(CASE WHEN kind = 'payment' THEN total_amount ELSE 0 END) AS payments,
+                  SUM(CASE WHEN kind = 'debit_note' THEN total_amount ELSE 0 END) AS dn,
+                  SUM(CASE WHEN kind = 'credit_note' THEN total_amount ELSE 0 END) AS cn
+           FROM invoice_adjustments GROUP BY invoice_id
+         ) adj ON adj.invoice_id = i.id
+         WHERE i.company_id = $1
+         ORDER BY i.due_date ASC NULLS LAST
+         LIMIT 40`,
+        [companyId]
+      );
+    } catch (e) {
+      // invoice_adjustments may not exist on an un-migrated DB — degrade gracefully.
+      invRes = await pool.query(
+        `SELECT invoice_number, client_name, type, status,
+                COALESCE(grand_total, amount) AS total,
+                TO_CHAR(due_date, 'YYYY-MM-DD') AS due_date,
+                TO_CHAR(issue_date, 'YYYY-MM-DD') AS issue_date,
+                COALESCE(amount_paid, 0) AS paid,
+                0 AS dn_total, 0 AS cn_total
+         FROM invoices WHERE company_id = $1
+         ORDER BY due_date ASC NULLS LAST LIMIT 40`,
+        [companyId]
+      );
+    }
+
+    let recOut = 0, payOut = 0, recCount = 0, payCount = 0, settledCount = 0;
+    const overdueLines = [], upcomingLines = [], openLines = [];
+    const today = new Date().toISOString().slice(0, 10);
+
+    invRes.rows.forEach(r => {
+      const total = parseFloat(r.total) || 0;
+      const outstanding = Math.max(0, total + parseFloat(r.dn_total) - parseFloat(r.cn_total) - parseFloat(r.paid));
+      const isRec = (r.type || 'receivable').toLowerCase() === 'receivable';
+
+      // Only an invoice with a real remaining balance is "open". Fully-settled
+      // (outstanding = 0) or zero-value invoices must NOT inflate the totals.
+      if (outstanding <= 0 || r.status === 'paid') {
+        settledCount++;
+        return;
+      }
+
+      if (isRec) { recOut += outstanding; recCount++; } else { payOut += outstanding; payCount++; }
+      openLines.push(`  ${r.invoice_number} | ${isRec ? 'RECEIVABLE' : 'PAYABLE'} | ${r.client_name} | total ${fmt(total)} | paid ${fmt(r.paid)} | OUTSTANDING ${fmt(outstanding)} | due ${r.due_date || '-'} | status ${r.status}`);
+
+      if (r.due_date && r.due_date < today) {
+        overdueLines.push(`  - ${r.invoice_number} (${isRec ? 'receivable from' : 'payable to'} ${r.client_name}): ${fmt(outstanding)} was due ${r.due_date} — OVERDUE`);
+      } else if (r.due_date) {
+        upcomingLines.push(`  - ${r.invoice_number} (${isRec ? 'receivable from' : 'payable to'} ${r.client_name}): ${fmt(outstanding)} due ${r.due_date}`);
+      }
+    });
+
+    // These are the ONLY totals the model may quote — pre-summed here so the
+    // model never has to add anything itself.
+    blocks.push(`
+INVOICES SECTION (live data — authoritative; use ONLY these rows and these pre-computed totals for invoice questions):
+>> PRE-COMPUTED TOTALS (quote these verbatim — DO NOT recompute or re-add them):
+   Total OUTSTANDING RECEIVABLES (money clients owe us): ${fmt(recOut)} across ${recCount} open invoice(s)
+   Total OUTSTANDING PAYABLES (money we owe vendors): ${fmt(payOut)} across ${payCount} open bill(s)
+   Fully settled / zero-balance invoices (excluded from the totals above): ${settledCount}
+OPEN INVOICES (outstanding > 0 — these are the only ones that count toward the totals):
+${openLines.join('\n') || '  (none — everything is settled)'}
+${overdueLines.length ? 'OVERDUE:\n' + overdueLines.join('\n') : 'No overdue invoices.'}
+${upcomingLines.length ? 'UPCOMING DUE DATES:\n' + upcomingLines.slice(0, 10).join('\n') : ''}`.trim());
+  }
+
+  if (intents.has('compliance')) {
+    const compRes = await pool.query(
+      `SELECT title, type, TO_CHAR(due_date, 'YYYY-MM-DD') AS due_date, status, payment_status
+       FROM compliance_events WHERE company_id = $1 ORDER BY due_date ASC LIMIT 25`,
+      [companyId]
+    );
+    const lines = compRes.rows.map(r =>
+      `  ${r.title} [${r.type}] due ${r.due_date} — ${r.status}${r.payment_status && r.payment_status !== 'NOT_APPLICABLE' ? ' / payment ' + r.payment_status : ''}`
+    );
+    blocks.push(`
+COMPLIANCE SECTION (live filings data — authoritative for compliance questions):
+${lines.join('\n') || '  (no compliance events recorded)'}`.trim());
+  }
+
+  if (intents.has('accounting')) {
+    // Aggregate the customer/vendor ledger the SAME way the Accounting view does:
+    // group transactions by counterparty name, sum the total, count the txns,
+    // and capture first/last dates so we can describe frequency. This is the
+    // authoritative "biggest customer / vendor" data — NOT individual txns.
+    const [custRes, vendRes] = await Promise.all([
+      pool.query(
+        `SELECT t.name AS counterparty,
+                COUNT(t.id) AS txn_count,
+                SUM(t.amount) AS total_amount,
+                TO_CHAR(MIN(t.date), 'YYYY-MM-DD') AS first_date,
+                TO_CHAR(MAX(t.date), 'YYYY-MM-DD') AS last_date
+         FROM transactions t
+         WHERE t.company_id = $1 AND t.type = 'income'
+         GROUP BY t.name
+         ORDER BY total_amount DESC
+         LIMIT 10`,
+        [companyId]
+      ),
+      pool.query(
+        `SELECT t.name AS counterparty,
+                COUNT(t.id) AS txn_count,
+                SUM(t.amount) AS total_amount,
+                TO_CHAR(MIN(t.date), 'YYYY-MM-DD') AS first_date,
+                TO_CHAR(MAX(t.date), 'YYYY-MM-DD') AS last_date,
+                MODE() WITHIN GROUP (ORDER BY t.category) AS primary_category
+         FROM transactions t
+         WHERE t.company_id = $1 AND t.type = 'expense'
+         GROUP BY t.name
+         ORDER BY total_amount DESC
+         LIMIT 10`,
+        [companyId]
+      ),
+    ]);
+
+    // Frequency measured SINCE the first transaction (when they became a
+    // customer/vendor) up to today — i.e. across their whole relationship.
+    const today = new Date();
+    const freq = (count, first) => {
+      const n = parseInt(count);
+      const days = Math.max(1, Math.round((today - new Date(first)) / 86400000));
+      const monthsSince = (days / 30).toFixed(1);
+      if (n <= 1) return `1 txn since first on ${first} (${monthsSince} months ago) — new relationship / one-off so far`;
+      const avgGap = Math.round(days / n);
+      const perMonth = (n / (days / 30)).toFixed(1);
+      return `${n} txns since first on ${first} (${monthsSince} months as a relationship) — about one every ${avgGap} days (~${perMonth} per month)`;
+    };
+
+    const fmtRow = (r, withCat) => {
+      const total = parseFloat(r.total_amount) || 0;
+      return `  ${r.counterparty}${withCat && r.primary_category ? ' [' + r.primary_category + ']' : ''}: total ₹${total.toLocaleString('en-IN')} | ${freq(r.txn_count, r.first_date)} | last txn ${r.last_date}`;
+    };
+
+    const custLines = custRes.rows.map(r => fmtRow(r, false));
+    const vendLines = vendRes.rows.map(r => fmtRow(r, true));
+
+    blocks.push(`
+ACCOUNTING / LEDGER SECTION (authoritative for customer & vendor questions — each row is the TOTAL across all that party's transactions, already summed; the list is sorted biggest-first. NEVER quote a single transaction as the party's total).
+When you describe a party's frequency, phrase it as "<name>'s transaction frequency has been <rate> since their first transaction on <first date>" — the frequency is measured from their first transaction (when they became a customer/vendor):
+TOP CUSTOMERS (by total money received, income transactions):
+${custLines.join('\n') || '  (no customer transactions yet)'}
+TOP VENDORS (by total money spent, expense transactions):
+${vendLines.join('\n') || '  (no vendor transactions yet)'}`.trim());
+  }
+
+  if (intents.has('transactions')) {
+    const catRes = await pool.query(
+      `SELECT type, category, COALESCE(SUM(amount), 0) AS total, COUNT(*) AS cnt
+       FROM transactions WHERE company_id = $1
+       GROUP BY type, category ORDER BY total DESC LIMIT 25`,
+      [companyId]
+    );
+    const lines = catRes.rows.map(r =>
+      `  ${r.type} | ${r.category || 'Uncategorized'}: ₹${parseFloat(r.total).toLocaleString('en-IN')} (${r.cnt} txns)`
+    );
+    blocks.push(`
+TRANSACTIONS SECTION (category breakdown — authoritative for expense/income questions):
+${lines.join('\n') || '  (no transactions)'}`.trim());
+  }
+
+  return blocks;
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
 // SHARED: Build financial context from DB for chat prompts
 // ══════════════════════════════════════════════════════════════════════════════
 const buildFinancialContext = async (companyId) => {
   const [
-    revExpRes, topExpensesRes, monthlyTrendRes,
+    revExpRes, topExpensesRes, topRevenuesRes, monthlyTrendRes,
     accountsRes, receivablesRes, payablesRes, recentTxnRes
   ] = await Promise.all([
     pool.query(`SELECT type, COALESCE(SUM(amount), 0) as total FROM transactions WHERE company_id = $1 GROUP BY type`, [companyId]),
-    pool.query(`SELECT category, SUM(amount) as total FROM transactions WHERE company_id = $1 AND type = 'expense' GROUP BY category ORDER BY total DESC LIMIT 5`, [companyId]),
+    pool.query(`SELECT category, SUM(amount) as total, COUNT(*) as cnt FROM transactions WHERE company_id = $1 AND type = 'expense' GROUP BY category ORDER BY total DESC LIMIT 5`, [companyId]),
+    pool.query(`SELECT category, SUM(amount) as total, COUNT(*) as cnt FROM transactions WHERE company_id = $1 AND type = 'income'  GROUP BY category ORDER BY total DESC LIMIT 5`, [companyId]),
     pool.query(`SELECT TO_CHAR(DATE_TRUNC('month', date), 'Mon YYYY') as month, type, SUM(amount) as total FROM transactions WHERE company_id = $1 AND date >= NOW() - INTERVAL '6 months' GROUP BY month, DATE_TRUNC('month', date), type ORDER BY DATE_TRUNC('month', date) ASC`, [companyId]),
     pool.query(`SELECT name, type, bank, COALESCE(opening_balance, 0) as balance FROM accounts WHERE company_id = $1`, [companyId]),
     pool.query(`SELECT COALESCE(SUM(amount), 0) as total, COUNT(*) as count FROM invoices WHERE company_id = $1 AND status IN ('pending', 'overdue')`, [companyId]),
@@ -201,7 +405,11 @@ const buildFinancialContext = async (companyId) => {
   const cashInBank = openingBal + netProfit;
 
   const topExpenses = topExpensesRes.rows
-    .map(r => `${r.category || 'Uncategorized'}: ₹${parseFloat(r.total).toLocaleString()}`)
+    .map(r => `${r.category || 'Uncategorized'}: ₹${parseFloat(r.total).toLocaleString('en-IN')} (${r.cnt} txns)`)
+    .join(', ');
+
+  const topRevenues = topRevenuesRes.rows
+    .map(r => `${r.category || 'Uncategorized'}: ₹${parseFloat(r.total).toLocaleString('en-IN')} (${r.cnt} txns)`)
     .join(', ');
 
   const months = {};
@@ -230,44 +438,90 @@ const buildFinancialContext = async (companyId) => {
     payables: totalPayables,
   });
 
+  // Cash runway: months of cash left at the average monthly burn (expenses).
+  const monthCount = Math.max(1, Object.keys(months).length);
+  const avgMonthlyExpenses = totalExpenses / monthCount;
+  const cashRunwayMonths = avgMonthlyExpenses > 0 ? (cashInBank / avgMonthlyExpenses) : null;
+
+  // Ratio formatter: plain number with healthy-range annotation. Never a ₹ value.
+  const ratioStr = (val, healthy) => val === null || val === undefined
+    ? 'N/A (no open payables — liquidity is not constrained)'
+    : `${val}${healthy ? ` (healthy range: ${healthy})` : ''}`;
+
+  // ── Health alerts: metrics outside healthy levels ────────────────────────
+  const alerts = [];
+  if (netProfit < 0) alerts.push(`NET LOSS: expenses exceed revenue by ₹${Math.abs(netProfit).toLocaleString('en-IN')}. Cut costs or grow revenue urgently.`);
+  if (ratios.currentRatio !== null && ratios.currentRatio < 1.5) alerts.push(`LOW CURRENT RATIO (${ratios.currentRatio}, healthy 1.5–3.0): short-term obligations may strain liquidity.`);
+  if (ratios.currentRatio !== null && ratios.currentRatio > 3.0) alerts.push(`HIGH CURRENT RATIO (${ratios.currentRatio}): idle cash — consider investing surplus.`);
+  if (cashRunwayMonths !== null && cashRunwayMonths < 3) alerts.push(`SHORT CASH RUNWAY (${cashRunwayMonths.toFixed(1)} months, healthy ≥ 6): at current burn the bank balance runs out soon.`);
+  if (ratios.daysSalesOutstanding > 45) alerts.push(`HIGH DSO (${ratios.daysSalesOutstanding} days, healthy ≤ 45): collections are slow — chase receivables.`);
+  if (ratios.netProfitMargin !== null && ratios.netProfitMargin < 10 && totalRevenue > 0) alerts.push(`THIN NET MARGIN (${ratios.netProfitMargin}%, healthy ≥ 10%): pricing or cost structure needs attention.`);
+  if (ratios.debtToEquity > 2) alerts.push(`HIGH DEBT-TO-EQUITY (${ratios.debtToEquity}, healthy ≤ 2): leverage risk.`);
+  if (cashInBank < 0) alerts.push(`NEGATIVE CASH POSITION: ₹${cashInBank.toLocaleString('en-IN')}.`);
+
   return `
-COMPANY FINANCIAL SNAPSHOT:
-• Total Revenue: ₹${totalRevenue.toLocaleString()}
-• Total Expenses: ₹${totalExpenses.toLocaleString()}
-• Net Profit (Net Income): ₹${netProfit.toLocaleString()}
-• Cash in Bank: ₹${cashInBank.toLocaleString()}
-• Receivables: ₹${totalReceivables.toLocaleString()} (${receivablesRes.rows[0].count} pending)
-• Payables: ₹${totalPayables.toLocaleString()}
-• Top Expenses: ${topExpenses || 'None'}
+COMPANY FINANCIAL SNAPSHOT (dashboard metrics — all figures are real user data):
+• Total Revenue: ₹${totalRevenue.toLocaleString('en-IN')}
+• Total Expenses: ₹${totalExpenses.toLocaleString('en-IN')}
+• Net Profit (Net Income): ₹${netProfit.toLocaleString('en-IN')}
+• Cash in Bank: ₹${cashInBank.toLocaleString('en-IN')}
+• Cash Runway: ${cashRunwayMonths === null ? 'N/A (no expenses recorded)' : cashRunwayMonths.toFixed(1) + ' months at average burn of ₹' + Math.round(avgMonthlyExpenses).toLocaleString('en-IN') + '/month (healthy: ≥ 6 months)'}
+• Outstanding Receivables (clients owe us): ₹${totalReceivables.toLocaleString('en-IN')} (${receivablesRes.rows[0].count} open invoices)
+• Outstanding Payables (we owe vendors): ₹${totalPayables.toLocaleString('en-IN')}
+• Top Revenue Categories (money coming IN — income only): ${topRevenues || 'None'}
+• Top Expense Categories (money going OUT — expense only, includes loan repayments and loan interest): ${topExpenses || 'None'}
 • 6-Month Trend: ${trendStr || 'No data'}
-• Accounts: ${accountsRes.rows.map(a => `${a.name} (${a.bank}): ₹${parseFloat(a.balance).toLocaleString()}`).join(', ') || 'None'}
+• Bank Accounts: ${accountsRes.rows.map(a => `${a.name} (${a.bank}): ₹${parseFloat(a.balance).toLocaleString('en-IN')}`).join(', ') || 'None'}
 
-ACCOUNTING RATIOS (computed from real data):
-• Net Profit Margin: ${ratios.netProfitMargin}%
-• Gross Profit Margin: ${ratios.grossProfitMargin}%
-• Working Capital: ₹${ratios.workingCapital.toLocaleString()}
-• Current Ratio: ${ratios.currentRatio} (healthy: 1.5–3.0)
-• Quick Ratio: ${ratios.quickRatio}
-• Cash Ratio: ${ratios.cashRatio}
+ACCOUNTING RATIOS (computed from the numbers above — ratios are plain numbers, NOT rupee amounts):
+• Net Profit Margin: ${ratios.netProfitMargin}% (healthy: ≥ 10%)
+• Gross Profit Margin: ${ratios.grossProfitMargin}% (healthy: ≥ 30%)
+• Working Capital: ₹${ratios.workingCapital.toLocaleString('en-IN')} (current assets − current liabilities)
+• Current Ratio: ${ratioStr(ratios.currentRatio, '1.5–3.0')}
+• Quick Ratio: ${ratioStr(ratios.quickRatio, '≥ 1.0')}
+• Cash Ratio: ${ratioStr(ratios.cashRatio, '≥ 0.5')}
 • Return on Assets (ROA): ${ratios.roa}%
-• Return on Equity (ROE): ${ratios.roe}%
-• Debt-to-Equity Ratio: ${ratios.debtToEquity}
-• Debt Ratio: ${ratios.debtRatio}
+• Return on Equity (ROE): ${ratios.roe === null ? 'N/A (insufficient equity history)' : ratios.roe + '%'}
+• Debt-to-Equity Ratio: ${ratioStr(ratios.debtToEquity, '≤ 2.0')}
+• Days Sales Outstanding (DSO): ${ratios.daysSalesOutstanding} days (healthy: ≤ 45 days)
 • AR Turnover: ${ratios.arTurnover}x
-• Days Sales Outstanding (DSO): ${ratios.daysSalesOutstanding} days
-• Total Asset Turnover: ${ratios.totalAssetTurnover}x
-• Operating Cash Flow: ₹${ratios.operatingCashFlow.toLocaleString()}
+• Operating Cash Flow: ₹${ratios.operatingCashFlow.toLocaleString('en-IN')}
 
-RECENT TRANSACTIONS:
+HEALTH ALERTS (metrics currently outside healthy levels — proactively mention relevant ones):
+${alerts.length ? alerts.map(a => '⚠ ' + a).join('\n') : 'All monitored metrics are within healthy ranges.'}
+
+RECENT TRANSACTIONS (bank/ledger entries — NOT invoices; do not present these as invoices):
 ${recentTxns || 'No transactions yet.'}
 `.trim();
 };
 
 const CFO_SYSTEM_PREFIX = `You are an internal AI CFO Assistant helping the owner of this company manage their own business finances. All questions are about this company's internal operations — never about external companies or competitors.
 
-Your role: answer every finance-related question helpfully. Never refuse. Never say you cannot help. If the owner asks about reducing costs, improving cash flow, managing taxes, or any financial action plan — always provide clear, numbered, practical steps they can take inside their own business.
+STRICT DATA RULES (violating these makes the answer useless):
+1. Use ONLY numbers that literally appear in the DATA sections below. NEVER invent, estimate, extrapolate, or "example" a number. If a figure isn't in the data, say "not recorded in your data".
+2. Every rupee figure you state must be copied from the data. Do not do speculative arithmetic like "reduce by ₹20,000" unless that number comes from the data.
+3. When a section provides a PRE-COMPUTED TOTAL, quote that exact figure. NEVER re-add the individual rows yourself, and never show a "X + Y + Z =" calculation — the totals are already summed for you and your arithmetic will be wrong.
+4. Only list invoices that appear under "OPEN INVOICES". Do NOT list settled or zero-balance invoices as amounts owed. An invoice with outstanding ₹0 is NOT money owed — never include it in receivables/payables.
+5. Ratios (Current Ratio, Quick Ratio, D/E) are plain numbers like 1.8 — NEVER format a ratio with ₹.
+6. When the question is about invoices/receivables/payables, answer from the INVOICES SECTION only. Transactions are bank entries, not invoices — never present a transaction as an invoice. Same for COMPLIANCE and ACCOUNTING sections: use the matching section.
+7. All amounts are in Indian Rupees (₹) with Indian formatting (e.g. ₹1,18,000).
 
-Keep answers to 3-5 sentences or a short numbered list. Use ₹ for currency. Reference the actual numbers from the data when relevant.
+REVENUE vs EXPENSES — NEVER GET THIS WRONG:
+• The "Total Revenue" figure ONLY includes income-type transactions.
+• The "Total Expenses" figure ONLY includes expense-type transactions. Loan Repayment and Loan Interest are ALWAYS expenses — they are money going OUT — and appear in Top Expense Categories, never in Top Revenue Categories.
+• Do NOT invent a "Top Revenue Categories" list. Only quote it if it is explicitly present in the data section.
+• Net Profit is PRE-COMPUTED for you (Revenue − Expenses). NEVER recompute or restate it with different arithmetic. If you need "how much revenue exceeds expenses", quote the Net Profit figure verbatim — do not subtract yourself.
+• A HIGH revenue-to-expenses ratio is GOOD (the business is profitable). A LOW ratio (< 1.0) means expenses exceed revenue = a LOSS. Never describe a high revenue/expense ratio as an "imbalance" or "cash-flow risk" — that reading is backwards.
+• If Total Expenses > Total Revenue, the company is at a NET LOSS — say so plainly and reference the pre-computed Net Profit figure.
+
+ANSWER STRUCTURE (use markdown, be thorough but organized):
+1. **Direct answer** — lead with the number(s) the user asked for.
+2. **Breakdown** — itemize the relevant records from the data (invoice numbers, parties, amounts, due dates).
+3. **Financial health impact** — connect to the ratios provided: how does this affect Current Ratio, DSO, Cash Runway, Working Capital? Quote the current values from the data and explain in one line what each means.
+4. **Alerts** — if any HEALTH ALERTS in the data relate to the question, surface them prominently.
+5. **Action plan** — 3-5 specific, practical steps ranked by impact, each tied to the actual data (e.g. "chase the ₹X overdue invoice from Y first").
+
+Never refuse a finance question. Explain jargon in plain words the first time you use it.
 
 `;
 
@@ -281,11 +535,18 @@ const chatWithCFO = async (req, res) => {
       return res.status(400).json({ error: 'Message is required' });
     }
 
-    const financialContext = await buildFinancialContext(companyId);
-    const systemPrompt = CFO_SYSTEM_PREFIX + financialContext;
+    const intents = detectIntents(message);
+    const [financialContext, sectionBlocks] = await Promise.all([
+      buildFinancialContext(companyId),
+      buildSectionContext(companyId, intents),
+    ]);
+    const systemPrompt = CFO_SYSTEM_PREFIX + financialContext +
+      (sectionBlocks.length ? '\n\n' + sectionBlocks.join('\n\n') : '');
 
+    // Generous timeout — a local Ollama model on CPU can take 20-30s for a
+    // detailed answer; 8s was cutting off nearly every response.
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('TIMEOUT')), 8000)
+      setTimeout(() => reject(new Error('TIMEOUT')), 45000)
     );
     let reply;
     try {
@@ -299,6 +560,17 @@ const chatWithCFO = async (req, res) => {
       }
       throw err;
     }
+
+    // Persist to chat history so refreshes keep the conversation
+    try {
+      await pool.query(
+        `INSERT INTO chat_history (company_id, role, message) VALUES ($1, 'user', $2), ($1, 'ai', $3)`,
+        [companyId, message.trim(), reply.trim()]
+      );
+    } catch (e) {
+      console.error('Failed to persist chat:', e.message);
+    }
+
     res.json({ reply: reply.trim() });
   } catch (error) {
     console.error('Chat CFO Error:', error);
@@ -316,8 +588,13 @@ const chatWithCFOStream = async (req, res) => {
       return res.status(400).json({ error: 'Message is required' });
     }
 
-    const financialContext = await buildFinancialContext(companyId);
-    const systemPrompt = CFO_SYSTEM_PREFIX + financialContext;
+    const intents = detectIntents(message);
+    const [financialContext, sectionBlocks] = await Promise.all([
+      buildFinancialContext(companyId),
+      buildSectionContext(companyId, intents),
+    ]);
+    const systemPrompt = CFO_SYSTEM_PREFIX + financialContext +
+      (sectionBlocks.length ? '\n\n' + sectionBlocks.join('\n\n') : '');
 
     // SSE headers
     res.setHeader('Content-Type', 'text/event-stream');
@@ -468,14 +745,15 @@ const exportChatPDF = async (req, res) => {
 };
 
 const executePlan = async (req, res) => {
-  const companyId = req.companyId;
+  const companyId = req.headers['x-company-id'];
+  if (!companyId) return res.status(400).json({ error: 'Company ID required' });
   const { plan_type, plan_title, steps } = req.body;
   if (!plan_type || !plan_title || !Array.isArray(steps)) {
     return res.status(400).json({ error: 'plan_type, plan_title, and steps are required' });
   }
   try {
     const result = await pool.query(
-      `INSERT INTO executed_plans (company_id, plan_type, plan_title, steps)
+      `INSERT INTO action_plans (company_id, plan_type, plan_title, steps)
        VALUES ($1, $2, $3, $4::jsonb) RETURNING *`,
       [companyId, plan_type, plan_title, JSON.stringify(steps)]
     );
@@ -487,10 +765,11 @@ const executePlan = async (req, res) => {
 };
 
 const getActivePlans = async (req, res) => {
-  const companyId = req.companyId;
+  const companyId = req.headers['x-company-id'];
+  if (!companyId) return res.status(400).json({ error: 'Company ID required' });
   try {
     const result = await pool.query(
-      `SELECT * FROM executed_plans WHERE company_id = $1 ORDER BY created_at DESC`,
+      `SELECT * FROM action_plans WHERE company_id = $1 ORDER BY created_at DESC`,
       [companyId]
     );
     res.json({ plans: result.rows });
@@ -501,7 +780,8 @@ const getActivePlans = async (req, res) => {
 };
 
 const updatePlanStatus = async (req, res) => {
-  const companyId = req.companyId;
+  const companyId = req.headers['x-company-id'];
+  if (!companyId) return res.status(400).json({ error: 'Company ID required' });
   const { id } = req.params;
   const { status } = req.body;
   if (!['active', 'completed'].includes(status)) {
@@ -509,7 +789,7 @@ const updatePlanStatus = async (req, res) => {
   }
   try {
     const result = await pool.query(
-      `UPDATE executed_plans SET status = $1 WHERE id = $2 AND company_id = $3 RETURNING *`,
+      `UPDATE action_plans SET status = $1 WHERE id = $2 AND company_id = $3 RETURNING *`,
       [status, id, companyId]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Plan not found' });
@@ -518,6 +798,23 @@ const updatePlanStatus = async (req, res) => {
     console.error('Update Plan Status Error:', error);
     res.status(500).json({ error: 'Failed to update plan' });
   }
+};
+
+// Report which AI provider will actually serve chat requests so the UI can
+// label the assistant with the real model name instead of a generic "AI".
+const getAiProvider = (req, res) => {
+  if (process.env.GEMINI_API_KEY) {
+    return res.json({
+      provider: 'gemini',
+      label: 'Gemini',
+      model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
+    });
+  }
+  return res.json({
+    provider: 'ollama',
+    label: 'Llama 3.2',
+    model: process.env.OLLAMA_MODEL || 'llama3.2:1b',
+  });
 };
 
 module.exports = {
@@ -531,5 +828,6 @@ module.exports = {
   exportChatPDF,
   executePlan,
   getActivePlans,
-  updatePlanStatus
+  updatePlanStatus,
+  getAiProvider,
 };

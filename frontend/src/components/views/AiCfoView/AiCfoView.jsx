@@ -110,8 +110,17 @@ const AiCfoView = () => {
   const [inputValue, setInputValue] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [aiProvider, setAiProvider] = useState(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+
+  // Ask backend which model actually serves chat — Gemini when the API key is
+  // configured, otherwise the local Ollama Llama model.
+  useEffect(() => {
+    aiAPI.getProvider()
+      .then(p => setAiProvider(p))
+      .catch(() => setAiProvider(null));
+  }, []);
 
   const isLaunchpad = currentCompany?.plan === 'Launchpad';
 
@@ -653,7 +662,7 @@ const AiCfoView = () => {
                 <h4>AI CFO Assistant</h4>
                 <span className="chat-status">
                   <span className="chat-status-dot"></span>
-                  Online · Powered by AI
+                  Online · Powered by {aiProvider?.label || 'AI'}
                 </span>
               </div>
             </div>
@@ -682,12 +691,19 @@ const AiCfoView = () => {
                 )}
               </div>
             ))}
-            {chatLoading && messages[messages.length - 1]?.text === '' && (
+            {chatLoading && messages[messages.length - 1]?.role !== 'ai' && (
               <div className="chat-message chat-message-ai">
                 <div className="chat-msg-avatar ai-avatar"><BrainCircuit size={14} /></div>
-                <div className="chat-bubble chat-bubble-ai typing-bubble">
-                  <div className="typing-indicator">
-                    <span></span><span></span><span></span>
+                <div className="chat-bubble chat-bubble-ai chat-skeleton-bubble">
+                  <div className="chat-skeleton-line" style={{ width: '90%' }}></div>
+                  <div className="chat-skeleton-line" style={{ width: '75%' }}></div>
+                  <div className="chat-skeleton-line" style={{ width: '82%' }}></div>
+                  <div className="chat-skeleton-line" style={{ width: '60%' }}></div>
+                  <div className="chat-skeleton-footer">
+                    <div className="typing-indicator">
+                      <span></span><span></span><span></span>
+                    </div>
+                    <span className="chat-skeleton-label">Analyzing your financials…</span>
                   </div>
                 </div>
               </div>

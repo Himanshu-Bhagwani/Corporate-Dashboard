@@ -1,5 +1,6 @@
 const { pool } = require('../config/db');
 const formulas = require('../utils/accountingFormulas');
+const { getCoaTotals } = require('./accountingController');
 
 // GET /api/dashboard/summary — 8 KPI cards + formula-computed ratios
 const getSummary = async (req, res) => {
@@ -26,8 +27,13 @@ const getSummary = async (req, res) => {
       [companyId, lastMonthStart, lastMonthEnd]
     );
 
+    // Cash movements that are not operating P&L items — financing on both
+    // sides, plus capital expenditure. See utils/nonOperatingCategories.js.
+    const { NON_OPERATING_INCOME, NON_OPERATING_EXPENSE, CAPEX_CATEGORIES } =
+      require('../utils/nonOperatingCategories');
+
     // All-time totals (for KPI display cards)
-    const [allTime, trailing12M] = await Promise.all([
+    const [allTime, trailing12M, operating] = await Promise.all([
       pool.query(
         `SELECT type, COALESCE(SUM(amount), 0) as total FROM transactions
          WHERE company_id = $1 GROUP BY type`,
@@ -39,6 +45,16 @@ const getSummary = async (req, res) => {
         `SELECT type, COALESCE(SUM(amount), 0) as total FROM transactions
          WHERE company_id = $1 AND date >= CURRENT_DATE - INTERVAL '12 months' GROUP BY type`,
         [companyId]
+      ),
+      // Operating-only totals — excludes financing flows on both sides so that
+      // margins and profitability ratios reflect the actual business
+      pool.query(
+        `SELECT type, COALESCE(SUM(amount), 0) as total FROM transactions
+         WHERE company_id = $1
+           AND NOT (type = 'income'  AND COALESCE(category,'') = ANY($2))
+           AND NOT (type = 'expense' AND COALESCE(category,'') = ANY($3))
+         GROUP BY type`,
+        [companyId, NON_OPERATING_INCOME, NON_OPERATING_EXPENSE]
       ),
     ]);
 
@@ -178,11 +194,31 @@ const getSummary = async (req, res) => {
       retainedEarnings: cashInBank + totalReceivables - totalPayables,
     });
 
+    const operatingRevenue  = getTotal(operating.rows, 'income');
+    const operatingExpenses = getTotal(operating.rows, 'expense');
+
+    // Capital expenditure, kept out of operating expenses above so it can be
+    // subtracted once — in Free Cash Flow (FCF = OCF − CapEx).
+    const capExQ = await pool.query(
+      `SELECT COALESCE(SUM(amount), 0) as total FROM transactions
+       WHERE company_id = $1 AND type = 'expense' AND COALESCE(category,'') = ANY($2)`,
+      [companyId, CAPEX_CATEGORIES]
+    );
+    const capEx = parseFloat(capExQ.rows[0].total) || 0;
+
+    // Balance-sheet totals straight from the Chart of Accounts, so metrics that
+    // need real assets/liabilities/equity don't depend on manual entry.
+    const coa = await getCoaTotals(companyId);
+
     res.json({
       // ── Core 8 KPI cards ────────────────────────────────────────────────────
       totalRevenue,
       totalExpenses,
       netProfit,                                                  // Net Income = Revenue − All Expenses
+      // ── Operating-only view (financing flows excluded) — use for margins ───
+      operatingRevenue,
+      operatingExpenses,
+      operatingNetProfit: operatingRevenue - operatingExpenses,
       cashInBank,
       totalReceivables,
       receivablesCount: parseInt(receivables.rows[0].count),
@@ -224,9 +260,16 @@ const getSummary = async (req, res) => {
       totalAssetTurnover: ratios.totalAssetTurnover,    // 8.5
       // Cash Flow
       operatingCashFlow: ratios.operatingCashFlow,      // 4.2
-      freeCashFlow: ratios.freeCashFlow,                // 4.3
+      capEx,                                            // asset purchases
+      freeCashFlow: ratios.operatingCashFlow - capEx,   // 4.3 FCF = OCF − CapEx
       // DuPont Analysis
       dupontROE: ratios.dupontROE,                      // 10
+      // ── Chart of Accounts balance-sheet totals (live) ──────────────────────
+      coaTotalAssets: coa.Asset,
+      coaTotalLiabilities: coa.Liability,
+      coaEquity: coa.Equity,
+      coaRevenue: coa.Revenue,
+      coaExpenses: coa.Expense,
     });
   } catch (error) {
     console.error('Dashboard summary error:', error);
@@ -371,10 +414,14 @@ const getInsightsData = async (req, res) => {
       if (r.type === 'expense') historicalMonths[r.month_str].expenses = parseFloat(r.total);
     });
 
+    // Margin clamped to ±100% — a month with ₹3K revenue and ₹2L expenses is a
+    // -100% month for display purposes, not -6500% (which just breaks the chart).
     const historicalData = Object.values(historicalMonths).map(m => ({
       ...m,
       netProfit: m.revenue - m.expenses,
-      margin: m.revenue > 0 ? ((m.revenue - m.expenses) / m.revenue * 100).toFixed(1) : '0.0'
+      margin: m.revenue > 0
+        ? Math.max(-100, Math.min(100, (m.revenue - m.expenses) / m.revenue * 100)).toFixed(1)
+        : m.expenses > 0 ? '-100.0' : '0.0'
     }));
 
     // Average monthly revenue & expense — use last 3 completed months (exclude current partial month)
@@ -426,13 +473,18 @@ const getInsightsData = async (req, res) => {
     };
 
     // 3. Profit Lab Data
-    // All-time segment revenue
+    // Financing inflows (investor money, capital contributions, funding rounds)
+    // are NOT operating revenue — including them makes segment margins absurd.
+    const { FINANCING_CATEGORIES } = require('../utils/nonOperatingCategories');
+
+    // All-time segment revenue (operating income only)
     const segmentRes = await pool.query(`
       SELECT COALESCE(category,'Uncategorized') as name, SUM(amount) as revenue
       FROM transactions
       WHERE company_id = $1 AND type = 'income'
+        AND COALESCE(category,'Uncategorized') != ALL($2)
       GROUP BY COALESCE(category,'Uncategorized') ORDER BY revenue DESC
-    `, [companyId]);
+    `, [companyId, FINANCING_CATEGORIES]);
 
     // Quarterly income per segment (Indian FY: Q1=Apr-Jun, Q2=Jul-Sep, Q3=Oct-Dec, Q4=Jan-Mar)
     const qSegmentRes = await pool.query(`
@@ -447,6 +499,7 @@ const getInsightsData = async (req, res) => {
         SUM(amount) as revenue
       FROM transactions
       WHERE company_id = $1 AND type = 'income' AND date >= NOW() - INTERVAL '24 months'
+        AND COALESCE(category,'Uncategorized') != ALL($2)
       GROUP BY COALESCE(category,'Uncategorized'),
                CASE
                  WHEN EXTRACT(MONTH FROM date) IN (4,5,6)    THEN 'Q1'
@@ -454,7 +507,7 @@ const getInsightsData = async (req, res) => {
                  WHEN EXTRACT(MONTH FROM date) IN (10,11,12) THEN 'Q3'
                  ELSE 'Q4'
                END
-    `, [companyId]);
+    `, [companyId, FINANCING_CATEGORIES]);
 
     // Quarterly expenses overall
     const qExpenseRes = await pool.query(`
@@ -486,11 +539,26 @@ const getInsightsData = async (req, res) => {
     const expPerCat = {};
     expPerCatRes.rows.forEach(r => { expPerCat[r.name] = parseFloat(r.total); });
 
-    // Sum of expenses that share a category name with an income segment (direct costs)
-    const incomeCategories = new Set(segmentRes.rows.map(r => r.name));
+    // Operating revenue = the segments we actually show (financing excluded).
+    // Using all-time totalRevenue here would understate every segment's share.
+    const operatingRevenue = segmentRes.rows.reduce((s, r) => s + parseFloat(r.revenue), 0);
+
+    // Drop noise segments (< 2% of operating revenue) — usually a handful of
+    // miscategorized credits that would otherwise produce absurd margins.
+    const meaningfulSegments = segmentRes.rows.filter(r =>
+      operatingRevenue > 0 && parseFloat(r.revenue) / operatingRevenue >= 0.02
+    );
+
+    // Direct cost matching only counts when the segment has real revenue —
+    // a ₹2K "Software" income row must never absorb the ₹5L software expense.
+    const incomeCategories = new Set(meaningfulSegments.map(r => r.name));
     const directMatchedExp = Array.from(incomeCategories).reduce((s, cat) => s + (expPerCat[cat] || 0), 0);
     // Remaining overhead is distributed proportionally across all segments by revenue share
-    const sharedExp = totalExpense - directMatchedExp;
+    const sharedExp = Math.max(0, totalExpense - directMatchedExp);
+
+    // Margins are clamped to a sane band; anything beyond ±100% is an
+    // allocation artefact, not real economics.
+    const clampMargin = (m) => parseFloat(Math.max(-100, Math.min(100, m)).toFixed(1));
 
     // Build quarterly revenue totals map
     const qRevTotals = { Q1: 0, Q2: 0, Q3: 0, Q4: 0 };
@@ -506,10 +574,10 @@ const getInsightsData = async (req, res) => {
     });
 
     // Compute margin per segment: direct category-matched costs + proportional share of shared overhead
-    const segments = segmentRes.rows.map(r => {
+    const segments = meaningfulSegments.map(r => {
       const rev        = parseFloat(r.revenue);
       const directExp  = expPerCat[r.name] || 0;
-      const revShare   = totalRevenue > 0 ? rev / totalRevenue : 0;
+      const revShare   = operatingRevenue > 0 ? rev / operatingRevenue : 0;
       const allocExp   = directExp + sharedExp * revShare;
       const profit     = rev - allocExp;
       const margin     = rev > 0 ? (profit / rev * 100) : 0;
@@ -525,13 +593,13 @@ const getInsightsData = async (req, res) => {
         const qSharedFrac = totalExpense > 0 ? sharedExp / totalExpense : 1;
         const qSharedAlloc = qExpTotals[q] * qSharedFrac * qShare;
         const m = qRev > 0 ? ((qRev - qDirectAlloc - qSharedAlloc) / qRev * 100) : 0;
-        return parseFloat(m.toFixed(1));
+        return clampMargin(m);
       };
 
       return {
         name: r.name,
         revenue: rev,
-        profitMargin: parseFloat(Math.max(0, margin).toFixed(1)),
+        profitMargin: clampMargin(margin),
         Q1: qMargin('Q1'),
         Q2: qMargin('Q2'),
         Q3: qMargin('Q3'),

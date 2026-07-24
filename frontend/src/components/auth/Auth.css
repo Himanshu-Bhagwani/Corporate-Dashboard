@@ -1,19 +1,146 @@
 .auth-container {
+  position: relative;
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: var(--pure-white, #ffffff);
   padding: 20px;
+  overflow: hidden;
 }
 
+/* ---------- Pen-sketch finance drawings (background layer) ---------- */
+
+.auth-doodles {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.auth-doodle {
+  position: absolute;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: butt;
+  stroke-linejoin: miter;
+  color: rgba(47, 79, 196, 0.5); /* deep brand blue ink */
+  transform: rotate(var(--rot, 0deg));
+}
+
+/* Line weight is held in screen pixels, so a large sketch stays as fine as a
+   small one instead of turning into fat cartoon outlines. */
+.auth-doodle * {
+  vector-effect: non-scaling-stroke;
+  stroke-width: 1.7px;
+}
+
+.auth-doodle .doodle-detail * {
+  stroke-width: 1px;
+  opacity: 0.75;
+}
+
+/* One warm accent so the page isn't entirely monochrome */
+.auth-doodle--coins {
+  color: rgba(200, 93, 35, 0.45);
+}
+
+/* Sizes track the viewport so a wide screen doesn't leave the sides bare. */
+.auth-doodle--bank {
+  top: 11%;
+  left: 6%;
+  width: clamp(170px, 16vw, 310px);
+  --rot: -3deg;
+}
+.auth-doodle--note {
+  top: 19%;
+  right: 6%;
+  width: clamp(160px, 15vw, 290px);
+  --rot: 5deg;
+}
+.auth-doodle--vault {
+  top: 46%;
+  left: 3%;
+  width: clamp(120px, 11.5vw, 220px);
+  --rot: 3deg;
+}
+.auth-doodle--coins {
+  bottom: 11%;
+  left: 15%;
+  width: clamp(120px, 11.5vw, 215px);
+  --rot: -4deg;
+}
+.auth-doodle--ledger {
+  bottom: 12%;
+  right: 10%;
+  width: clamp(115px, 11vw, 205px);
+  --rot: 4deg;
+}
+
+/* Narrower desktops: pull the inner sketches back toward the edges. */
+@media (max-width: 1200px) {
+  .auth-doodle--bank {
+    left: 3%;
+  }
+  .auth-doodle--note {
+    right: 3%;
+  }
+  .auth-doodle--coins {
+    left: 5%;
+  }
+  .auth-doodle--ledger {
+    right: 5%;
+  }
+  .auth-doodle--vault {
+    display: none;
+  }
+}
+
+/* Tablet: the card claims the middle, so three corner sketches at a size that
+   still clears its edges. */
+@media (max-width: 900px) {
+  .auth-doodle--coins {
+    display: none;
+  }
+
+  .auth-doodle--bank {
+    top: 3%;
+    left: 2%;
+    width: 118px;
+  }
+  .auth-doodle--note {
+    top: 5%;
+    right: 2%;
+    width: 108px;
+  }
+  .auth-doodle--ledger {
+    bottom: 4%;
+    right: 2%;
+    width: 96px;
+  }
+}
+
+/* Phones leave no room beside the card — plain white paper reads better than
+   sketches sliced by the card edge. */
+@media (max-width: 760px) {
+  .auth-doodles {
+    display: none;
+  }
+}
+
+/* ---------- Card ---------- */
+
 .auth-card {
-  background: white;
-  border-radius: 16px;
+  position: relative;
+  z-index: 1;
+  background: var(--pure-white, #ffffff);
+  border: 1px solid #eceff5;
+  border-radius: 20px;
   padding: 40px;
   width: 100%;
   max-width: 440px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 4px rgba(31, 45, 80, 0.04), 0 18px 40px -12px rgba(31, 45, 80, 0.12);
 }
 
 .auth-header {
@@ -70,8 +197,8 @@
 
 .auth-form input:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: var(--primary-blue, #4169e1);
+  box-shadow: 0 0 0 3px rgba(65, 105, 225, 0.12);
 }
 
 .auth-divider {
@@ -94,6 +221,7 @@
   padding: 0 16px;
 }
 
+/* Flat brand orange — the shared .btn-primary gradient is dropped here. */
 .auth-card .btn-primary {
   width: 100%;
   text-align: center;
@@ -101,6 +229,19 @@
   align-items: center;
   justify-content: center;
   height: 48px;
+  background: var(--primary-orange, #ff914d);
+  box-shadow: none;
+}
+
+.auth-card .btn-primary:hover {
+  background: var(--deep-orange, #e67634);
+  box-shadow: none;
+}
+
+.auth-card .btn-primary:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .btn-google {
@@ -134,7 +275,7 @@
 }
 
 .auth-footer .link-button {
-  color: #667eea;
+  color: var(--primary-blue, #4169e1);
   font-weight: 600;
   background: none;
   border: none;

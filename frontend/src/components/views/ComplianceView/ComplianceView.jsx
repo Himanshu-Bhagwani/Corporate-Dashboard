@@ -42,6 +42,50 @@ const COMPLIANCE_TYPES = [
 
 const DOC_CATEGORIES = ['GST', 'Income Tax', 'TDS', 'ROC', 'Payroll', 'Other'];
 
+// TDS return forms. The Income-tax Act 2025 renumbered these from 1 Apr 2026
+// (FY 2026-27 onwards); the old numbers are kept in the label so the mapping is
+// obvious to anyone who has filed before.
+const TDS_RETURN_FORMS = [
+  { value: '138', label: 'Form 138 — Salary TDS (was 24Q)' },
+  { value: '140', label: 'Form 140 — Non-salary, residents (was 26Q)' },
+  { value: '144', label: 'Form 144 — Payments to non-residents (was 27Q)' },
+  { value: '143', label: 'Form 143 — TCS return (was 27EQ)' },
+];
+
+// Statutory return due dates: Q1 31 Jul, Q2 31 Oct, Q3 31 Jan, Q4 31 May.
+const TDS_QUARTERS = [
+  { value: 'Q1', label: 'Q1 (Apr–Jun)', dueMonthDay: '07-31', dueYearOffset: 0 },
+  { value: 'Q2', label: 'Q2 (Jul–Sep)', dueMonthDay: '10-31', dueYearOffset: 0 },
+  { value: 'Q3', label: 'Q3 (Oct–Dec)', dueMonthDay: '01-31', dueYearOffset: 1 },
+  { value: 'Q4', label: 'Q4 (Jan–Mar)', dueMonthDay: '05-31', dueYearOffset: 1 },
+];
+
+// The sections an SMB actually deducts under, day to day.
+const TDS_SECTIONS = [
+  { value: '192', label: '192 — Salary (slab rate)' },
+  { value: '194A', label: '194A — Interest other than securities (10%)' },
+  { value: '194C', label: '194C — Contractors (1% ind/HUF, 2% others)' },
+  { value: '194H', label: '194H — Commission or brokerage (5%)' },
+  { value: '194I', label: '194I — Rent (10% land/building, 2% plant)' },
+  { value: '194J', label: '194J — Professional / technical fees (10%)' },
+  { value: '194Q', label: '194Q — Purchase of goods (0.1%)' },
+  { value: '194O', label: '194O — E-commerce participant (1%)' },
+  { value: '206C', label: '206C — TCS on sale of goods/scrap (1%)' },
+];
+
+const TDS_FORM_DEFAULTS = {
+  tds_form: '140', tds_quarter: '', tds_fy: '', tan: '', tds_section: '',
+  deductee_count: '', amount_paid: '', tds_deducted: '', tds_deposited: '',
+  challan_no: '', challan_date: '', bsr_code: '', late_fee: '',
+};
+
+// Indian FY label for a date — Apr–Mar, e.g. 2026-27.
+const fyLabel = (date = new Date()) => {
+  const y = date.getFullYear();
+  const start = date.getMonth() >= 3 ? y : y - 1;
+  return `${start}-${String((start + 1) % 100).padStart(2, '0')}`;
+};
+
 const ComplianceView = ({ compliance = [], invoices = [], onMarkFiled, onAddEvent, onDeleteEvent, onRunAIAudit, backendScore }) => {
   const { currentCompany } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
@@ -56,6 +100,7 @@ const ComplianceView = ({ compliance = [], invoices = [], onMarkFiled, onAddEven
   const [addForm, setAddForm] = useState({
     type: 'GST', title: '', due_date: '', payment_status: 'UNPAID',
     sales_amount: '', net_tax_payable: '', itc_available: '', advance_tax_paid: '',
+    ...TDS_FORM_DEFAULTS,
   });
   const [addSaving, setAddSaving] = useState(false);
   const [addError, setAddError] = useState('');
@@ -144,6 +189,15 @@ const ComplianceView = ({ compliance = [], invoices = [], onMarkFiled, onAddEven
         net_tax_payable: Number(item.net_tax_payable) || 0,
         itc_available: Number(item.itc_available) || 0,
         advance_tax_paid: Number(item.advance_tax_paid) || 0,
+        tds_form: item.tds_form || '',
+        tds_quarter: item.tds_quarter || '',
+        tds_fy: item.tds_fy || '',
+        tan: item.tan || '',
+        tds_section: item.tds_section || '',
+        tds_deducted: Number(item.tds_deducted) || 0,
+        tds_deposited: Number(item.tds_deposited) || 0,
+        challan_no: item.challan_no || '',
+        late_fee: Number(item.late_fee) || 0,
       };
     }).sort((a, b) => {
       if (a.status === 'Filed' && b.status !== 'Filed') return 1;
@@ -263,8 +317,29 @@ const ComplianceView = ({ compliance = [], invoices = [], onMarkFiled, onAddEven
   const handleMarkRiskAlertFiled = (alertId) => { if (onMarkFiled) onMarkFiled(alertId); };
   const handleDeleteAlert = (alertId) => { if (onDeleteEvent) onDeleteEvent(alertId); };
 
+  // Picking a quarter fills in the FY and the statutory return due date.
+  const handleQuarterChange = (quarter) => {
+    setAddForm(f => {
+      const next = { ...f, tds_quarter: quarter };
+      const q = TDS_QUARTERS.find(x => x.value === quarter);
+      if (!q) return next;
+
+      const fy = f.tds_fy || fyLabel();
+      next.tds_fy = fy;
+      const fyStartYear = parseInt(fy.slice(0, 4), 10);
+      if (Number.isFinite(fyStartYear)) {
+        next.due_date = `${fyStartYear + q.dueYearOffset}-${q.dueMonthDay}`;
+      }
+      if (!f.title) {
+        next.title = `TDS Return ${quarter} ${fy} (Form ${f.tds_form})`;
+      }
+      return next;
+    });
+  };
+
   const handleAddEventSubmit = async () => {
     if (!addForm.title || !addForm.due_date) { setAddError('Title and due date are required.'); return; }
+    if (addForm.type === 'TDS' && !tanValid) { setAddError('Enter a valid TAN (4 letters, 5 digits, 1 letter).'); return; }
     setAddSaving(true); setAddError('');
     try {
       await onAddEvent({
@@ -274,9 +349,27 @@ const ComplianceView = ({ compliance = [], invoices = [], onMarkFiled, onAddEven
         net_tax_payable: addForm.net_tax_payable ? Number(addForm.net_tax_payable) : 0,
         itc_available: addForm.itc_available ? Number(addForm.itc_available) : 0,
         advance_tax_paid: addForm.advance_tax_paid ? Number(addForm.advance_tax_paid) : 0,
+        // TDS filing details — the backend derives net_tax_payable from these
+        tds_form: addForm.tds_form || null,
+        tds_quarter: addForm.tds_quarter || null,
+        tds_fy: addForm.tds_fy || null,
+        tan: addForm.tan || null,
+        tds_section: addForm.tds_section || null,
+        deductee_count: addForm.deductee_count ? Number(addForm.deductee_count) : 0,
+        amount_paid: addForm.amount_paid ? Number(addForm.amount_paid) : 0,
+        tds_deducted: addForm.tds_deducted ? Number(addForm.tds_deducted) : 0,
+        tds_deposited: addForm.tds_deposited ? Number(addForm.tds_deposited) : 0,
+        challan_no: addForm.challan_no || null,
+        challan_date: addForm.challan_date || null,
+        bsr_code: addForm.bsr_code || null,
+        late_fee: tdsLateFee,
       });
       setShowAddModal(false);
-      setAddForm({ type: 'GST', title: '', due_date: '', payment_status: 'UNPAID', sales_amount: '', net_tax_payable: '', itc_available: '', advance_tax_paid: '' });
+      setAddForm({
+        type: 'GST', title: '', due_date: '', payment_status: 'UNPAID',
+        sales_amount: '', net_tax_payable: '', itc_available: '', advance_tax_paid: '',
+        ...TDS_FORM_DEFAULTS,
+      });
     } catch (err) {
       setAddError(err.message || 'Failed to add event.');
     } finally {
@@ -614,13 +707,31 @@ const ComplianceView = ({ compliance = [], invoices = [], onMarkFiled, onAddEven
         ) : (
           <table className="data-table">
             <thead>
-              <tr><th>Compliance</th><th>Due Date</th><th>Advance Tax Paid</th><th>Status</th><th>Actions</th></tr>
+              <tr>
+                <th>Compliance</th><th>Form / Section</th><th>Period</th><th>Due Date</th>
+                <th>TDS Deducted</th><th>Deposited</th><th>Payable</th><th>Advance Tax</th>
+                <th>Status</th><th>Actions</th>
+              </tr>
             </thead>
             <tbody>
               {incomeTaxItems.map(item => (
                 <tr key={item.id}>
-                  <td style={{ fontWeight: 600, color: '#1a202c' }}>{item.name}</td>
+                  <td style={{ fontWeight: 600, color: '#1a202c' }}>
+                    {item.name}
+                    {item.tan && <div style={{ fontSize: '11px', fontWeight: 400, color: '#a0aec0' }}>TAN {item.tan}</div>}
+                  </td>
+                  <td style={{ color: '#4a5568' }}>
+                    {item.tds_form ? `Form ${item.tds_form}` : '-'}
+                    {item.tds_section && <div style={{ fontSize: '11px', color: '#a0aec0' }}>u/s {item.tds_section}</div>}
+                  </td>
+                  <td style={{ color: '#4a5568' }}>{item.tds_quarter ? `${item.tds_quarter} ${item.tds_fy}` : '-'}</td>
                   <td style={{ color: '#4a5568' }}>{prettyDate(item.dueDate)}</td>
+                  <td style={{ color: '#4a5568', fontWeight: 600 }}>{item.tds_deducted > 0 ? formatINR(item.tds_deducted) : '-'}</td>
+                  <td style={{ color: '#10b981', fontWeight: 600 }}>
+                    {item.tds_deposited > 0 ? formatINR(item.tds_deposited) : '-'}
+                    {item.challan_no && <div style={{ fontSize: '11px', fontWeight: 400, color: '#a0aec0' }}>Challan {item.challan_no}</div>}
+                  </td>
+                  <td style={{ color: '#ef4444', fontWeight: 700 }}>{item.net_tax_payable > 0 ? formatINR(item.net_tax_payable) : '-'}</td>
                   <td style={{ color: '#f59e0b', fontWeight: 600 }}>{item.advance_tax_paid > 0 ? formatINR(item.advance_tax_paid) : '-'}</td>
                   <td>
                     <span style={{ padding: '4px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, background: item.status === 'Filed' ? 'rgba(16,185,129,0.15)' : item.status === 'Overdue' ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)', color: item.status === 'Filed' ? '#10b981' : item.status === 'Overdue' ? '#ef4444' : '#f59e0b' }}>{item.status}</span>
@@ -890,9 +1001,25 @@ const ComplianceView = ({ compliance = [], invoices = [], onMarkFiled, onAddEven
   const modalBox = { background: 'white', borderRadius: '16px', padding: '2rem', maxWidth: '500px', width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.2)', maxHeight: '90vh', overflowY: 'auto' };
   const inputStyle = { width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '14px', outline: 'none', boxSizing: 'border-box' };
   const labelStyle = { fontSize: '13px', fontWeight: 600, color: '#4a5568', display: 'block', marginBottom: '6px' };
+  const twoColStyle = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1rem' };
+  const sectionHeadingStyle = { fontSize: '11px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#a0aec0', margin: '1.25rem 0 0.75rem', paddingBottom: '6px', borderBottom: '1px solid #edf2f7' };
 
   const isGSTType = addForm.type === 'GST';
-  const isTaxType = addForm.type === 'TDS' || addForm.type === 'Income Tax';
+  const isTDSType = addForm.type === 'TDS';
+  const isTaxType = addForm.type === 'Income Tax';
+  // What is still owed to the department on this filing — this is the figure
+  // that lands in Chart of Accounts under Liability → TDS Payable.
+  // Section 234E caps the ₹200/day fee at the return's total TDS, so a filing
+  // with nothing deducted cannot carry a late fee.
+  const tdsDeducted = Number(addForm.tds_deducted) || 0;
+  const tdsLateFeeEntered = Number(addForm.late_fee) || 0;
+  const tdsLateFee = Math.min(tdsLateFeeEntered, tdsDeducted);
+  const tdsLateFeeCapped = tdsLateFeeEntered > tdsDeducted;
+  const tdsNetPayable = Math.max(
+    tdsDeducted - (Number(addForm.tds_deposited) || 0) + tdsLateFee,
+    0
+  );
+  const tanValid = !addForm.tan || /^[A-Z]{4}[0-9]{5}[A-Z]$/.test(addForm.tan.toUpperCase());
 
   return (
     <>
@@ -984,6 +1111,116 @@ const ComplianceView = ({ compliance = [], invoices = [], onMarkFiled, onAddEven
                 <label style={labelStyle}>Advance Tax Paid (₹) <span style={{ fontWeight: 400, color: '#a0aec0' }}>optional</span></label>
                 <input type="number" value={addForm.advance_tax_paid} onChange={e => setAddForm(f => ({ ...f, advance_tax_paid: e.target.value }))} placeholder="0" style={inputStyle} />
               </div>
+            )}
+
+            {isTDSType && (
+              <>
+                <div style={sectionHeadingStyle}>Return details</div>
+
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={labelStyle}>Return Form</label>
+                  <select value={addForm.tds_form} onChange={e => setAddForm(f => ({ ...f, tds_form: e.target.value }))} style={inputStyle}>
+                    {TDS_RETURN_FORMS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                  </select>
+                </div>
+
+                <div style={twoColStyle}>
+                  <div>
+                    <label style={labelStyle}>Quarter</label>
+                    <select value={addForm.tds_quarter} onChange={e => handleQuarterChange(e.target.value)} style={inputStyle}>
+                      <option value="">Select quarter</option>
+                      {TDS_QUARTERS.map(q => <option key={q.value} value={q.value}>{q.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Financial Year</label>
+                    <input type="text" value={addForm.tds_fy} onChange={e => setAddForm(f => ({ ...f, tds_fy: e.target.value }))} placeholder={fyLabel()} style={inputStyle} />
+                  </div>
+                </div>
+
+                <div style={twoColStyle}>
+                  <div>
+                    <label style={labelStyle}>TAN <span style={{ fontWeight: 400, color: '#a0aec0' }}>required to file</span></label>
+                    <input
+                      type="text"
+                      value={addForm.tan}
+                      onChange={e => setAddForm(f => ({ ...f, tan: e.target.value.toUpperCase() }))}
+                      placeholder="MUMS12345A"
+                      maxLength={10}
+                      style={{ ...inputStyle, borderColor: tanValid ? undefined : '#ef4444' }}
+                    />
+                    {!tanValid && <span style={{ fontSize: '11px', color: '#ef4444' }}>Format is 4 letters, 5 digits, 1 letter</span>}
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Deduction Section</label>
+                    <select value={addForm.tds_section} onChange={e => setAddForm(f => ({ ...f, tds_section: e.target.value }))} style={inputStyle}>
+                      <option value="">Select section</option>
+                      {TDS_SECTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div style={sectionHeadingStyle}>Deduction</div>
+
+                <div style={twoColStyle}>
+                  <div>
+                    <label style={labelStyle}>Total Paid / Credited (₹)</label>
+                    <input type="number" value={addForm.amount_paid} onChange={e => setAddForm(f => ({ ...f, amount_paid: e.target.value }))} placeholder="0" style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>No. of Deductees</label>
+                    <input type="number" value={addForm.deductee_count} onChange={e => setAddForm(f => ({ ...f, deductee_count: e.target.value }))} placeholder="0" style={inputStyle} />
+                  </div>
+                </div>
+
+                <div style={twoColStyle}>
+                  <div>
+                    <label style={labelStyle}>TDS Deducted (₹)</label>
+                    <input type="number" value={addForm.tds_deducted} onChange={e => setAddForm(f => ({ ...f, tds_deducted: e.target.value }))} placeholder="0" style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>TDS Deposited (₹)</label>
+                    <input type="number" value={addForm.tds_deposited} onChange={e => setAddForm(f => ({ ...f, tds_deposited: e.target.value }))} placeholder="0" style={inputStyle} />
+                  </div>
+                </div>
+
+                <div style={sectionHeadingStyle}>Challan (ITNS-281)</div>
+
+                <div style={twoColStyle}>
+                  <div>
+                    <label style={labelStyle}>Challan No. <span style={{ fontWeight: 400, color: '#a0aec0' }}>optional</span></label>
+                    <input type="text" value={addForm.challan_no} onChange={e => setAddForm(f => ({ ...f, challan_no: e.target.value }))} placeholder="00123" style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Challan Date <span style={{ fontWeight: 400, color: '#a0aec0' }}>optional</span></label>
+                    <input type="date" value={addForm.challan_date} onChange={e => setAddForm(f => ({ ...f, challan_date: e.target.value }))} style={inputStyle} />
+                  </div>
+                </div>
+
+                <div style={twoColStyle}>
+                  <div>
+                    <label style={labelStyle}>BSR Code <span style={{ fontWeight: 400, color: '#a0aec0' }}>optional</span></label>
+                    <input type="text" value={addForm.bsr_code} onChange={e => setAddForm(f => ({ ...f, bsr_code: e.target.value }))} placeholder="0510308" maxLength={7} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Late Fee u/s 234E (₹)</label>
+                    <input type="number" value={addForm.late_fee} onChange={e => setAddForm(f => ({ ...f, late_fee: e.target.value }))} placeholder="0" style={inputStyle} />
+                    <span style={{ fontSize: '11px', color: tdsLateFeeCapped ? '#d97706' : '#a0aec0' }}>
+                      {tdsLateFeeCapped
+                        ? `Capped at ${formatINR(tdsLateFee)} — s.234E limits the fee to the TDS deducted`
+                        : '₹200/day, capped at the TDS amount'}
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{ padding: '12px 14px', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '10px', marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: '12px', fontWeight: 600, color: '#4a5568' }}>TDS Payable</div>
+                    <div style={{ fontSize: '11px', color: '#a0aec0' }}>Deducted − deposited + late fee · posts to Chart of Accounts</div>
+                  </div>
+                  <div style={{ fontSize: '18px', fontWeight: 700, color: '#ef4444' }}>{formatINR(tdsNetPayable)}</div>
+                </div>
+              </>
             )}
 
             {addError && <div style={{ padding: '10px', background: 'rgba(239,68,68,0.1)', borderRadius: '8px', color: '#ef4444', fontSize: '13px', marginBottom: '1rem' }}>{addError}</div>}

@@ -561,3 +561,31 @@
 }
 .ci-btn-download:hover { box-shadow: 0 4px 14px rgba(16,185,129,0.4); transform: translateY(-1px); }
 
+
+/* ── Field validation ──────────────────────────────────────────────── */
+.ci-input-error,
+.ci-input-error:focus {
+  border-color: #ef4444 !important;
+  background: #fef2f2;
+}
+
+.ci-field-error {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #dc2626;
+}
+
+.ci-field-counter {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: #94a3b8;
+  text-align: right;
+}
+
+.ci-btn-save:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

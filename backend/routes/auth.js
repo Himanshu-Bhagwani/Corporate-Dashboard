@@ -67,9 +67,28 @@ router.post('/refresh', async (req, res) => {
     let decoded;
     try { decoded = verifyRefreshToken(refreshToken); }
     catch (e) { return res.status(401).json({ error: 'Invalid or expired refresh token.' }); }
-    const result = await pool.query('SELECT id, email FROM users WHERE id = $1', [decoded.userId]);
+    const result = await pool.query(
+      'SELECT id, email, refresh_valid_from FROM users WHERE id = $1',
+      [decoded.userId]
+    );
     if (result.rows.length === 0) return res.status(401).json({ error: 'User not found.' });
-    res.json(issueTokens(result.rows[0]));
+    const user = result.rows[0];
+
+    // ── Session revocation ("log out everywhere") ──────────────────────────
+    // Refresh tokens issued before this cut-off are dead. Checked only here —
+    // once per access-token lifetime — so normal requests pay no DB cost.
+    // Access tokens already expire on their own within 15 minutes.
+    if (user.refresh_valid_from) {
+      const issuedAtMs = (decoded.iat || 0) * 1000;
+      if (issuedAtMs < new Date(user.refresh_valid_from).getTime()) {
+        return res.status(401).json({
+          error: 'Session was revoked. Please sign in again.',
+          code: 'SESSION_REVOKED',
+        });
+      }
+    }
+
+    res.json(issueTokens(user));
   } catch (err) {
     console.error('Refresh error:', err);
     res.status(500).json({ error: 'Token refresh failed.' });

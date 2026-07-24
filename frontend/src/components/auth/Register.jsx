@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import './Auth.css';
+import AuthDoodles from './AuthDoodles';
+import { useApeilo } from '../../context/ApeiloContext';
+import { GoogleLogin } from '@react-oauth/google';
 
 const Register = ({ onSwitchToLogin }) => {
   const [email, setEmail] = useState('');
@@ -8,15 +11,42 @@ const Register = ({ onSwitchToLogin }) => {
   const [fullName, setFullName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { register } = useAuth();
+  const { register, loginWithGoogle } = useAuth();
+  const apeilo = useApeilo();
+
+  // Google's flow covers sign-up and sign-in with the same call — the backend
+  // creates the account when the Google id isn't known yet.
+  const handleGoogleSuccess = async (credentialResponse) => {
+    try {
+      setLoading(true);
+      setError('');
+      apeilo.requestLocation().catch(() => {});
+      await loginWithGoogle({ idToken: credentialResponse.credential });
+    } catch (err) {
+      setError(err.message || 'Google sign-up failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleError = () => {
+    setError('Google sign-up was unsuccessful.');
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
+    // Ask for location here — inside the click handler — so the browser
+    // actually shows the permission prompt. Cached for the signup scoring.
+    apeilo.requestLocation().catch(() => {});
+
     try {
       await register(email, password, fullName);
+      // Sign-up is the best moment to catch a weak/pwned password, before it
+      // ever protects a real account.
+      apeilo.trackPassword(password, email).catch(() => {});
     } catch (err) {
       setError(err.message);
     } finally {
@@ -26,6 +56,7 @@ const Register = ({ onSwitchToLogin }) => {
 
   return (
     <div className="auth-container">
+      <AuthDoodles />
       <div className="auth-card">
         <div className="auth-header">
           <h1>Create Account</h1>
@@ -73,6 +104,21 @@ const Register = ({ onSwitchToLogin }) => {
             {loading ? 'Creating account...' : 'Sign Up'}
           </button>
         </form>
+
+        <div className="auth-divider">
+          <span>or</span>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '1rem', width: '100%' }}>
+          <GoogleLogin
+            onSuccess={handleGoogleSuccess}
+            onError={handleGoogleError}
+            theme="outline"
+            size="large"
+            width="100%"
+            text="signup_with"
+          />
+        </div>
 
         <div className="auth-footer">
           <p>

@@ -1,23 +1,79 @@
+/* Same white sheet with pen sketches as the sign-in / sign-up screens —
+   see AuthDoodles.jsx and auth/Auth.css. The drawings and ink are untouched;
+   only placement and scale differ, because this modal is 800px wide against the
+   auth card's 440px.
+ *
+ * Each sketch is anchored to the modal edge (50% ± half the 800px modal) rather
+ * than the viewport edge. Pinning to the viewport made them drift into the far
+ * corners on a wide screen; this keeps the cluster the same distance from the
+ * modal at every width.
+ *
+ * The `left: auto` / `right: auto` resets matter: Auth.css sets the opposite
+ * side, and an absolutely positioned box with left, right AND width is
+ * over-constrained — `left` silently wins and the anchor is ignored. */
+.wizard-overlay .auth-doodle--bank {
+  top: 9%;
+  left: auto;
+  right: calc(50% + 440px);
+  width: clamp(150px, 15vw, 300px);
+}
+.wizard-overlay .auth-doodle--vault {
+  top: 40%;
+  left: auto;
+  right: calc(50% + 470px);
+  width: clamp(115px, 11vw, 225px);
+}
+.wizard-overlay .auth-doodle--coins {
+  top: auto;
+  bottom: 13%;
+  left: auto;
+  right: calc(50% + 430px);
+  width: clamp(115px, 11vw, 215px);
+}
+.wizard-overlay .auth-doodle--note {
+  top: 11%;
+  right: auto;
+  left: calc(50% + 440px);
+  width: clamp(145px, 14.5vw, 290px);
+}
+.wizard-overlay .auth-doodle--ledger {
+  bottom: 12%;
+  right: auto;
+  left: calc(50% + 435px);
+  width: clamp(110px, 10.5vw, 210px);
+}
+
+/* Below this the modal fills the screen — nothing would show but slivers. */
+@media (max-width: 1279px) {
+  .wizard-overlay .auth-doodles {
+    display: none;
+  }
+}
+
 .wizard-overlay {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: var(--pure-white, #ffffff);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
   padding: 20px;
+  overflow: hidden;
 }
 
 .wizard-modal {
+  position: relative;
+  z-index: 1;
   background: white;
   width: 100%;
   max-width: 800px;
   border-radius: 16px;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  border: 1px solid #eceff5;
+  box-shadow: 0 2px 4px rgba(31, 45, 80, 0.04), 0 18px 40px -12px rgba(31, 45, 80, 0.12);
   display: flex;
   flex-direction: column;
   max-height: 90vh;

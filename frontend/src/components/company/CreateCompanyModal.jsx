@@ -1,5 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { X, Upload, Check, ArrowRight, ArrowLeft, Plus } from 'lucide-react';
+import AuthDoodles from '../auth/AuthDoodles';
+import '../auth/Auth.css';
 import './CreateCompanyModal.css';
 
 const ALL_STEPS = [
@@ -145,6 +147,7 @@ const CreateCompanyModal = ({ onClose, onSubmit, skipPlanStep = false }) => {
 
   return (
     <div className="wizard-overlay" onClick={onClose}>
+      <AuthDoodles />
       <div className="wizard-modal" onClick={e => e.stopPropagation()}>
         {renderStepIndicator()}
 

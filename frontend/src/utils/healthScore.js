@@ -5,7 +5,27 @@
 
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 
-export const computeHealthScore = (dashboardSummary, transactions = []) => {
+// Timely EMI payments = up to +6 bonus; missed/overdue EMIs = penalty capped at −6.
+// Loans not yet in repayment don't affect the score at all.
+const emiPaymentBonus = (loans = []) => {
+  let paid = 0, overdue = 0, active = 0;
+  for (const loan of loans) {
+    if (!['DISBURSED', 'REPAYMENT_ACTIVE', 'CLOSED'].includes(loan.status)) continue;
+    paid   += parseInt(loan.paid_emis)  || 0;
+    active += parseInt(loan.total_emis) || 0;
+  }
+  // The list endpoint doesn't break out overdue count per-loan; use next-due date
+  // being in the past as a signal that at least one EMI slipped.
+  for (const loan of loans) {
+    if (loan.next_emi_date && new Date(loan.next_emi_date) < new Date()) overdue += 1;
+  }
+  if (active === 0) return 0;
+  const paidRatio = Math.min(paid / active, 1);
+  const bonus = Math.round(paidRatio * 6) - Math.min(overdue * 2, 6);
+  return Math.max(-6, Math.min(6, bonus));
+};
+
+export const computeHealthScore = (dashboardSummary, transactions = [], loans = []) => {
   const s = dashboardSummary || {};
 
   // Revenue Consistency — Coefficient of Variation
@@ -31,8 +51,16 @@ export const computeHealthScore = (dashboardSummary, transactions = []) => {
   // Fall back to netProfit (all-time) for older API responses that lack annualNetProfit.
   const np  = parseFloat(s.annualNetProfit ?? s.netProfit) || 0;
   const ocf = parseFloat(s.operatingCashFlow) || 0;
-  const roe = (s.roe !== null && s.roe !== undefined) ? parseFloat(s.roe) : null;
-  const dte = parseFloat(s.debtToEquity) || 0;
+  // Real balance-sheet figures from the Chart of Accounts win over the backend's
+  // equity proxy, so this score agrees with the dashboard metric cards.
+  const coaEquity      = parseFloat(s.coaEquity) || 0;
+  const coaLiabilities = parseFloat(s.coaTotalLiabilities) || 0;
+  const roe = coaEquity > 0
+    ? (np / coaEquity) * 100
+    : ((s.roe !== null && s.roe !== undefined) ? parseFloat(s.roe) : null);
+  const dte = (coaEquity > 0 && coaLiabilities > 0)
+    ? coaLiabilities / coaEquity
+    : parseFloat(s.debtToEquity) || 0;
   const cr  = (s.currentRatio !== null && s.currentRatio !== undefined) ? parseFloat(s.currentRatio) : null;
   const npm = parseFloat(s.netProfitMargin) || 0;
   const ic  = (s.interestCoverage !== null && s.interestCoverage !== undefined) ? parseFloat(s.interestCoverage) : null;
@@ -65,7 +93,8 @@ export const computeHealthScore = (dashboardSummary, transactions = []) => {
     piotroski >= 7 ? 10 : piotroski >= 5 ? 6 : piotroski >= 3 ? 3 : 0,
   ];
 
-  return Math.round(scores.reduce((a, v) => a + v, 0));
+  const base = Math.round(scores.reduce((a, v) => a + v, 0));
+  return clamp(base + emiPaymentBonus(loans), 0, 100);
 };
 
 export const getScoreLabel = (score) =>

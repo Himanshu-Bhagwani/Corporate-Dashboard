@@ -41,6 +41,13 @@ const getEvents = async (req, res) => {
              COALESCE(net_tax_payable, 0) as net_tax_payable,
              COALESCE(itc_available, 0) as itc_available,
              COALESCE(advance_tax_paid, 0) as advance_tax_paid,
+             tds_form, tds_quarter, tds_fy, tan, tds_section,
+             COALESCE(deductee_count, 0) as deductee_count,
+             COALESCE(amount_paid, 0) as amount_paid,
+             COALESCE(tds_deducted, 0) as tds_deducted,
+             COALESCE(tds_deposited, 0) as tds_deposited,
+             challan_no, TO_CHAR(challan_date, 'YYYY-MM-DD') as challan_date, bsr_code,
+             COALESCE(late_fee, 0) as late_fee,
              created_at
       FROM compliance_events
       WHERE company_id = $1
@@ -60,21 +67,54 @@ const createEvent = async (req, res) => {
       status = 'PENDING', payment_status = 'UNPAID',
       sales_amount = 0, net_tax_payable = 0,
       itc_available = 0, advance_tax_paid = 0,
+      // TDS / TCS filing details
+      tds_form = null, tds_quarter = null, tds_fy = null, tan = null, tds_section = null,
+      deductee_count = 0, amount_paid = 0, tds_deducted = 0, tds_deposited = 0,
+      challan_no = null, challan_date = null, bsr_code = null, late_fee = 0,
     } = req.body;
+
+    // For a TDS filing the outstanding liability is what was deducted but not
+    // yet deposited, plus the 234E late fee. Chart of Accounts reads
+    // net_tax_payable, so derive it here rather than trusting the client.
+    //
+    // Section 234E caps the ₹200/day fee at the total TDS amount of the return,
+    // so a filing with no TDS deducted cannot carry a late fee at all.
+    let netPayable = net_tax_payable || 0;
+    let cappedLateFee = parseFloat(late_fee) || 0;
+    if (type === 'TDS') {
+      const deducted = parseFloat(tds_deducted) || 0;
+      const deposited = parseFloat(tds_deposited) || 0;
+      cappedLateFee = Math.min(cappedLateFee, deducted);
+      netPayable = Math.max(deducted - deposited + cappedLateFee, 0);
+    }
 
     const result = await pool.query(`
       INSERT INTO compliance_events
         (company_id, type, title, due_date, status, payment_status,
-         sales_amount, net_tax_payable, itc_available, advance_tax_paid)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         sales_amount, net_tax_payable, itc_available, advance_tax_paid,
+         tds_form, tds_quarter, tds_fy, tan, tds_section,
+         deductee_count, amount_paid, tds_deducted, tds_deposited,
+         challan_no, challan_date, bsr_code, late_fee)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+              $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
       RETURNING id, type, title, TO_CHAR(due_date, 'YYYY-MM-DD') as due_date,
                 status, payment_status,
                 COALESCE(sales_amount, 0) as sales_amount,
                 COALESCE(net_tax_payable, 0) as net_tax_payable,
                 COALESCE(itc_available, 0) as itc_available,
-                COALESCE(advance_tax_paid, 0) as advance_tax_paid
+                COALESCE(advance_tax_paid, 0) as advance_tax_paid,
+                tds_form, tds_quarter, tds_fy, tan, tds_section,
+                COALESCE(deductee_count, 0) as deductee_count,
+                COALESCE(amount_paid, 0) as amount_paid,
+                COALESCE(tds_deducted, 0) as tds_deducted,
+                COALESCE(tds_deposited, 0) as tds_deposited,
+                challan_no, TO_CHAR(challan_date, 'YYYY-MM-DD') as challan_date, bsr_code,
+                COALESCE(late_fee, 0) as late_fee
     `, [companyId, type, title, due_date, status, payment_status,
-        sales_amount || 0, net_tax_payable || 0, itc_available || 0, advance_tax_paid || 0]);
+        sales_amount || 0, netPayable, itc_available || 0, advance_tax_paid || 0,
+        tds_form, tds_quarter, tds_fy, tan, tds_section,
+        parseInt(deductee_count, 10) || 0, amount_paid || 0, tds_deducted || 0, tds_deposited || 0,
+        challan_no, challan_date || null, bsr_code, cappedLateFee]);
 
     await calculateScoreInternal(companyId);
     res.status(201).json(result.rows[0]);

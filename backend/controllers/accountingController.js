@@ -402,12 +402,20 @@ const getChartOfAccounts = async (req, res) => {
       [companyId]
     );
 
+    // Seed the default chart once per company. Re-seeding whenever the table is
+    // empty would undo "Clear All" on the very next load.
     if (result.rows.length === 0) {
-      await autoGenerateChartOfAccounts(companyId);
-      result = await pool.query(
-        `SELECT * FROM chart_of_accounts WHERE company_id = $1 ORDER BY account_type, name ASC`,
+      const seeded = await pool.query(
+        `SELECT coa_generated_at FROM companies WHERE id = $1`,
         [companyId]
       );
+      if (seeded.rows.length > 0 && !seeded.rows[0].coa_generated_at) {
+        await autoGenerateChartOfAccounts(companyId);
+        result = await pool.query(
+          `SELECT * FROM chart_of_accounts WHERE company_id = $1 ORDER BY account_type, name ASC`,
+          [companyId]
+        );
+      }
     }
 
     const enriched = await enrichChartOfAccounts(companyId, result.rows);
@@ -513,6 +521,119 @@ const deleteChartOfAccountsEntry = async (req, res) => {
   } catch (error) {
     console.error('Delete chart of accounts error:', error);
     res.status(500).json({ error: 'Failed to delete account entry' });
+  }
+};
+
+/**
+ * DELETE /api/accounting/chart-of-accounts/type/:accountType
+ * Clears every stored account under one heading (Asset, Liability, …).
+ * Live rows derived from transactions/loans/invoices are not stored, so they
+ * reappear on the next load — they follow the underlying data, not this table.
+ */
+const clearChartOfAccountsType = async (req, res) => {
+  try {
+    const companyId = req.headers['x-company-id'];
+    if (!companyId) return res.status(400).json({ error: 'Company ID required' });
+
+    const { accountType } = req.params;
+    const validTypes = ['Asset', 'Liability', 'Equity', 'Revenue', 'Expense'];
+    if (!validTypes.includes(accountType)) {
+      return res.status(400).json({ error: `Invalid account type. Must be one of: ${validTypes.join(', ')}` });
+    }
+
+    const result = await pool.query(
+      `DELETE FROM chart_of_accounts WHERE company_id = $1 AND account_type = $2 RETURNING id`,
+      [companyId, accountType]
+    );
+
+    res.json({ message: `Cleared ${result.rowCount} ${accountType} account(s)`, deleted: result.rowCount });
+  } catch (error) {
+    console.error('Clear chart of accounts type error:', error);
+    res.status(500).json({ error: 'Failed to clear accounts' });
+  }
+};
+
+// Balance-sheet totals entered on the Financial Metrics screen are held in the
+// chart as one clearly-named account per heading, so the two screens agree and
+// the figure is never double-counted against the live ledger data.
+const RECONCILE_ACCOUNTS = {
+  Asset:     'Unrecorded Assets (Financial Metrics)',
+  Liability: 'Unrecorded Liabilities (Financial Metrics)',
+  Equity:    'Owner Capital (Financial Metrics)',
+};
+
+/**
+ * POST /api/accounting/chart-of-accounts/reconcile
+ * Body: { totalAssets?, totalLiabilities?, equity? }
+ * Makes each heading's live total match the figure the owner entered by parking
+ * the difference in a single adjustment account.
+ */
+const reconcileChartOfAccounts = async (req, res) => {
+  try {
+    const companyId = req.headers['x-company-id'];
+    if (!companyId) return res.status(400).json({ error: 'Company ID required' });
+
+    const targets = {
+      Asset:     req.body.totalAssets,
+      Liability: req.body.totalLiabilities,
+      Equity:    req.body.equity,
+    };
+
+    const applied = {};
+    for (const [accountType, rawTarget] of Object.entries(targets)) {
+      if (rawTarget === undefined || rawTarget === null || rawTarget === '') continue;
+      const target = parseFloat(rawTarget);
+      if (!Number.isFinite(target) || target < 0) continue;
+
+      const name = RECONCILE_ACCOUNTS[accountType];
+      const existing = await pool.query(
+        `SELECT id, opening_balance FROM chart_of_accounts
+          WHERE company_id = $1 AND account_type = $2 AND name = $3`,
+        [companyId, accountType, name]
+      );
+      const currentAdjustment = existing.rows.length > 0
+        ? parseFloat(existing.rows[0].opening_balance) || 0
+        : 0;
+
+      // What the ledger reports on its own, ignoring any previous adjustment.
+      const totals = await getCoaTotals(companyId);
+      const baseline = (totals[accountType] || 0) - currentAdjustment;
+      const gap = Math.round((target - baseline) * 100) / 100;
+
+      if (gap <= 0) {
+        // Real data already meets or exceeds the figure — drop the adjustment.
+        if (existing.rows.length > 0) {
+          await pool.query(`DELETE FROM chart_of_accounts WHERE id = $1`, [existing.rows[0].id]);
+        }
+        applied[accountType] = { baseline, adjustment: 0 };
+        continue;
+      }
+
+      if (existing.rows.length > 0) {
+        await pool.query(
+          `UPDATE chart_of_accounts SET opening_balance = $1, updated_at = NOW() WHERE id = $2`,
+          [gap, existing.rows[0].id]
+        );
+      } else {
+        const codePrefix = { Asset: '1', Liability: '2', Equity: '3' }[accountType];
+        const countResult = await pool.query(
+          `SELECT COUNT(*) as count FROM chart_of_accounts WHERE company_id = $1 AND account_type = $2`,
+          [companyId, accountType]
+        );
+        const code = `${codePrefix}${String(parseInt(countResult.rows[0].count) + 1).padStart(3, '0')}`;
+        await pool.query(
+          `INSERT INTO chart_of_accounts (company_id, code, name, account_type, description, opening_balance)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [companyId, code, name, accountType, 'Entered under Financial Metrics → Additional Data', gap]
+        );
+      }
+      applied[accountType] = { baseline, adjustment: gap };
+    }
+
+    res.json({ applied, totals: await getCoaTotals(companyId) });
+  } catch (error) {
+    console.error('Reconcile chart of accounts error:', error);
+    res.status(500).json({ error: 'Failed to sync figures into the Chart of Accounts' });
   }
 };
 
@@ -646,6 +767,11 @@ async function autoGenerateChartOfAccounts(companyId) {
       );
     }
 
+    await client.query(
+      `UPDATE companies SET coa_generated_at = NOW() WHERE id = $1`,
+      [companyId]
+    );
+
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
@@ -699,24 +825,40 @@ async function enrichChartOfAccounts(companyId, rows) {
      WHERE company_id = $1 AND type = 'GST' AND status = 'PENDING'`,
     [companyId]
   );
-  // Live TDS payable
+  // Live TDS payable — compliance events plus TDS actually deducted and not yet
+  // deposited with the government (the tds_deductions ledger).
   const tdsPayable = await pool.query(
     `SELECT COALESCE(SUM(net_tax_payable), 0) as total FROM compliance_events
      WHERE company_id = $1 AND type = 'TDS' AND status = 'PENDING'`,
     [companyId]
   );
+  const tdsDeducted = await safeSum(
+    `SELECT COALESCE(SUM(COALESCE(net_tds_payable, tds_amount)), 0) as total
+       FROM tds_deductions
+      WHERE company_id = $1 AND status <> 'deposited'`,
+    [companyId]
+  );
+  // Live bank loan liability — principal still owed on disbursed/active loans
+  const loanOutstanding = await safeSum(
+    `SELECT COALESCE(SUM(outstanding_principal), 0) as total
+       FROM loans
+      WHERE company_id = $1 AND status IN ('DISBURSED','REPAYMENT_ACTIVE')`,
+    [companyId]
+  );
 
+  // Category names are matched case-insensitively: the PDF importer writes
+  // "Office supplies" while a hand-made account may read "Office Supplies".
   const incomeMap = {};
-  incomeTotals.rows.forEach(r => { incomeMap[r.category] = parseFloat(r.total); });
+  incomeTotals.rows.forEach(r => { if (r.category) incomeMap[r.category.toLowerCase()] = parseFloat(r.total); });
   const expenseMap = {};
-  expenseTotals.rows.forEach(r => { expenseMap[r.category] = parseFloat(r.total); });
+  expenseTotals.rows.forEach(r => { if (r.category) expenseMap[r.category.toLowerCase()] = parseFloat(r.total); });
   const balanceMap = {};
   accountBalances.rows.forEach(r => { balanceMap[r.name] = parseFloat(r.balance); });
 
   const liveReceivables = parseFloat(receivables.rows[0].total) || 0;
   const livePayables = parseFloat(payables.rows[0].total) || 0;
   const liveGST = parseFloat(gstPayable.rows[0].total) || 0;
-  const liveTDS = parseFloat(tdsPayable.rows[0].total) || 0;
+  const liveTDS = (parseFloat(tdsPayable.rows[0].total) || 0) + tdsDeducted;
 
   // Track which bank account names are already covered by a COA Asset row
   const coveredBankNames = new Set(
@@ -742,16 +884,57 @@ async function enrichChartOfAccounts(companyId, rows) {
         liveBalance = liveGST;
       } else if (row.name === 'TDS Payable') {
         liveBalance = liveTDS;
+      } else if (row.name === 'Bank Loans') {
+        liveBalance = loanOutstanding;
       }
     } else if (row.account_type === 'Revenue') {
-      const catName = row.name.replace(' Revenue', '');
-      liveBalance = incomeMap[catName] || parseFloat(row.opening_balance) || 0;
+      const catName = row.name.replace(/ Revenue$/i, '').toLowerCase();
+      liveBalance = incomeMap[catName] ?? parseFloat(row.opening_balance) ?? 0;
     } else if (row.account_type === 'Expense') {
-      liveBalance = expenseMap[row.name] || parseFloat(row.opening_balance) || 0;
+      liveBalance = expenseMap[row.name.toLowerCase()] ?? parseFloat(row.opening_balance) ?? 0;
     }
 
     return { ...row, live_balance: liveBalance };
   });
+
+  // Inject virtual Revenue/Expense rows for transaction categories that have no
+  // account yet. autoGenerateChartOfAccounts only runs while the chart is empty,
+  // so anything imported later (a PDF bank statement adding "Software",
+  // "Salaries", …) would otherwise never show a balance here.
+  const coveredRevenue = new Set(
+    rows.filter(r => r.account_type === 'Revenue').map(r => r.name.replace(/ Revenue$/i, '').toLowerCase())
+  );
+  const coveredExpense = new Set(
+    rows.filter(r => r.account_type === 'Expense').map(r => r.name.toLowerCase())
+  );
+
+  const virtualRevenueRows = incomeTotals.rows
+    .filter(r => r.category && !coveredRevenue.has(r.category.toLowerCase()))
+    .map((r, idx) => ({
+      id: `virtual-revenue-${idx}`,
+      company_id: companyId,
+      code: `4V${String(idx + 1).padStart(2, '0')}`,
+      name: `${r.category} Revenue`,
+      account_type: 'Revenue',
+      description: `Income from ${r.category} transactions`,
+      opening_balance: parseFloat(r.total) || 0,
+      live_balance: parseFloat(r.total) || 0,
+      is_virtual: true,
+    }));
+
+  const virtualExpenseRows = expenseTotals.rows
+    .filter(r => r.category && !coveredExpense.has(r.category.toLowerCase()))
+    .map((r, idx) => ({
+      id: `virtual-expense-${idx}`,
+      company_id: companyId,
+      code: `5V${String(idx + 1).padStart(2, '0')}`,
+      name: r.category,
+      account_type: 'Expense',
+      description: `Expense - ${r.category} transactions`,
+      opening_balance: parseFloat(r.total) || 0,
+      live_balance: parseFloat(r.total) || 0,
+      is_virtual: true,
+    }));
 
   // Inject virtual Asset rows for any bank accounts not already represented in COA
   const virtualBankRows = accountBalances.rows
@@ -787,8 +970,240 @@ async function enrichChartOfAccounts(companyId, rows) {
       }]
     : [];
 
-  return [...enrichedRows, ...virtualBankRows, ...syntheticCash];
+  return [
+    ...enrichedRows,
+    ...virtualBankRows,
+    ...syntheticCash,
+    ...virtualRevenueRows,
+    ...virtualExpenseRows,
+  ];
 }
+
+/**
+ * Live totals per account type — the same numbers the Chart of Accounts screen
+ * shows, so the dashboard metrics and the ledger can never disagree.
+ * Returns { Asset, Liability, Equity, Revenue, Expense }.
+ */
+async function getCoaTotals(companyId) {
+  const totals = { Asset: 0, Liability: 0, Equity: 0, Revenue: 0, Expense: 0 };
+  try {
+    const stored = await pool.query(
+      `SELECT * FROM chart_of_accounts WHERE company_id = $1`,
+      [companyId]
+    );
+    const enriched = await enrichChartOfAccounts(companyId, stored.rows);
+    for (const row of enriched) {
+      if (totals[row.account_type] !== undefined) {
+        totals[row.account_type] += parseFloat(row.live_balance) || 0;
+      }
+    }
+  } catch (error) {
+    console.warn('Chart of accounts totals unavailable —', error.message);
+  }
+  return totals;
+}
+
+// Sum helper for tables added by later migrations — a deployment where the
+// migration hasn't run yet should show a zero balance, not fail the whole chart.
+async function safeSum(sql, params) {
+  try {
+    const result = await pool.query(sql, params);
+    return parseFloat(result.rows[0].total) || 0;
+  } catch (error) {
+    console.warn('Chart of accounts: skipped a balance source —', error.message);
+    return 0;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ * Financial statement upload (Balance Sheet / P&L) → Chart of Accounts
+ * Accepts CSV or PDF. Rows are grouped into Asset / Liability / Equity /
+ * Revenue / Expense either via an explicit type column (CSV) or by the
+ * section heading they appear under (PDF / sectioned CSV).
+ * ══════════════════════════════════════════════════════════════════ */
+
+const SECTION_TYPE_MAP = [
+  { re: /fixed assets|current assets|non.?current assets|\bassets?\b|investments|cash and bank|inventor(y|ies)|receivable/i, type: 'Asset' },
+  { re: /liabilit|payable|borrowing|loans? (taken|payable)|provisions|creditors/i, type: 'Liability' },
+  { re: /equity|capital|reserves|surplus|shareholder|owner.?s? fund/i, type: 'Equity' },
+  { re: /revenue|income|sales|turnover|other income/i, type: 'Revenue' },
+  { re: /expens|expenditure|cost of|purchases|overheads|depreciation|finance cost/i, type: 'Expense' },
+];
+
+const detectSectionType = (line) => {
+  for (const { re, type } of SECTION_TYPE_MAP) {
+    if (re.test(line)) return type;
+  }
+  return null;
+};
+
+// Normalize an explicit type/section cell to one of our five account types
+const normalizeType = (raw) => {
+  const t = String(raw || '').trim().toLowerCase();
+  if (!t) return null;
+  if (t.startsWith('asset')) return 'Asset';
+  if (t.startsWith('liab')) return 'Liability';
+  if (t.startsWith('equit') || t.includes('capital')) return 'Equity';
+  if (t.startsWith('rev') || t.includes('income') || t.includes('sales')) return 'Revenue';
+  if (t.startsWith('exp') || t.includes('cost')) return 'Expense';
+  return detectSectionType(t);
+};
+
+// "1,23,456.78" / "₹1.2L" style → number (Indian formats included)
+const parseAmount = (raw) => {
+  if (raw === null || raw === undefined) return null;
+  let s = String(raw).replace(/[₹$,\s]/g, '').replace(/\((.+)\)/, '-$1');
+  if (/^-?\d+(\.\d+)?(cr)$/i.test(s)) return parseFloat(s) * 10000000;
+  if (/^-?\d+(\.\d+)?(l|lac|lakh)$/i.test(s)) return parseFloat(s) * 100000;
+  if (/^-?\d+(\.\d+)?(k)$/i.test(s)) return parseFloat(s) * 1000;
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : null;
+};
+
+// Parse CSV text into { name, account_type, amount } rows.
+// Supports both a `type` column and section-heading rows.
+const parseStatementCsv = (text) => {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (lines.length === 0) return [];
+
+  const splitCsv = (line) => line.split(',').map(c => c.replace(/^"|"$/g, '').trim());
+
+  const header = splitCsv(lines[0]).map(h => h.toLowerCase());
+  const nameIdx   = header.findIndex(h => ['name', 'account', 'particulars', 'head', 'description', 'item'].includes(h));
+  const amountIdx = header.findIndex(h => ['amount', 'balance', 'value', 'total', 'closing balance', 'opening balance'].includes(h));
+  const typeIdx   = header.findIndex(h => ['type', 'account_type', 'section', 'category', 'group'].includes(h));
+  const hasHeader = nameIdx !== -1 && amountIdx !== -1;
+
+  const rows = [];
+  let currentSection = null;
+
+  const dataLines = hasHeader ? lines.slice(1) : lines;
+  for (const line of dataLines) {
+    const cells = splitCsv(line);
+    const name   = hasHeader ? cells[nameIdx] : cells[0];
+    const amount = parseAmount(hasHeader ? cells[amountIdx] : cells[cells.length - 1]);
+    if (!name) continue;
+
+    // A row with no amount that looks like a heading switches the section
+    if (amount === null) {
+      const sec = detectSectionType(name);
+      if (sec) currentSection = sec;
+      continue;
+    }
+
+    const explicit = typeIdx !== -1 ? normalizeType(cells[typeIdx]) : null;
+    const type = explicit || currentSection || detectSectionType(name);
+    if (!type) continue;
+
+    rows.push({ name, account_type: type, amount });
+  }
+  return rows;
+};
+
+// Parse plain PDF text into rows using section headings + trailing amounts
+const parseStatementPdfText = (text) => {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const rows = [];
+  let currentSection = null;
+
+  // "Sundry Debtors  1,23,456.78" → name + trailing amount
+  const lineRe = /^(.+?)[\s.·]{2,}(-?\(?[₹$]?\s?[\d,]+(?:\.\d+)?\)?)$/;
+
+  for (const line of lines) {
+    const m = line.match(lineRe) || line.match(/^(.+?)\s(-?\(?[₹$]?[\d,]+(?:\.\d+)?\)?)$/);
+    if (!m) {
+      const sec = detectSectionType(line);
+      if (sec) currentSection = sec;
+      continue;
+    }
+    const name = m[1].replace(/[.·\s]+$/, '').trim();
+    const amount = parseAmount(m[2]);
+    if (!name || amount === null || Math.abs(amount) < 0.01) continue;
+    if (/^total\b|^grand total|^net\b|^page \d|^statement|^balance sheet|^profit\s*(&|and)\s*loss/i.test(name)) continue;
+
+    const type = currentSection || detectSectionType(name);
+    if (!type) continue;
+    rows.push({ name, account_type: type, amount });
+  }
+  return rows;
+};
+
+/**
+ * POST /api/accounting/upload-statement — CSV or PDF financial statement.
+ * Upserts parsed line items into chart_of_accounts (matched by name).
+ */
+const uploadFinancialStatement = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const companyId = req.headers['x-company-id'];
+    if (!companyId) return res.status(400).json({ error: 'Company ID required' });
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+    const isPdf = req.file.mimetype === 'application/pdf' || /\.pdf$/i.test(req.file.originalname || '');
+    let rows;
+    if (isPdf) {
+      const pdfParse = require('pdf-parse');
+      const data = await pdfParse(req.file.buffer);
+      if (!data || !data.text || !data.text.trim()) {
+        return res.status(400).json({ error: 'Could not read text from this PDF. If it is a scanned image, please upload a CSV instead.' });
+      }
+      rows = parseStatementPdfText(data.text);
+    } else {
+      rows = parseStatementCsv(req.file.buffer.toString('utf8'));
+    }
+
+    if (!rows || rows.length === 0) {
+      return res.status(400).json({
+        error: 'No account lines recognised. Use columns like name, amount, type (Asset/Liability/Equity/Revenue/Expense), or section headings above each block.',
+      });
+    }
+
+    await client.query('BEGIN');
+
+    const codePrefix = { Asset: '1', Liability: '2', Equity: '3', Revenue: '4', Expense: '5' };
+    const typeCounts = {};
+    const countRes = await client.query(
+      `SELECT account_type, COUNT(*) as count FROM chart_of_accounts WHERE company_id = $1 GROUP BY account_type`,
+      [companyId]
+    );
+    countRes.rows.forEach(r => { typeCounts[r.account_type] = parseInt(r.count); });
+
+    let created = 0, updated = 0;
+    const imported = [];
+    for (const row of rows) {
+      const existing = await client.query(
+        `SELECT id FROM chart_of_accounts WHERE company_id = $1 AND LOWER(name) = LOWER($2)`,
+        [companyId, row.name]
+      );
+      if (existing.rows.length > 0) {
+        await client.query(
+          `UPDATE chart_of_accounts SET account_type = $1, opening_balance = $2, updated_at = NOW() WHERE id = $3`,
+          [row.account_type, row.amount, existing.rows[0].id]
+        );
+        updated++;
+      } else {
+        typeCounts[row.account_type] = (typeCounts[row.account_type] || 0) + 1;
+        const code = `${codePrefix[row.account_type]}${String(typeCounts[row.account_type]).padStart(3, '0')}`;
+        await client.query(
+          `INSERT INTO chart_of_accounts (company_id, code, name, account_type, description, opening_balance)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [companyId, code, row.name, row.account_type, `Imported from ${isPdf ? 'PDF' : 'CSV'} statement`, row.amount]
+        );
+        created++;
+      }
+      imported.push(row);
+    }
+
+    await client.query('COMMIT');
+    res.json({ created, updated, total: rows.length, rows: imported });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Statement upload error:', error);
+    res.status(500).json({ error: 'Failed to process the statement file' });
+  } finally {
+    client.release();
+  }
+};
 
 module.exports = {
   getLedger,
@@ -800,4 +1215,8 @@ module.exports = {
   createChartOfAccountsEntry,
   updateChartOfAccountsEntry,
   deleteChartOfAccountsEntry,
+  clearChartOfAccountsType,
+  reconcileChartOfAccounts,
+  uploadFinancialStatement,
+  getCoaTotals,
 };

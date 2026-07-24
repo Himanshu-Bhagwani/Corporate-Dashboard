@@ -68,14 +68,37 @@ const helmetMiddleware = helmet({
 
 // ─── Rate Limiters ────────────────────────────────────────────────────────────
 
-/** Auth endpoints: 10 attempts per 15 min per IP */
+/** Loopback / private-network addresses (Docker bridge, LAN, localhost). */
+const isLocalAddress = (ip = '') => {
+  const a = String(ip).replace(/^::ffff:/, '');
+  return (
+    a === '::1' || a === '127.0.0.1' || a.startsWith('127.') ||
+    a.startsWith('10.') || a.startsWith('192.168.') ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(a)
+  );
+};
+
+/**
+ * Failed-credential limiter: 10 FAILED attempts per 15 min per IP.
+ *
+ * Notes on why this is scoped so carefully (see server.js):
+ *  - It is mounted only on the endpoints that actually check credentials.
+ *    Previously it covered all of /api/auth, so /auth/me — which the app calls
+ *    on every mount and token change — burned the budget on ordinary page loads.
+ *  - skipSuccessfulRequests means a successful sign-in no longer counts. A
+ *    brute-force limiter should only care about failures; counting successes is
+ *    what made the limit trip after a handful of normal logins.
+ */
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Too many login attempts. Please try again in 15 minutes.' },
-  skip: (req) => !isProd && req.ip === '::1', // skip localhost in dev
+  skipSuccessfulRequests: true,
+  message: { error: 'Too many failed login attempts. Please try again in 15 minutes.' },
+  // Dev escape hatch. The old check compared against '::1' only, which never
+  // matches inside Docker (requests arrive from the bridge gateway, e.g. 172.18.0.1).
+  skip: (req) => !isProd && isLocalAddress(req.ip),
 });
 
 /** General API: 200 req/min per IP */

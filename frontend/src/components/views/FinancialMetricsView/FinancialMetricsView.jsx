@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import './FinancialMetricsView.css';
 import EmbeddedHeader from '../../layout/EmbeddedHeader/EmbeddedHeader';
 import { computeHealthScore, getScoreLabel, getScoreColor } from '../../../utils/healthScore';
+import { accountingAPI } from '../../../services/api';
+import { useAuth } from '../../../context/AuthContext';
 import {
   Activity, CreditCard, TrendingUp, Shield, Edit3, Save,
   RefreshCw, CheckCircle2, AlertCircle, ExternalLink,
@@ -54,6 +56,7 @@ const MetricRow = ({ label, value, unit, source, description, status }) => {
 
 /* ── Main Component ─────────────────────────────────────────────── */
 const FinancialMetricsView = ({ dashboardSummary, transactions }) => {
+  const { currentCompany } = useAuth();
   const [cibilScore, setCibilScore] = useState('');
   const [editingCibil, setEditingCibil] = useState(false);
   const [cibilInput, setCibilInput] = useState('');
@@ -98,13 +101,26 @@ const FinancialMetricsView = ({ dashboardSummary, transactions }) => {
     window.dispatchEvent(new CustomEvent('cibil-score-updated', { detail: { score: val } }));
   };
 
-  const saveManual = () => {
+  const saveManual = async () => {
     const updated = { ...manualMetrics, ...manualDraft };
     setManualMetrics(updated);
     setEditingManual(false);
     const cibil = cibilScore || localStorage.getItem('savedCibil');
     localStorage.setItem('financialMetrics', JSON.stringify({ cibil, manual: updated }));
-    showToast('Financial metrics saved.');
+
+    // Push the balance-sheet figures into the Chart of Accounts so the ledger
+    // and this screen never show different totals.
+    if (!currentCompany) { showToast('Financial metrics saved.'); return; }
+    try {
+      await accountingAPI.reconcileChartOfAccounts({
+        totalAssets: updated.totalAssets,
+        totalLiabilities: updated.totalLiabilities,
+        equity: updated.equity,
+      }, currentCompany.id);
+      showToast('Saved and synced to your Chart of Accounts.');
+    } catch (err) {
+      showToast('Saved locally, but the Chart of Accounts could not be updated.', 'error');
+    }
   };
 
   const connectTally = () => {
@@ -117,6 +133,23 @@ const FinancialMetricsView = ({ dashboardSummary, transactions }) => {
 
   /* Derived values from dashboardSummary */
   const s = dashboardSummary || {};
+
+  // Live Chart of Accounts totals — these fill the balance-sheet fields below,
+  // so the ledger is the starting point and typing here is an override.
+  const coaTotals = {
+    totalAssets:      parseFloat(s.coaTotalAssets) || 0,
+    totalLiabilities: parseFloat(s.coaTotalLiabilities) || 0,
+    equity:           parseFloat(s.coaEquity) || 0,
+  };
+  const coaPrefill = Object.fromEntries(
+    Object.entries(coaTotals)
+      .filter(([key, value]) => value > 0 && !(parseFloat(manualMetrics[key]) > 0))
+      .map(([key, value]) => [key, String(Math.round(value))])
+  );
+  // What the balance-sheet rows should read: saved value, else the ledger total.
+  const effective = (key) => (parseFloat(manualMetrics[key]) > 0 ? manualMetrics[key] : (coaTotals[key] || null));
+  const sourceFor = (key) => (parseFloat(manualMetrics[key]) > 0 ? 'Manual' : 'Chart of Accounts');
+
   const healthScore = useMemo(() => computeHealthScore(dashboardSummary, transactions), [dashboardSummary, transactions]);
   const scoreColor = getScoreColor(healthScore);
 
@@ -311,10 +344,12 @@ const FinancialMetricsView = ({ dashboardSummary, transactions }) => {
             <div className="fm-section-icon" style={{ background: 'rgba(245,158,11,0.1)', color: '#d97706' }}><Edit3 size={18} /></div>
             <div>
               <h2 className="fm-section-title">Additional Financial Data</h2>
-              <p className="fm-section-sub">Enter details from your books, ITR, or GST filings</p>
+              <p className="fm-section-sub">
+                Assets, liabilities and equity come from your Chart of Accounts — edit to override, and your figure is written back there
+              </p>
             </div>
             {!editingManual ? (
-              <button className="fm-edit-btn" onClick={() => { setEditingManual(true); setManualDraft({ ...manualMetrics }); }}>
+              <button className="fm-edit-btn" onClick={() => { setEditingManual(true); setManualDraft({ ...manualMetrics, ...coaPrefill }); }}>
                 <Edit3 size={14} /> Edit
               </button>
             ) : (
@@ -351,9 +386,9 @@ const FinancialMetricsView = ({ dashboardSummary, transactions }) => {
             <div className="fm-metrics-list">
               {[
                 { label: 'Annual Turnover', value: manualMetrics.turnover ? fmtCurr(manualMetrics.turnover) : null, source: 'Manual', description: 'From ITR / audited books' },
-                { label: 'Total Assets', value: manualMetrics.totalAssets ? fmtCurr(manualMetrics.totalAssets) : null, source: 'Manual', description: 'Balance sheet total assets' },
-                { label: 'Total Liabilities', value: manualMetrics.totalLiabilities ? fmtCurr(manualMetrics.totalLiabilities) : null, source: 'Manual', description: 'All outstanding liabilities' },
-                { label: 'Total Equity / Net Worth', value: manualMetrics.equity ? fmtCurr(manualMetrics.equity) : null, source: 'Manual', description: 'Assets minus liabilities' },
+                { label: 'Total Assets', value: effective('totalAssets') ? fmtCurr(effective('totalAssets')) : null, source: sourceFor('totalAssets'), description: 'Balance sheet total assets' },
+                { label: 'Total Liabilities', value: effective('totalLiabilities') ? fmtCurr(effective('totalLiabilities')) : null, source: sourceFor('totalLiabilities'), description: 'Payables, loans, GST and TDS due' },
+                { label: 'Total Equity / Net Worth', value: effective('equity') ? fmtCurr(effective('equity')) : null, source: sourceFor('equity'), description: 'Capital plus retained earnings — drives ROE and D/E' },
                 { label: 'GST-reported Turnover', value: manualMetrics.gstTurnover ? fmtCurr(manualMetrics.gstTurnover) : null, source: 'Manual', description: 'As per GSTR-1 filings' },
                 { label: 'Bank CC / OD Limit', value: manualMetrics.bankCCLimit ? fmtCurr(manualMetrics.bankCCLimit) : null, source: 'Manual', description: 'Existing working capital facility' },
                 { label: 'Existing Monthly EMIs', value: manualMetrics.existingEmi ? fmtCurr(manualMetrics.existingEmi) : null, source: 'Manual', description: 'Total monthly loan obligations' },

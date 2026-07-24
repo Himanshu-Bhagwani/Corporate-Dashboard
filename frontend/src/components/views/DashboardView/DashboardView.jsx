@@ -16,24 +16,50 @@ const formatCurrency = (val) => {
   return `₹${val.toFixed(0)}`;
 };
 
-const CORPORATE_CATEGORIES_COLORS = {
-  'Sales': '#4F46E5',
-  'Consulting': '#7C3AED',
-  'Salaries': '#EC4899',
-  'Marketing': '#F59E0B',
-  'Software': '#3B82F6',
-  'Rent': '#c882dd96',
-  'Tax': '#e73737d2',
-  'Shares': '#10B981',
-  'Professional Fees': '#06B6D4',
-  'Utilities': '#F97316',
-  'Misc': '#4e504cff',
-  'Insurance': '#12a795a2',
-  'Travel': '#095227ff',
-  'Training': '#D946EF',
-  'Maintenance': '#fd3254ff',
-  'Office Supplies': '#fdcf44ff',
+// Case-insensitive category → colour map. Keys are stored lower-case so
+// "Office supplies" and "Office Supplies" both resolve. Loan Repayment /
+// Loan Interest (auto-created by the loans module) get distinct on-brand
+// colours instead of falling to the grey default.
+const CORPORATE_CATEGORY_PALETTE = {
+  'sales':              '#4F46E5',
+  'consulting':         '#7C3AED',
+  'salaries':           '#EC4899',
+  'marketing':          '#F59E0B',
+  'software':           '#3B82F6',
+  'rent':               '#A855F7',
+  'tax':                '#EF4444',
+  'shares':             '#10B981',
+  'professional fees':  '#06B6D4',
+  'utilities':          '#F97316',
+  'insurance':          '#14B8A6',
+  'travel':             '#84CC16',
+  'training':           '#D946EF',
+  'maintenance':        '#DC2626',
+  'maintainance':       '#DC2626', // legacy misspelling in the auto-classifier
+  'office supplies':    '#FBBF24',
+  'loan repayment':     '#0EA5E9', // sky — distinct from the greys/greens
+  'loan interest':      '#8B5CF6', // violet — sits next to Loan Repayment
+  'loans':              '#0EA5E9',
+  'misc':               '#94A3B8',
 };
+
+// Deterministic distinct fallback colours for any category the palette doesn't
+// know about — hashed so the same name always gets the same colour across renders.
+const FALLBACK_COLOURS = ['#F472B6', '#22D3EE', '#A3E635', '#FB923C', '#818CF8', '#F87171', '#34D399', '#FACC15'];
+const hashCategory = (name = '') => {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = ((h << 5) - h + name.charCodeAt(i)) | 0;
+  return FALLBACK_COLOURS[Math.abs(h) % FALLBACK_COLOURS.length];
+};
+
+const getCategoryColor = (name) => {
+  if (!name) return '#94A3B8';
+  const key = String(name).trim().toLowerCase();
+  return CORPORATE_CATEGORY_PALETTE[key] || hashCategory(key);
+};
+
+// Kept for any legacy references — resolves via the case-insensitive lookup
+const CORPORATE_CATEGORIES_COLORS = new Proxy({}, { get: (_, name) => getCategoryColor(name) });
 
 const renderActiveShape = (props) => {
   const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill, payload, percent, value } = props;
@@ -281,11 +307,20 @@ const DashboardView = ({
               {summary.profitChange > 0 && <span className="stat-change positive">+{summary.profitChange}%</span>}
             </div>
             <div className="stat-value-new">{formatCurrency(summary.netProfit || stats.netTotal || 0)}</div>
-            {summary.netProfitMargin !== undefined && (
-              <div style={{ fontSize: '11px', color: '#718096', marginTop: '2px' }}>
-                Net Margin: <strong style={{ color: (summary.netProfitMargin || 0) >= 0 ? '#10b981' : '#ef4444' }}>{summary.netProfitMargin}%</strong>
-              </div>
-            )}
+            {(() => {
+              // Margin computed on the SAME basis as the Net Profit figure shown
+              // above (all-time), not the trailing-12M ratio — mixing the two
+              // made the card show ₹47L profit next to a 1.2% margin.
+              const np  = parseFloat(summary.netProfit) || 0;
+              const rev = parseFloat(summary.totalRevenue) || 0;
+              if (rev <= 0) return null;
+              const margin = (np / rev) * 100;
+              return (
+                <div style={{ fontSize: '11px', color: '#718096', marginTop: '2px' }}>
+                  Net Margin: <strong style={{ color: margin >= 0 ? '#10b981' : '#ef4444' }}>{margin.toFixed(1)}%</strong>
+                </div>
+              );
+            })()}
           </div>
         </div>
 
@@ -590,7 +625,9 @@ const DashboardView = ({
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
             <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#1a202c' }}>Invoices Summary</h3>
             <button
-              onClick={() => setShowInvoiceModal(true)}
+              onClick={() => {
+                window.dispatchEvent(new CustomEvent('navigate-to', { detail: { view: 'invoices', openCreate: true } }));
+              }}
               style={{
                 padding: '10px 20px', borderRadius: '10px', border: 'none',
                 background: 'linear-gradient(135deg, #4F46E5, #7C3AED)', color: 'white',

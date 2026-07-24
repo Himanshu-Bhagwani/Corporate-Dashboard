@@ -344,10 +344,14 @@ const uploadPdfStatement = async (req, res) => {
           d.includes('conference') || d.includes('course') || d.includes('certification') ||
           d.includes('udemy') || d.includes('coursera') || d.includes('education')) return 'Training';
 
+      // Capital purchases before consumables — see transactionsController.
+      if (d.includes('equipment') || d.includes('machinery') || d.includes('vehicle') ||
+          d.includes('furniture') || d.includes('laptop') || d.includes('computer') ||
+          d.includes('hardware') || d.includes('capex')) return 'Equipment';
+
       if (d.includes('stationery') || d.includes('office supply') || d.includes('supplies') ||
-          d.includes('printer') || d.includes('cartridge') || d.includes('furniture') ||
-          d.includes('equipment') || d.includes('laptop') || d.includes('computer') ||
-          d.includes('hardware') || d.includes('amazon') || d.includes('flipkart') ||
+          d.includes('printer') || d.includes('cartridge') ||
+          d.includes('amazon') || d.includes('flipkart') ||
           d.includes('material')) return 'Office supplies';
 
       if (d.includes('maintenance') || d.includes('repair') || d.includes('service charge') ||
@@ -369,18 +373,55 @@ const uploadPdfStatement = async (req, res) => {
       return 'Misc';
     };
 
+    // ── Stage 6.5: Normalize dates to ISO (YYYY-MM-DD) ──────────────────
+    // Postgres DATE columns can't parse formats like "13/07/2026" or
+    // "13 Jul 2026" under the default datestyle, which caused a 500.
+    const MONTHS = { jan:1, feb:2, mar:3, apr:4, may:5, jun:6, jul:7, aug:8, sep:9, sept:9, oct:10, nov:11, dec:12 };
+    const normalizeDate = (raw) => {
+      if (!raw) return null;
+      const s = String(raw).trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+      // DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
+      const dmy = s.match(/^(\d{1,2})[\s\/\-.](\d{1,2})[\s\/\-.](\d{2,4})$/);
+      if (dmy) {
+        const d = dmy[1].padStart(2, '0');
+        const m = dmy[2].padStart(2, '0');
+        let y = dmy[3];
+        if (y.length === 2) y = (parseInt(y, 10) >= 70 ? '19' : '20') + y;
+        return `${y}-${m}-${d}`;
+      }
+      // DD MMM YYYY or DD-MMM-YY
+      const dmyName = s.match(/^(\d{1,2})[\s\/\-.]([A-Za-z]{3,9})[\s\/\-.](\d{2,4})$/);
+      if (dmyName) {
+        const d = dmyName[1].padStart(2, '0');
+        const m = MONTHS[dmyName[2].toLowerCase().slice(0, 3)];
+        if (!m) return null;
+        let y = dmyName[3];
+        if (y.length === 2) y = (parseInt(y, 10) >= 70 ? '19' : '20') + y;
+        return `${y}-${String(m).padStart(2, '0')}-${d}`;
+      }
+      const parsed = new Date(s);
+      if (!isNaN(parsed)) return parsed.toISOString().slice(0, 10);
+      return null;
+    };
+
     // ── Stage 7: Atomic Persistence ──────────────────────────────────────
     client = await pool.connect();
     await client.query('BEGIN');
 
     const accountId = req.body.account_id || null;
     const created = [];
+    const skipped = [];
     for (const txn of normalizedTransactions) {
+      const isoDate = normalizeDate(txn.date);
+      if (!isoDate) { skipped.push({ ...txn, reason: 'invalid_date' }); continue; }
+      // Fallback for indeterminate type — 'unknown' isn't useful downstream.
+      const safeType = (txn.type === 'income' || txn.type === 'expense') ? txn.type : 'expense';
       const category = autoCategorize(txn.name);
       const result = await client.query(
         `INSERT INTO transactions (company_id, name, type, category, account_id, amount, date, notes)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-        [companyId, txn.name, txn.type, category, accountId, txn.amount, txn.date, txn.notes]
+        [companyId, txn.name, safeType, category, accountId, txn.amount, isoDate, txn.notes]
       );
       created.push(result.rows[0]);
     }
